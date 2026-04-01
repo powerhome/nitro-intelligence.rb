@@ -17,6 +17,7 @@ Gem::Specification.new do |s|
   s.add_dependency "openai", "0.23.0"
   s.add_dependency "railties", "7.1.5.1"
 
+  s.add_development_dependency "license_finder", "7.2.1"
   s.add_development_dependency "parser", ">= 2.5", "!= 2.5.1.1"
   s.add_development_dependency "pry", "0.14.2"
   s.add_development_dependency "pry-byebug", "3.10.1"
