@@ -22,7 +22,9 @@ Gem::Specification.new do |s|
   s.add_development_dependency "pry", "0.14.2"
   s.add_development_dependency "pry-byebug", "3.10.1"
   s.add_development_dependency "rainbow", "2.2.2"
+  s.add_development_dependency "rspec", "3.13.0"
   s.add_development_dependency "rubocop-powerhome", "0.6.1"
+  s.add_development_dependency "webmock", "3.26.1"
   s.add_development_dependency "yard", "0.9.37"
   s.metadata["rubygems_mfa_required"] = "true"
 end
