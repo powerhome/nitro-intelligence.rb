@@ -12,6 +12,7 @@ Gem::Specification.new do |s|
 
   s.files = Dir["{app,config,db,lib}/**/*"] + ["Rakefile", "docs/README.md"]
 
+  s.required_ruby_version = ">= 3.3"
   s.add_dependency "activesupport", "7.1.5.1"
   s.add_dependency "httparty", "~> 0.16.2"
   s.add_dependency "langfuse-rb", "0.6.0"
