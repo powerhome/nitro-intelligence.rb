@@ -1,6 +1,8 @@
+require_relative "lib/nitro_intelligence/version"
+
 Gem::Specification.new do |s|
   s.name        = "nitro_intelligence"
-  s.version     = "0.0.1"
+  s.version     = NitroIntelligence::VERSION
   s.authors     = ["Igor Artemenko"]
   s.email       = ["igor.artemenko@powerhrg.com"]
   s.homepage    = "https://github.com/powerhome/nitro-intelligence.rb"
