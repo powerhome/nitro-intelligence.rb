@@ -10,3 +10,4 @@ pkg
 vendor/bundle
 *.log
 *.sqlite3
+*.gem
