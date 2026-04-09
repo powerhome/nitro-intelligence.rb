@@ -13,12 +13,12 @@ Gem::Specification.new do |s|
   s.files = Dir["{app,config,db,lib}/**/*"] + ["Rakefile", "docs/README.md"]
 
   s.required_ruby_version = ">= 3.3"
-  s.add_dependency "activesupport", "7.1.5.1"
+  s.add_dependency "activesupport", "~> 7.1"
   s.add_dependency "httparty", "~> 0.16.2"
   s.add_dependency "langfuse-rb", "0.6.0"
-  s.add_dependency "mini_magick", "4.10.1"
-  s.add_dependency "openai", "0.23.0"
-  s.add_dependency "railties", "7.1.5.1"
+  s.add_dependency "mini_magick", "~> 4.10"
+  s.add_dependency "openai", "~> 0.23.0"
+  s.add_dependency "railties", "~> 7.1"
 
   s.add_development_dependency "license_finder", "7.2.1"
   s.add_development_dependency "parser", ">= 2.5", "!= 2.5.1.1"

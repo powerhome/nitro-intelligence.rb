@@ -2,12 +2,12 @@ PATH
   remote: .
   specs:
     nitro_intelligence (0.0.1)
-      activesupport (= 7.1.5.1)
+      activesupport (~> 7.1)
       httparty (~> 0.16.2)
       langfuse-rb (= 0.6.0)
-      mini_magick (= 4.10.1)
-      openai (= 0.23.0)
-      railties (= 7.1.5.1)
+      mini_magick (~> 4.10)
+      openai (~> 0.23.0)
+      railties (~> 7.1)
 
 GEM
   remote: https://rubygems.org/
