@@ -2,18 +2,19 @@ require "spec_helper"
 require "base64"
 require "digest"
 require "time"
+require "json"
 
 require "active_support/core_ext/object/blank"
 require "active_support/core_ext/enumerable"
 
-require "nitro_intelligence/media/upload_handler" # Adjust path as needed
+require "nitro_intelligence/observability/upload_handler"
 
-RSpec.describe NitroIntelligence::UploadHandler do
-  let(:observability_host) { "https://api.observability.example" }
-  let(:observability_auth_token) { "secret_token_123" }
+RSpec.describe NitroIntelligence::Observability::UploadHandler do
+  let(:host) { "https://api.observability.example" }
+  let(:auth_token) { "secret_token_123" }
   let(:trace_id) { "trace-98765" }
 
-  subject(:handler) { described_class.new(observability_host, observability_auth_token) }
+  subject(:handler) { described_class.new(auth_token:) }
 
   let(:media_bytes) { "fake_image_data" }
   let(:media_base64) { Base64.strict_encode64(media_bytes) }
@@ -30,6 +31,18 @@ RSpec.describe NitroIntelligence::UploadHandler do
     )
   end
 
+  let(:expected_api_headers) do
+    {
+      "Content-Type" => "application/json",
+      "Authorization" => "Basic #{auth_token}",
+    }
+  end
+
+  before do
+    config_mock = double("Config", observability_base_url: host)
+    allow(NitroIntelligence).to receive(:config).and_return(config_mock)
+  end
+
   describe "#upload" do
     let(:queue) { Queue.new }
     let(:fake_time) { Time.utc(2026, 3, 13, 12, 0, 0) }
@@ -42,20 +55,17 @@ RSpec.describe NitroIntelligence::UploadHandler do
     let(:patch_response) { double("HTTParty::Response", code: 200) }
 
     before do
-      # Freeze time so the JSON payload timestamp is predictable
       allow(Time).to receive(:now).and_return(fake_time)
 
       queue.push(mock_media)
       allow(mock_media).to receive(:reference_id=)
 
-      # Mock API calls
       allow(HTTParty).to receive(:post).and_return(upload_url_response)
       allow(HTTParty).to receive(:put).and_return(put_response)
       allow(HTTParty).to receive(:patch).and_return(patch_response)
     end
 
     it "processes the queue, uploads the media, and assigns a reference_id" do
-      # Define exactly what the JSON string should look like
       expected_post_body = {
         traceId: trace_id,
         contentType: "image/png",
@@ -64,26 +74,21 @@ RSpec.describe NitroIntelligence::UploadHandler do
         field: "input",
       }.to_json
 
-      # Note the explicit {} around the options to ensure RSpec treats it as an options hash
-      expect(HTTParty).to receive(:post).with(
-        "#{observability_host}/api/public/media",
-        {
-          body: expected_post_body,
-          headers: anything,
-        }
-      )
-
-      expect(HTTParty).to receive(:put).with(
-        "https://s3.example/upload",
-        {
-          headers: hash_including("x-amz-checksum-sha256" => media_sha256),
-          body: media_bytes,
-        }
-      )
-
-      expect(mock_media).to receive(:reference_id=).with("media-123")
-
       results = handler.upload(trace_id, upload_queue: queue)
+
+      expect(HTTParty).to have_received(:post).with(
+        "#{host}/api/public/media",
+        body: expected_post_body,
+        headers: expected_api_headers
+      )
+
+      expect(HTTParty).to have_received(:put).with(
+        "https://s3.example/upload",
+        headers: hash_including("x-amz-checksum-sha256" => media_sha256),
+        body: media_bytes
+      )
+
+      expect(mock_media).to have_received(:reference_id=).with("media-123")
       expect(results).to contain_exactly(mock_media)
     end
 
@@ -93,11 +98,11 @@ RSpec.describe NitroIntelligence::UploadHandler do
       end
 
       it "skips the PUT and PATCH requests but still assigns the reference_id" do
-        expect(HTTParty).not_to receive(:put)
-        expect(HTTParty).not_to receive(:patch)
-        expect(mock_media).to receive(:reference_id=).with("media-123")
-
         handler.upload(trace_id, upload_queue: queue)
+
+        expect(HTTParty).not_to have_received(:put)
+        expect(HTTParty).not_to have_received(:patch)
+        expect(mock_media).to have_received(:reference_id=).with("media-123")
       end
     end
 
@@ -113,15 +118,13 @@ RSpec.describe NitroIntelligence::UploadHandler do
           uploadHttpError: "Server Error",
         }.to_json
 
-        expect(HTTParty).to receive(:patch).with(
-          "#{observability_host}/api/public/media/media-123",
-          {
-            body: expected_patch_body,
-            headers: anything,
-          }
-        )
-
         handler.upload(trace_id, upload_queue: queue)
+
+        expect(HTTParty).to have_received(:patch).with(
+          "#{host}/api/public/media/media-123",
+          body: expected_patch_body,
+          headers: expected_api_headers
+        )
       end
     end
   end

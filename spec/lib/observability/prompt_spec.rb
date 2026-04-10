@@ -1,8 +1,8 @@
 # spec/prompt_spec.rb
 require "spec_helper"
-require "nitro_intelligence/prompt/prompt"
+require "nitro_intelligence/observability/prompt"
 
-RSpec.describe NitroIntelligence::Prompt do
+RSpec.describe NitroIntelligence::Observability::Prompt do
   let(:text_prompt_data) do
     {
       name: "text_prompt",
@@ -26,8 +26,8 @@ RSpec.describe NitroIntelligence::Prompt do
       tags: ["general_knowledge"],
     }
   end
-  let(:text_prompt_instance) { NitroIntelligence::Prompt.new(**text_prompt_data) }
-  let(:chat_prompt_instance) { NitroIntelligence::Prompt.new(**chat_prompt_data) }
+  let(:text_prompt_instance) { NitroIntelligence::Observability::Prompt.new(**text_prompt_data) }
+  let(:chat_prompt_instance) { NitroIntelligence::Observability::Prompt.new(**chat_prompt_data) }
 
   describe "#initialize" do
     it "initializes with the correct attributes" do
@@ -48,7 +48,7 @@ RSpec.describe NitroIntelligence::Prompt do
 
       it "returns an empty array if no variables are present" do
         data = text_prompt_data.merge(prompt: "A simple prompt with no variables.")
-        prompt = NitroIntelligence::Prompt.new(**data)
+        prompt = NitroIntelligence::Observability::Prompt.new(**data)
         expect(prompt.variables).to eq([])
       end
     end

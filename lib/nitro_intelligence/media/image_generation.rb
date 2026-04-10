@@ -9,7 +9,6 @@ require "nitro_intelligence/media/image"
 module NitroIntelligence
   class ImageGeneration
     class Config
-      CUSTOM_PARAMS = %i[aspect_ratio image_generation resolution].freeze
       DEFAULT_ASPECT_RATIO = "1:1".freeze
       DEFAULT_RESOLUTION = "1K".freeze
 
@@ -17,7 +16,7 @@ module NitroIntelligence
 
       def initialize
         @aspect_ratio = DEFAULT_ASPECT_RATIO
-        @model = NitroIntelligence.model_catalog.default_image_model.name
+        @model = NitroIntelligence.model_catalog.default_image_model&.name
         @resolution = DEFAULT_RESOLUTION
       end
     end
@@ -61,6 +60,9 @@ module NitroIntelligence
       @generated_image = Image.from_base64(base64_string)
       @generated_image.direction = "output"
       @generated_image
+    rescue ArgumentError
+      NitroIntelligence.logger.info("Skipping image parse due to invalid base64; likely already parsed.")
+      nil
     end
 
   private

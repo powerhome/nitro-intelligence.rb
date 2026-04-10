@@ -1,15 +1,15 @@
 # spec/prompt_store_spec.rb
 require "spec_helper"
-require "nitro_intelligence/prompt/prompt_store"
+require "nitro_intelligence/observability/prompt_store"
 require "webmock/rspec"
 
-RSpec.describe NitroIntelligence::PromptStore do
+RSpec.describe NitroIntelligence::Observability::PromptStore do
   let(:observability_project_slug) { "test-project" }
   let(:observability_public_key) { "public_key" }
   let(:observability_secret_key) { "secret_key" }
   let(:observability_host) { "https://test.observability.ai" }
   let(:prompt_store) do
-    NitroIntelligence::PromptStore.new(
+    NitroIntelligence::Observability::PromptStore.new(
       observability_project_slug:,
       observability_public_key:,
       observability_secret_key:
@@ -43,7 +43,7 @@ RSpec.describe NitroIntelligence::PromptStore do
           .to_return(status: 200, body: prompt_api_response)
 
         prompt = prompt_store.get_prompt(prompt_name: "example_prompt", prompt_version: 1)
-        expect(prompt).to be_a(NitroIntelligence::Prompt)
+        expect(prompt).to be_a(NitroIntelligence::Observability::Prompt)
         expect(prompt.version).to eq(1)
       end
 
@@ -52,7 +52,7 @@ RSpec.describe NitroIntelligence::PromptStore do
           .to_return(status: 404, body: "Not Found")
 
         expect { prompt_store.get_prompt(prompt_name: "example_prompt", prompt_version: 1) }
-          .to raise_error(NitroIntelligence::PromptStore::ObservabilityPromptNotFoundError)
+          .to raise_error(NitroIntelligence::Observability::PromptStore::ObservabilityPromptNotFoundError)
       end
     end
 
@@ -62,7 +62,7 @@ RSpec.describe NitroIntelligence::PromptStore do
           .to_return(status: 200, body: prompt_api_response)
 
         prompt = prompt_store.get_prompt(prompt_name: "example_prompt", prompt_label: "production")
-        expect(prompt).to be_a(NitroIntelligence::Prompt)
+        expect(prompt).to be_a(NitroIntelligence::Observability::Prompt)
         expect(prompt.labels).to include("production")
       end
 
@@ -71,7 +71,7 @@ RSpec.describe NitroIntelligence::PromptStore do
           .to_return(status: 200, body: prompt_api_response)
 
         prompt = prompt_store.get_prompt(prompt_name: "example_prompt")
-        expect(prompt).to be_a(NitroIntelligence::Prompt)
+        expect(prompt).to be_a(NitroIntelligence::Observability::Prompt)
         expect(prompt.labels).to include("production")
       end
     end
@@ -86,7 +86,7 @@ RSpec.describe NitroIntelligence::PromptStore do
       expect(HTTParty).not_to receive(:get)
 
       prompt = prompt_store.get_prompt(prompt_name: "example_prompt", prompt_label: "production")
-      expect(prompt).to be_a(NitroIntelligence::Prompt)
+      expect(prompt).to be_a(NitroIntelligence::Observability::Prompt)
     end
 
     it "fetches from the API and writes to cache on a cache miss" do
@@ -98,7 +98,7 @@ RSpec.describe NitroIntelligence::PromptStore do
         .to_return(status: 200, body: prompt_api_response)
 
       prompt = prompt_store.get_prompt(prompt_name: "example_prompt", prompt_label: "production")
-      expect(prompt).to be_a(NitroIntelligence::Prompt)
+      expect(prompt).to be_a(NitroIntelligence::Observability::Prompt)
     end
 
     it "uses rolling cache on API failure" do
@@ -111,7 +111,7 @@ RSpec.describe NitroIntelligence::PromptStore do
         .to_return(status: 500, body: "Internal Server Error")
 
       prompt = prompt_store.get_prompt(prompt_name: "example_prompt", prompt_label: "production")
-      expect(prompt).to be_a(NitroIntelligence::Prompt)
+      expect(prompt).to be_a(NitroIntelligence::Observability::Prompt)
       expect(prompt.version).to eq(999)
     end
   end

@@ -82,6 +82,36 @@ client.chat(parameters: { model: "meta-llama/Llama-3.1-8B-Instruct", max_tokens:
 
 For a full list of supported parameters, see the [API reference here](https://developers.openai.com/api/reference/resources/completions/methods/create).
 
+### Audio Transcription
+
+Nitro Intelligence can be used to transcribe audio from a file into text.
+
+Basic examples of usage:
+
+```ruby
+client = NitroIntelligence::Client.new
+audio = File.open('sample.m4a', 'rb')
+result = client.transcribe_audio(audio_file: audio)
+```
+
+`result` is a `OpenAI::Models::Audio::Transcription` object:
+
+```ruby
+<OpenAI::Models::Audio::Transcription:0x2fdc8 {:text=>"Hello, how are you doing today?", :usage=>{:input_tokens=>28, :output_tokens=>10, :total_tokens=>38, :type=>:tokens, :input_token_details=>{:audio_tokens=>28, :text_tokens=>0}}}>
+```
+
+To use a prompt, simply initialize your client with the `observability_project_slug` and pass `prompt_name` into parameters:
+
+```ruby
+client = NitroIntelligence::Client.new(observability_project_slug: "my-test-project")
+audio = File.open('sample.m4a', 'rb')
+result = client.transcribe_audio(audio_file: audio, parameters: {prompt_name: "Spanish Converter"})
+
+puts result
+
+# <OpenAI::Models::Audio::Transcription:0x2fd8c {:text=>"Hola, ¿cómo estás hoy?", :usage=>{:input_tokens=>37, :output_tokens=>9, :total_tokens=>46, :type=>:tokens, :input_token_details=>{:audio_tokens=>28, :text_tokens=>9}}}>
+```
+
 ### Image Editing and Generation
 
 Nitro Intelligence can be used for image editing and generation
