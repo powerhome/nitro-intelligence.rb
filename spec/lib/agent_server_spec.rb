@@ -391,6 +391,20 @@ RSpec.describe NitroIntelligence::AgentServer do
       end
     end
 
+    context "when run response messages are nil" do
+      let(:run_response_body) do
+        {
+          "messages" => nil,
+        }
+      end
+
+      it "returns nil" do
+        result = agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+
+        expect(result).to be_nil
+      end
+    end
+
     context "with various HTTP error status codes for thread initialization" do
       [400, 401, 403, 404, 422, 502, 503].each do |status_code|
         context "when thread initialization returns #{status_code}" do
@@ -430,6 +444,635 @@ RSpec.describe NitroIntelligence::AgentServer do
             end.to raise_error(NitroIntelligence::AgentServer::RunError)
           end
         end
+      end
+    end
+  end
+
+  describe "#review_tool_calls" do
+    let(:thread_id) { "thread-456" }
+    let(:assistant_id) { "assistant-789" }
+    let(:reviewer_id) { "reviewer-123" }
+    let(:reviewed_at) { "2026-03-27T12:34:56Z" }
+    let(:thread_url) { "#{base_url}/threads/#{thread_id}" }
+    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
+    let(:thread_status) { "interrupted" }
+    let(:tool_calls) do
+      {
+        "tool_call_id_1" => {
+          "action" => "approve",
+        },
+        "tool_call_id_2" => {
+          "action" => "edit",
+          "args" => {
+            "arg_1" => "new value",
+            "arg_2" => "original value",
+          },
+        },
+      }
+    end
+    let(:messages) do
+      [
+        {
+          "type" => "human",
+          "id" => "communication-1",
+          "content" => "Please look up my account",
+        },
+        {
+          "type" => "ai",
+          "id" => "ai-message-1",
+          "content" => "",
+          "tool_calls" => [
+            {
+              "id" => "tool_call_id_1",
+              "name" => "lookup_account",
+              "args" => {},
+            },
+            {
+              "id" => "tool_call_id_2",
+              "name" => "lookup_orders",
+              "args" => {
+                "arg_1" => "original value",
+                "arg_2" => "original value",
+              },
+            },
+          ],
+        },
+      ]
+    end
+    let(:interrupt_context) do
+      {
+        "tool_calls" => %w[tool_call_id_1 tool_call_id_2],
+      }
+    end
+    let(:review_actions) { %w[approve edit] }
+    let(:thread) do
+      {
+        "thread_id" => thread_id,
+        "status" => thread_status,
+      }
+    end
+    let(:thread_state) do
+      {
+        "values" => {
+          "messages" => messages,
+        },
+        "interrupts" => [
+          {
+            "value" => {
+              "context" => interrupt_context,
+              "review_actions" => review_actions,
+            },
+          },
+        ],
+      }
+    end
+    let(:resume_payload) do
+      {
+        reviewer_id:,
+        reviewed_at:,
+        tool_calls:,
+      }
+    end
+    let(:resume_request_body) do
+      {
+        assistant_id:,
+        command: {
+          resume: resume_payload,
+        },
+        context: interrupt_context,
+      }
+    end
+    let(:run_response_body) do
+      {
+        "messages" => [
+          { "role" => "assistant", "content" => "Reviewed response" },
+        ],
+      }
+    end
+
+    before do
+      stub_request(:get, thread_url)
+        .to_return(
+          status: 200,
+          body: thread.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+
+      stub_request(:get, state_url)
+        .to_return(
+          status: 200,
+          body: thread_state.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+
+      stub_request(:post, run_url)
+        .with(body: resume_request_body.to_json)
+        .to_return(
+          status: 200,
+          body: run_response_body.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+    end
+
+    it "fetches the thread and thread state before resuming reviewed tool calls" do
+      agent_server.review_tool_calls(
+        thread_id:,
+        assistant_id:,
+        reviewer_id:,
+        reviewed_at:,
+        tool_calls:
+      )
+
+      expect(WebMock).to have_requested(:get, thread_url)
+      expect(WebMock).to have_requested(:get, state_url).twice
+    end
+
+    it "passes the reviewed tool calls and interrupt context to wait-for-run" do
+      agent_server.review_tool_calls(
+        thread_id:,
+        assistant_id:,
+        reviewer_id:,
+        reviewed_at:,
+        tool_calls:
+      )
+
+      expect(WebMock).to have_requested(:post, run_url)
+        .with(body: resume_request_body.to_json)
+    end
+
+    it "returns nil" do
+      result = agent_server.review_tool_calls(
+        thread_id:,
+        assistant_id:,
+        reviewer_id:,
+        reviewed_at:,
+        tool_calls:
+      )
+
+      expect(result).to be_nil
+    end
+
+    context "when reviewed_at is not provided" do
+      let(:resume_request_body) do
+        {
+          assistant_id:,
+          command: {
+            resume: {
+              reviewer_id:,
+              reviewed_at: "2026-03-27T15:00:00+00:00",
+              tool_calls:,
+            },
+          },
+          context: interrupt_context,
+        }
+      end
+
+      before do
+        allow(DateTime).to receive(:current).and_return(DateTime.iso8601("2026-03-27T15:00:00Z"))
+      end
+
+      it "defaults reviewed_at to DateTime.current.iso8601" do
+        agent_server.review_tool_calls(
+          thread_id:,
+          assistant_id:,
+          reviewer_id:,
+          tool_calls:
+        )
+
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: resume_request_body.to_json)
+      end
+    end
+
+    context "when the thread does not exist" do
+      before do
+        stub_request(:get, thread_url)
+          .to_return(
+            status: 404,
+            body: {}.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "raises ThreadResumptionError" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError, "{}")
+      end
+
+      it "does not attempt to resume the thread" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError)
+
+        expect(WebMock).not_to have_requested(:get, state_url)
+        expect(WebMock).not_to have_requested(:post, run_url)
+      end
+    end
+
+    context "when the thread is no longer interrupted" do
+      let(:thread_status) { "idle" }
+
+      it "raises ThreadResumptionError" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(
+          NitroIntelligence::AgentServer::ThreadResumptionError,
+          "Thread #{thread_id} is not in the interrupted state"
+        )
+      end
+
+      it "does not attempt to resume the thread" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError)
+
+        expect(WebMock).not_to have_requested(:get, state_url)
+        expect(WebMock).not_to have_requested(:post, run_url)
+      end
+    end
+
+    context "when the review includes a tool call that is not pending review" do
+      let(:tool_calls) do
+        super().merge(
+          "tool_call_id_3" => {
+            "action" => "approve",
+          }
+        )
+      end
+
+      it "raises ThreadResumptionError" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(
+          NitroIntelligence::AgentServer::ThreadResumptionError,
+          "Unknown tool call ids: tool_call_id_3"
+        )
+      end
+
+      it "does not attempt to resume the thread" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError)
+
+        expect(WebMock).not_to have_requested(:post, run_url)
+      end
+    end
+
+    context "when a review action is not allowed by the interrupt" do
+      let(:review_actions) { ["approve"] }
+
+      it "raises ThreadResumptionError" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(
+          NitroIntelligence::AgentServer::ThreadResumptionError,
+          "Invalid review action `edit` for tool call tool_call_id_2"
+        )
+      end
+
+      it "does not attempt to resume the thread" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError)
+
+        expect(WebMock).not_to have_requested(:post, run_url)
+      end
+    end
+
+    context "when edited arguments do not match the pending tool call" do
+      let(:tool_calls) do
+        super().merge(
+          "tool_call_id_2" => {
+            "action" => "edit",
+            "args" => {
+              "arg_3" => "new value",
+            },
+          }
+        )
+      end
+
+      it "raises ThreadResumptionError" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(
+          NitroIntelligence::AgentServer::ThreadResumptionError,
+          "Invalid edited args for tool call tool_call_id_2: arg_3"
+        )
+      end
+
+      it "does not attempt to resume the thread" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError)
+
+        expect(WebMock).not_to have_requested(:post, run_url)
+      end
+    end
+
+    context "when resuming the thread fails" do
+      before do
+        stub_request(:post, run_url)
+          .with(body: resume_request_body.to_json)
+          .to_return(
+            status: 500,
+            body: { error: "Internal Server Error" }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "raises ThreadResumptionError" do
+        expect do
+          agent_server.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(
+          NitroIntelligence::AgentServer::ThreadResumptionError,
+          '{"error":"Internal Server Error"}'
+        )
+      end
+    end
+  end
+
+  describe "#tool_calls_pending_review" do
+    let(:thread_id) { "thread-456" }
+    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    let(:thread_state) do
+      {
+        "values" => {
+          "messages" => messages,
+        },
+      }
+    end
+
+    before do
+      stub_request(:get, state_url)
+        .to_return(
+          status: 200,
+          body: thread_state.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+    end
+
+    context "when an AI message is the first message in the thread" do
+      let(:messages) do
+        [
+          {
+            "type" => "ai",
+            "id" => "ai-message-1",
+            "content" => "",
+            "tool_calls" => [
+              {
+                "id" => "tool_call_id_1",
+                "name" => "lookup_account",
+                "args" => {},
+              },
+            ],
+          },
+        ]
+      end
+
+      it "returns nil as the previous message id" do
+        expect(agent_server.tool_calls_pending_review(thread_id:)).to eq(
+          [
+            {
+              "previous_message_id" => nil,
+              "id" => "tool_call_id_1",
+              "name" => "lookup_account",
+              "args" => {},
+            },
+          ]
+        )
+      end
+    end
+
+    context "when an AI message has tool calls without matching tool messages" do
+      let(:messages) do
+        [
+          {
+            "type" => "human",
+            "id" => "communication-1",
+            "content" => "Please look up my account",
+          },
+          {
+            "type" => "ai",
+            "id" => "ai-message-1",
+            "content" => "",
+            "tool_calls" => [
+              {
+                "id" => "tool_call_id_1",
+                "name" => "lookup_account",
+                "args" => {},
+              },
+              {
+                "id" => "tool_call_id_2",
+                "name" => "lookup_orders",
+                "args" => {
+                  "status" => "open",
+                },
+              },
+            ],
+          },
+        ]
+      end
+
+      it "returns all pending tool calls with the previous message id" do
+        expect(agent_server.tool_calls_pending_review(thread_id:)).to eq(
+          [
+            {
+              "previous_message_id" => "communication-1",
+              "id" => "tool_call_id_1",
+              "name" => "lookup_account",
+              "args" => {},
+            },
+            {
+              "previous_message_id" => "communication-1",
+              "id" => "tool_call_id_2",
+              "name" => "lookup_orders",
+              "args" => {
+                "status" => "open",
+              },
+            },
+          ]
+        )
+      end
+    end
+
+    context "when some tool calls already have matching tool messages" do
+      let(:messages) do # rubocop:disable Metrics/BlockLength
+        [
+          {
+            "type" => "human",
+            "id" => "communication-1",
+            "content" => "Check my account",
+          },
+          {
+            "type" => "ai",
+            "id" => "ai-message-1",
+            "content" => "",
+            "tool_calls" => [
+              {
+                "id" => "tool_call_id_1",
+                "name" => "lookup_account",
+                "args" => {},
+              },
+              {
+                "id" => "tool_call_id_2",
+                "name" => "lookup_orders",
+                "args" => {
+                  "status" => "open",
+                },
+              },
+            ],
+          },
+          {
+            "type" => "tool",
+            "id" => "tool-message-1",
+            "tool_call_id" => "tool_call_id_1",
+            "content" => "Account found",
+          },
+          {
+            "type" => "human",
+            "id" => "communication-2",
+            "content" => "Also check my invoices",
+          },
+          {
+            "type" => "ai",
+            "id" => "ai-message-2",
+            "content" => "",
+            "tool_calls" => [
+              {
+                "id" => "tool_call_id_3",
+                "name" => "lookup_invoices",
+                "args" => {
+                  "limit" => 5,
+                },
+              },
+            ],
+          },
+        ]
+      end
+
+      it "excludes tool calls that already have tool messages" do
+        expect(agent_server.tool_calls_pending_review(thread_id:)).to eq(
+          [
+            {
+              "previous_message_id" => "communication-1",
+              "id" => "tool_call_id_2",
+              "name" => "lookup_orders",
+              "args" => {
+                "status" => "open",
+              },
+            },
+            {
+              "previous_message_id" => "communication-2",
+              "id" => "tool_call_id_3",
+              "name" => "lookup_invoices",
+              "args" => {
+                "limit" => 5,
+              },
+            },
+          ]
+        )
+      end
+    end
+
+    context "when every tool call has already been handled" do
+      let(:messages) do
+        [
+          {
+            "type" => "human",
+            "id" => "communication-1",
+            "content" => "Check my account",
+          },
+          {
+            "type" => "ai",
+            "id" => "ai-message-1",
+            "content" => "",
+            "tool_calls" => [
+              {
+                "id" => "tool_call_id_1",
+                "name" => "lookup_account",
+                "args" => {},
+              },
+            ],
+          },
+          {
+            "type" => "tool",
+            "id" => "tool-message-1",
+            "tool_call_id" => "tool_call_id_1",
+            "content" => "Account found",
+          },
+        ]
+      end
+
+      it "returns an empty array" do
+        expect(agent_server.tool_calls_pending_review(thread_id:)).to eq([])
       end
     end
   end

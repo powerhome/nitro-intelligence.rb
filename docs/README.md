@@ -38,16 +38,16 @@ end
 
 ### Configuration Keys
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `logger` | `Logger` | `Logger.new($stdout)` | Logger used for diagnostic output |
-| `environment` | `String` | `"test"` | Runtime environment name |
-| `cache_provider` | cache store | `NullCache` | ActiveSupport-compatible cache store |
-| `inference_api_key` | `String` | `""` | API key for the LLM inference service |
-| `inference_base_url` | `String` | `""` | Base URL for the LLM inference service |
-| `observability_base_url` | `String` | `""` | Base URL for the Langfuse observability service |
-| `observability_projects` | `Array<Hash>` | `[]` | Langfuse project credentials (slug, id, public_key, secret_key) |
-| `agent_server_config` | `Hash` | `{}` | Credentials for `AgentServer.new`. Expected keys: `base_url` (String) — HTTP base URL of the agent server; `api_key` (String) — bearer token; `user_id` (String, default: `"default-user"`) — caller identity |
+| Key                      | Type          | Default               | Description                                                                                                                                                                                                |
+| ------------------------ | ------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `logger`                 | `Logger`      | `Logger.new($stdout)` | Logger used for diagnostic output                                                                                                                                                                          |
+| `environment`            | `String`      | `"test"`              | Runtime environment name                                                                                                                                                                                   |
+| `cache_provider`         | cache store   | `NullCache`           | ActiveSupport-compatible cache store                                                                                                                                                                       |
+| `inference_api_key`      | `String`      | `""`                  | API key for the LLM inference service                                                                                                                                                                      |
+| `inference_base_url`     | `String`      | `""`                  | Base URL for the LLM inference service                                                                                                                                                                     |
+| `observability_base_url` | `String`      | `""`                  | Base URL for the Langfuse observability service                                                                                                                                                            |
+| `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
+| `agent_server_config`    | `Hash`        | `{}`                  | Credentials for `AgentServer.new`. Expected keys: `base_url` (String) — HTTP base URL of the agent server; `api_key` (String) — bearer token; `user_id` (String, default: `"default-user"`) — caller identity |
 
 ## Basic Usage
 
@@ -69,7 +69,6 @@ You may also use [`openai-ruby`](https://github.com/openai/openai-ruby) compatib
 client = NitroIntelligence::Client.new
 client.chat(parameters: { model: "meta-llama/Llama-3.1-8B-Instruct", messages: [{ role: "user", content: "Why is the sky blue?" }]})
 ```
-
 
 #### Providing Parameters
 
@@ -275,3 +274,9 @@ client.chat(
   }
 )
 ```
+
+## Agent Server
+
+The Agent Server is Nitro Intelligence's lightweight SDK for working with hosted agent threads, runs, and human review flows. It is mainly used to initialize conversation threads, trigger agent runs, inspect agent tool calls pending human approval, and resume interrupted threads after human reviews.
+
+For the full Agent Server guide, see [AGENT_SERVER.md](AGENT_SERVER.md).
