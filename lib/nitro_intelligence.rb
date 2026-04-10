@@ -5,6 +5,7 @@ require "httparty"
 require "langfuse"
 require "openai"
 
+require "nitro_intelligence/version"
 require "nitro_intelligence/agent_server"
 require "nitro_intelligence/client"
 require "nitro_intelligence/configuration"
