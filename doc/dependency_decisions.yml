@@ -1,0 +1,11 @@
+---
+- - :inherit_from
+  - https://raw.githubusercontent.com/powerhome/oss-guide/master/license_rules.yml
+- - :license
+  - openai
+  - Apache-2.0
+  - :who: Ryan Rodriguez <ryan.rodriguez@powerhrg.com>
+    :why: https://github.com/openai/openai-ruby/blob/v0.23.0/LICENSE
+    :versions:
+    - 0.23.0
+    :when: 2025-09-09 23:37:45.968584000 Z

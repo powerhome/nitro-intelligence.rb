@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: nitro-intelligence
+  title: Nitro Intelligence
+  description: Entrypoint to everything AI
+spec:
+  type: library
+  owner: "metal-men"
+  lifecycle: production
