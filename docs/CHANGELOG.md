@@ -13,3 +13,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Refactor client into multiple handlers, each specific to a type of inference (#6)
+- Require Ruby 3.3 or later (#10)
