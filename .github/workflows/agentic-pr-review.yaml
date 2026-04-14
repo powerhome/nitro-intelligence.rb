@@ -42,5 +42,4 @@ jobs:
           provider-api-key: ${{ secrets.AGENTIC_REVIEW_PROVIDER_API_KEY }}
           pull-request-number: ${{ github.event.pull_request.number || github.event.issue.number }}
           # Intentionally pass the full comment through so reviewers can steer a rerun.
-          # In this private repo, commenters already have visibility into the code being reviewed.
           additional-prompt: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
