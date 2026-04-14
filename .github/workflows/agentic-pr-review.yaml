@@ -19,11 +19,9 @@ concurrency:
 jobs:
   agentic-review:
     name: PR Review
-    # This repo is private, so anyone who can leave a PR comment already has repo access.
-    # We intentionally allow any PR commenter here rather than adding a second author check.
     if: |
       (github.event_name == 'pull_request' && github.event.label.name == 'agentic-review') ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@nitro-pr-review') && github.event.issue.pull_request)
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@nitro-pr-review') && github.event.issue.pull_request && github.event.issue_comment.author_association == 'MEMBER')
     runs-on: ubuntu-latest
     steps:
       - name: Skip ineligible PRs
