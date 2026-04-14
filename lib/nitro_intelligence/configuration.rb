@@ -8,6 +8,7 @@ module NitroIntelligence
 
     config_accessor :logger, default: Logger.new($stdout)
     config_accessor :cache_provider, default: NitroIntelligence::NullCache.new
+    config_accessor :current_revision, default: ""
     config_accessor :environment, default: "test"
     config_accessor :agent_server_config, default: {}
     config_accessor :inference_api_key, default: ""
@@ -15,6 +16,7 @@ module NitroIntelligence
     config_accessor :model_config, default: {}
     config_accessor :observability_base_url, default: ""
     config_accessor :observability_projects, default: []
+    config_accessor :observability_user_id, default: ""
 
     class << self
       def configure

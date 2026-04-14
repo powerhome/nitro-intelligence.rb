@@ -4,6 +4,9 @@
 # The content of this file should eventually make its way upstream. Setting a custom trace ID is
 # already awaiting approval in https://github.com/simplepractice/langfuse-rb/pull/69.
 #
+
+require "nitro_intelligence/langfuse_tracer_provider"
+
 module NitroIntelligence
   class LangfuseExtension
     attr_reader :config
@@ -14,7 +17,7 @@ module NitroIntelligence
 
       @config = config
       @client = Langfuse::Client.new(config)
-      @tracer_provider = LangfuseTracerProvider.new(config)
+      @tracer_provider = NitroIntelligence::LangfuseTracerProvider.new(config)
     end
 
     def shutdown(timeout: 30)
