@@ -6,7 +6,7 @@ PATH
       httparty (~> 0.16.2)
       langfuse-rb (= 0.6.0)
       mini_magick (~> 4.10)
-      openai (~> 0.23.0)
+      openai (~> 0.23)
       railties (~> 7.1)
 
 GEM
