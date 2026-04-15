@@ -43,14 +43,11 @@ module NitroIntelligence
       )
     end
 
-    def start_observation(name, attrs = {}, as_type: :span, parent_span_context: nil, start_time: nil,
+    def start_observation(name, attrs = {}, as_type: :span, trace_id: nil, parent_span_context: nil, start_time: nil, # rubocop:disable Metrics/ParameterLists
                           skip_validation: false)
+      parent_span_context = Langfuse.send(:resolve_trace_context, trace_id, parent_span_context)
       type_str = as_type.to_s
-
-      unless skip_validation || Langfuse.send(:valid_observation_type?, as_type)
-        valid_types = Langfuse::OBSERVATION_TYPES.values.sort.join(", ")
-        raise ArgumentError, "Invalid observation type: #{type_str}. Valid types: #{valid_types}"
-      end
+      Langfuse.send(:validate_observation_type!, as_type, type_str) unless skip_validation
 
       otel_tracer = @tracer_provider.tracer
       otel_span = Langfuse.send(:create_otel_span,
@@ -76,54 +73,11 @@ module NitroIntelligence
     end
 
     def observe(name, attrs = {}, as_type: :span, trace_id: nil, **kwargs, &block)
-      # Merge positional attrs and keyword kwargs
       merged_attrs = attrs.to_h.merge(kwargs)
-      unless trace_id.nil?
-        unless valid_trace_id?(trace_id)
-          raise ArgumentError, "#{trace_id} is not a valid 32 lowercase hex char Langfuse trace ID"
-        end
+      observation = start_observation(name, merged_attrs, as_type:, trace_id:)
+      return observation unless block
 
-        parent_span_context = create_span_context_with_trace_id(trace_id)
-      end
-      observation = start_observation(name, merged_attrs, as_type:, parent_span_context:)
-
-      if block
-        # Block-based API: auto-ends when block completes
-        # Set context and execute block
-        current_context = OpenTelemetry::Context.current
-        begin
-          result = OpenTelemetry::Context.with_current(
-            OpenTelemetry::Trace.context_with_span(observation.otel_span, parent_context: current_context)
-          ) do
-            yield(observation)
-          end
-        ensure
-          # Only end if not already ended (events auto-end in start_observation)
-          observation.end unless as_type.to_s == Langfuse::OBSERVATION_TYPES[:event]
-        end
-        result
-      else
-        # Stateful API - return observation
-        # Events already auto-ended in start_observation
-        observation
-      end
-    end
-
-  private
-
-    def valid_trace_id?(trace_id)
-      !!(trace_id =~ /^[0-9a-f]{32}$/)
-    end
-
-    def create_span_context_with_trace_id(trace_id_as_hex_str)
-      trace_id_as_byte_str = [trace_id_as_hex_str].pack("H*")
-      # NOTE: trace_flags must be SAMPLED or the trace will not appear in Langfuse.
-      # The Python SDK does the same: https://github.com/langfuse/langfuse-python/blob/v4.0.0/langfuse/_client/client.py#L1568
-      trace_flags = OpenTelemetry::Trace::TraceFlags::SAMPLED
-      OpenTelemetry::Trace::SpanContext.new(
-        trace_id: trace_id_as_byte_str,
-        trace_flags:
-      )
+      observation.send(:run_in_context, &block)
     end
   end
 end
