@@ -10,16 +10,10 @@ RSpec.describe NitroIntelligence::Trace do
       expect(id1).to eq(id2)
     end
 
-    it "creates IDs with length of 32 characters by default" do
+    it "creates IDs with length of 32 characters" do
       id = NitroIntelligence::Trace.create_id(seed: "test-seed")
 
       expect(id.length).to eq(32)
-    end
-
-    it "allows overriding the ID length" do
-      id = NitroIntelligence::Trace.create_id(seed: "test-seed", length: 16)
-
-      expect(id.length).to eq(16)
     end
   end
 end

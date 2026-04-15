@@ -1,7 +1,7 @@
 module NitroIntelligence
   module Trace
-    def self.create_id(seed: SecureRandom.uuid, length: 32)
-      Digest::SHA256.hexdigest(seed)[0, length]
+    def self.create_id(seed:)
+      Langfuse::TraceId.create(seed:)
     end
   end
 end
