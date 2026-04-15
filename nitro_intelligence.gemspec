@@ -17,7 +17,7 @@ Gem::Specification.new do |s|
   s.add_dependency "httparty", "~> 0.16.2"
   s.add_dependency "langfuse-rb", "0.6.0"
   s.add_dependency "mini_magick", "~> 4.10"
-  s.add_dependency "openai", "~> 0.23.0"
+  s.add_dependency "openai", "~> 0.23"
   s.add_dependency "railties", "~> 7.1"
 
   s.add_development_dependency "license_finder", "7.2.1"
