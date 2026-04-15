@@ -204,6 +204,43 @@ client.chat(
 )
 ```
 
+### Custom Trace IDs
+
+To generate a deterministic trace ID in the observability platform, you can pass `trace_seed` as a parameter. This is useful when you want a stable identifier that is derived from a specific domain value (e.g., document ID). The same `trace_seed` will produce the same trace ID, making it easier to correlate multiple events.
+
+```ruby
+document_id = "document-123"
+client = NitroIntelligence::Client.new(observability_project_slug: "fake-feature-project")
+client.chat(
+  message: "summarize the document",
+  parameters: {
+    trace_seed: document_id,
+  }
+)
+```
+
+### Scoring
+
+You can use `NitroIntelligence::Reporter` to evaluate existing traces. Calling `NitroIntelligence::Reporter#score` lets you attach metrics to a trace in the observability platform.
+
+#### By Trace ID
+
+```ruby
+reporter = NitroIntelligence::Reporter.new(observability_project_slug: "fake-feature-project")
+reporter.score(name: "precision", value: 0.5, trace_id: "2377b0b38acf0f11b95504344fad6152")
+```
+
+#### By Trace Seed
+
+Knowing the trace seed, you can use `NitroIntelligence::Trace.create_id` to get the trace ID.
+
+```ruby
+document_id = "document-123"
+reporter = NitroIntelligence::Reporter.new(observability_project_slug: "fake-feature-project")
+trace_id = NitroIntelligence::Trace.create_id(seed: document_id)
+reporter.score(name: "precision", value: 0.5, trace_id:)
+```
+
 ### Prompt Variables and Config
 
 Prompts are often created with "variables". These variables can be supplied and compiled into the prompt. For example:
