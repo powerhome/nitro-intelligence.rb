@@ -1,10 +1,15 @@
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
-  name: nitro-intelligence
-  title: Nitro Intelligence
+  name: nitro-intelligence.rb
+  title: Nitro Intelligence Ruby
   description: Entrypoint to everything AI
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    github.com/project-slug: powerhome/nitro-intelligence.rb
 spec:
+  system: nitro-intelligence-platform
   type: library
-  owner: "metal-men"
+  owner: metal-men
+  domain: technology-foundations-and-tools
   lifecycle: production
