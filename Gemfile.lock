@@ -3,7 +3,7 @@ PATH
   specs:
     nitro_intelligence (1.0.0)
       activesupport (~> 7.1)
-      httparty (~> 0.16.2)
+      httparty (~> 0.16)
       langfuse-rb (= 0.7.0)
       mini_magick (~> 4.10)
       openai (~> 0.58)
