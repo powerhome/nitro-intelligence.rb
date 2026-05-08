@@ -1,6 +1,7 @@
 require "base64"
 require "cgi"
-require "httparty"
+require "net/http"
+require "uri"
 
 require "nitro_intelligence/observability/prompt"
 
@@ -75,15 +76,17 @@ module NitroIntelligence
 
       def get_prompt_request(safe_prompt_name:, prompt_url_params:)
         auth_token = Base64.strict_encode64("#{@observability_public_key}:#{@observability_secret_key}")
-        response = HTTParty.get(
-          "#{@observability_host}/api/public/v2/prompts/#{safe_prompt_name}?#{prompt_url_params}",
-          headers: {
-            "Authorization" => "Basic #{auth_token}",
-          }
-        )
+        uri = URI("#{@observability_host}/api/public/v2/prompts/#{safe_prompt_name}?#{prompt_url_params}")
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
 
-        if response.code != 200
-          raise ObservabilityPromptNotFoundError, "Prompt: #{safe_prompt_name} Not Found" if response.code == 404
+        request = Net::HTTP::Get.new(uri)
+        request["Authorization"] = "Basic #{auth_token}"
+
+        response = http.request(request)
+
+        if response.code.to_i != 200
+          raise ObservabilityPromptNotFoundError, "Prompt: #{safe_prompt_name} Not Found" if response.code.to_i == 404
 
           raise ObservabilityPromptError, response.body
         end

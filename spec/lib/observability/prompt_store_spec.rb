@@ -83,7 +83,7 @@ RSpec.describe NitroIntelligence::Observability::PromptStore do
       NitroIntelligence.cache.write(prompt_label_cache_key, JSON.parse(prompt_api_response, symbolize_names: true))
 
       # We don't expect an HTTP request to be made
-      expect(HTTParty).not_to receive(:get)
+      expect(a_request(:get, /example_prompt/)).not_to have_been_made
 
       prompt = prompt_store.get_prompt(prompt_name: "example_prompt", prompt_label: "production")
       expect(prompt).to be_a(NitroIntelligence::Observability::Prompt)

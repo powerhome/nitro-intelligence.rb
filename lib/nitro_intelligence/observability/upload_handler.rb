@@ -1,7 +1,9 @@
 require "base64"
 require "digest"
-require "httparty"
+require "json"
+require "net/http"
 require "time"
+require "uri"
 
 module NitroIntelligence
   module Observability
@@ -92,43 +94,50 @@ module NitroIntelligence
     private
 
       def get_upload_url(request_body)
-        HTTParty.post(
-          "#{@host}/api/public/media",
-          body: request_body.to_json,
-          headers: {
-            "Content-Type" => "application/json",
-            "Authorization" => "Basic #{@auth_token}",
-          }
-        )
+        uri = URI("#{@host}/api/public/media")
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+
+        request = Net::HTTP::Post.new(uri)
+        request["Content-Type"] = "application/json"
+        request["Authorization"] = "Basic #{@auth_token}"
+        request.body = request_body.to_json
+
+        response = http.request(request)
+        JSON.parse(response.body)
       end
 
       def associate_media(media_id, upload_response)
         request_body = {
           uploadedAt: Time.now.utc.iso8601(6),
-          uploadHttpStatus: upload_response.code,
-          uploadHttpError: upload_response.code == 200 ? nil : upload_response.body,
+          uploadHttpStatus: upload_response.code.to_i,
+          uploadHttpError: upload_response.code.to_i == 200 ? nil : upload_response.body,
         }
 
-        HTTParty.patch(
-          "#{@host}/api/public/media/#{media_id}",
-          body: request_body.to_json,
-          headers: {
-            "Content-Type" => "application/json",
-            "Authorization" => "Basic #{@auth_token}",
-          }
-        )
+        uri = URI("#{@host}/api/public/media/#{media_id}")
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+
+        request = Net::HTTP::Patch.new(uri)
+        request["Content-Type"] = "application/json"
+        request["Authorization"] = "Basic #{@auth_token}"
+        request.body = request_body.to_json
+
+        http.request(request)
       end
 
       def upload_media(media_id, upload_url, content_type, content_sha256, content_bytes)
         if media_id.present? && upload_url.present?
-          return HTTParty.put(
-            upload_url,
-            headers: {
-              "Content-Type" => content_type,
-              "x-amz-checksum-sha256" => content_sha256,
-            },
-            body: content_bytes
-          )
+          uri = URI(upload_url)
+          http = Net::HTTP.new(uri.host, uri.port)
+          http.use_ssl = uri.scheme == "https"
+
+          request = Net::HTTP::Put.new(uri)
+          request["Content-Type"] = content_type
+          request["x-amz-checksum-sha256"] = content_sha256
+          request.body = content_bytes
+
+          return http.request(request)
         end
 
         nil

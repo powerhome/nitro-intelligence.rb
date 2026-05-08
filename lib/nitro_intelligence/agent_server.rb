@@ -1,3 +1,6 @@
+require "json"
+require "net/http"
+require "uri"
 require "nitro_intelligence/tool_call_review_validator"
 
 module NitroIntelligence
@@ -73,6 +76,31 @@ module NitroIntelligence
     end
 
   private
+
+    # A lightweight wrapper around a Net::HTTP response that also exposes the
+    # parsed JSON body via hash-like access, matching the interface previously
+    # provided by HTTParty responses.
+    class Response
+      attr_reader :code, :body
+
+      def initialize(http_response)
+        @code = http_response.code.to_i
+        @body = http_response.body
+        @data = begin
+                  JSON.parse(@body)
+                rescue JSON::ParserError
+                  {}
+                end
+      end
+
+      def [](key)
+        @data[key]
+      end
+
+      def dig(*args)
+        @data.dig(*args)
+      end
+    end
 
     def initialize_thread_if_needed(thread_id:, initial_state:)
       thread_response = post(
@@ -163,18 +191,26 @@ module NitroIntelligence
     end
 
     def get(path:)
-      HTTParty.get(
-        "#{base_url}#{path}",
-        headers: request_headers
-      )
+      uri = URI("#{base_url}#{path}")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == "https"
+
+      request = Net::HTTP::Get.new(uri)
+      request_headers.each { |k, v| request[k] = v }
+
+      Response.new(http.request(request))
     end
 
     def post(path:, body:)
-      HTTParty.post(
-        "#{base_url}#{path}",
-        headers: request_headers,
-        body: body.to_json
-      )
+      uri = URI("#{base_url}#{path}")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == "https"
+
+      request = Net::HTTP::Post.new(uri)
+      request_headers.each { |k, v| request[k] = v }
+      request.body = body.to_json
+
+      Response.new(http.request(request))
     end
 
     def request_headers

@@ -1,5 +1,6 @@
 require "base64"
-require "httparty"
+require "net/http"
+require "uri"
 
 module NitroIntelligence
   class Reporter
@@ -10,12 +11,16 @@ module NitroIntelligence
     end
 
     def create_dataset_item(attributes)
-      HTTParty.post("#{@host}/api/public/dataset-items",
-                    body: attributes.to_json,
-                    headers: {
-                      "Content-Type" => "application/json",
-                      "Authorization" => "Basic #{@project_client.project.auth_token}",
-                    })
+      uri = URI("#{@host}/api/public/dataset-items")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == "https"
+
+      request = Net::HTTP::Post.new(uri)
+      request["Content-Type"] = "application/json"
+      request["Authorization"] = "Basic #{@project_client.project.auth_token}"
+      request.body = attributes.to_json
+
+      http.request(request)
     end
 
     def score(trace_id:, name:, value:, id: "#{trace_id}-#{name}")
