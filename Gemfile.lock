@@ -337,7 +337,7 @@ PLATFORMS
 DEPENDENCIES
   license_finder (~> 7.2)
   nitro_intelligence!
-  parser (>= 2.5, != 2.5.1.1)
+  parser (~> 3.3)
   pry (~> 0.14)
   pry-byebug (~> 3.10)
   rainbow (~> 2.2)
