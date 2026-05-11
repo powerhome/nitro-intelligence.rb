@@ -313,7 +313,7 @@ GEM
     with_env (1.1.0)
     xml-simple (1.1.9)
       rexml
-    yard (0.9.37)
+    yard (0.9.42)
     zeitwerk (2.7.5)
 
 PLATFORMS
@@ -344,7 +344,7 @@ DEPENDENCIES
   rspec (= 3.13.0)
   rubocop-powerhome (= 0.6.1)
   webmock (= 3.26.1)
-  yard (= 0.9.37)
+  yard (= 0.9.42)
 
 BUNDLED WITH
    2.7.2

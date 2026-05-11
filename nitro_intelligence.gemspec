@@ -28,6 +28,6 @@ Gem::Specification.new do |s|
   s.add_development_dependency "rspec", "3.13.0"
   s.add_development_dependency "rubocop-powerhome", "0.6.1"
   s.add_development_dependency "webmock", "3.26.1"
-  s.add_development_dependency "yard", "0.9.37"
+  s.add_development_dependency "yard", "0.9.42"
   s.metadata["rubygems_mfa_required"] = "true"
 end
