@@ -13,6 +13,7 @@ Gem::Specification.new do |s|
   s.files = Dir["{app,config,db,lib}/**/*"] + ["Rakefile", "docs/README.md"]
 
   s.required_ruby_version = ">= 3.3"
+
   s.add_dependency "activesupport", "~> 7.1"
   s.add_dependency "httparty", "~> 0.16"
   s.add_dependency "langfuse-rb", "0.7.0"
@@ -20,14 +21,15 @@ Gem::Specification.new do |s|
   s.add_dependency "openai", "~> 0.58"
   s.add_dependency "railties", "~> 7.1"
 
-  s.add_development_dependency "license_finder", "7.2.1"
-  s.add_development_dependency "parser", ">= 2.5", "!= 2.5.1.1"
-  s.add_development_dependency "pry", "0.14.2"
-  s.add_development_dependency "pry-byebug", "3.10.1"
-  s.add_development_dependency "rainbow", "2.2.2"
-  s.add_development_dependency "rspec", "3.13.0"
-  s.add_development_dependency "rubocop-powerhome", "0.6.1"
-  s.add_development_dependency "webmock", "3.26.1"
-  s.add_development_dependency "yard", "0.9.42"
+  s.add_development_dependency "license_finder", "~> 7.2"
+  s.add_development_dependency "parser", "~> 2.5", "!= 2.5.1.1"
+  s.add_development_dependency "pry", "~> 0.14"
+  s.add_development_dependency "pry-byebug", "~> 3.10"
+  s.add_development_dependency "rainbow", "~> 2.2"
+  s.add_development_dependency "rspec", "~> 3.13"
+  s.add_development_dependency "rubocop-powerhome", "~> 0.6"
+  s.add_development_dependency "webmock", "~> 3.26"
+  s.add_development_dependency "yard", "~> 0.9"
+
   s.metadata["rubygems_mfa_required"] = "true"
 end
