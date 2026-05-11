@@ -22,7 +22,7 @@ Gem::Specification.new do |s|
   s.add_dependency "railties", "~> 7.1"
 
   s.add_development_dependency "license_finder", "~> 7.2"
-  s.add_development_dependency "parser", "~> 2.5", "!= 2.5.1.1"
+  s.add_development_dependency "parser", ">= 2.5", "!= 2.5.1.1"
   s.add_development_dependency "pry", "~> 0.14"
   s.add_development_dependency "pry-byebug", "~> 3.10"
   s.add_development_dependency "rainbow", "~> 2.2"
