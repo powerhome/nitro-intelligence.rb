@@ -21,15 +21,5 @@ Gem::Specification.new do |s|
   s.add_dependency "openai", "~> 0.58"
   s.add_dependency "railties", "~> 7.1"
 
-  s.add_development_dependency "license_finder", "~> 7.2"
-  s.add_development_dependency "parser", "~> 3.3"
-  s.add_development_dependency "pry", "~> 0.14"
-  s.add_development_dependency "pry-byebug", "~> 3.10"
-  s.add_development_dependency "rainbow", "~> 2.2"
-  s.add_development_dependency "rspec", "~> 3.13"
-  s.add_development_dependency "rubocop-powerhome", "~> 0.6"
-  s.add_development_dependency "webmock", "~> 3.26"
-  s.add_development_dependency "yard", "~> 0.9"
-
   s.metadata["rubygems_mfa_required"] = "true"
 end
