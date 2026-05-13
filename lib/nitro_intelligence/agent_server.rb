@@ -1,3 +1,6 @@
+require "json"
+require "net/http"
+require "uri"
 require "nitro_intelligence/tool_call_review_validator"
 
 module NitroIntelligence
@@ -85,25 +88,25 @@ module NitroIntelligence
         }
       )
 
-      raise ThreadInitializationError, thread_response.body if thread_response.code != 200
+      raise ThreadInitializationError, thread_response.body if thread_response.code.to_i != 200
 
-      thread_response
+      JSON.parse(thread_response.body)
     end
 
     def get_thread_state(thread_id:)
       state_response = get(path: "/threads/#{thread_id}/state")
 
-      raise ThreadResumptionError, state_response.body if state_response.code != 200
+      raise ThreadResumptionError, state_response.body if state_response.code.to_i != 200
 
-      state_response
+      JSON.parse(state_response.body)
     end
 
     def get_thread(thread_id:)
       thread_response = get(path: "/threads/#{thread_id}")
 
-      raise ThreadResumptionError, thread_response.body if thread_response.code != 200
+      raise ThreadResumptionError, thread_response.body if thread_response.code.to_i != 200
 
-      thread_response
+      JSON.parse(thread_response.body)
     end
 
     def trigger_run(thread_id:, assistant_id:, last_message:, context: {})
@@ -118,9 +121,10 @@ module NitroIntelligence
         }
       )
 
-      raise RunError, run_response.body if run_response.code != 200
+      raise RunError, run_response.body if run_response.code.to_i != 200
 
-      Array(run_response["messages"]).last&.dig("content")
+      run = JSON.parse(run_response.body)
+      Array(run["messages"]).last&.dig("content")
     end
 
     def resume_run(thread_id:, assistant_id:, resume:, context:)
@@ -135,9 +139,9 @@ module NitroIntelligence
         }
       )
 
-      raise ThreadResumptionError, run_response.body if run_response.code != 200
+      raise ThreadResumptionError, run_response.body if run_response.code.to_i != 200
 
-      run_response
+      JSON.parse(run_response.body)
     end
 
     def interrupted?(thread)
@@ -163,18 +167,26 @@ module NitroIntelligence
     end
 
     def get(path:)
-      HTTParty.get(
-        "#{base_url}#{path}",
-        headers: request_headers
-      )
+      uri = URI("#{base_url}#{path}")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == "https"
+
+      request = Net::HTTP::Get.new(uri)
+      request_headers.each { |k, v| request[k] = v }
+
+      http.request(request)
     end
 
     def post(path:, body:)
-      HTTParty.post(
-        "#{base_url}#{path}",
-        headers: request_headers,
-        body: body.to_json
-      )
+      uri = URI("#{base_url}#{path}")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == "https"
+
+      request = Net::HTTP::Post.new(uri)
+      request_headers.each { |k, v| request[k] = v }
+      request.body = body.to_json
+
+      http.request(request)
     end
 
     def request_headers

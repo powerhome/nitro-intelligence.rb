@@ -3,6 +3,7 @@ require "base64"
 require "digest"
 require "time"
 require "json"
+require "webmock/rspec"
 
 require "active_support/core_ext/object/blank"
 require "active_support/core_ext/enumerable"
@@ -47,12 +48,9 @@ RSpec.describe NitroIntelligence::Observability::UploadHandler do
     let(:queue) { Queue.new }
     let(:fake_time) { Time.utc(2026, 3, 13, 12, 0, 0) }
 
-    let(:upload_url_response) do
-      { "mediaId" => "media-123", "uploadUrl" => "https://s3.example/upload" }
+    let(:upload_url_response_body) do
+      { "mediaId" => "media-123", "uploadUrl" => "https://s3.example/upload" }.to_json
     end
-
-    let(:put_response) { double("HTTParty::Response", code: 200, present?: true) }
-    let(:patch_response) { double("HTTParty::Response", code: 200) }
 
     before do
       allow(Time).to receive(:now).and_return(fake_time)
@@ -60,9 +58,14 @@ RSpec.describe NitroIntelligence::Observability::UploadHandler do
       queue.push(mock_media)
       allow(mock_media).to receive(:reference_id=)
 
-      allow(HTTParty).to receive(:post).and_return(upload_url_response)
-      allow(HTTParty).to receive(:put).and_return(put_response)
-      allow(HTTParty).to receive(:patch).and_return(patch_response)
+      stub_request(:post, "#{host}/api/public/media")
+        .to_return(status: 200, body: upload_url_response_body, headers: { "Content-Type" => "application/json" })
+
+      stub_request(:put, "https://s3.example/upload")
+        .to_return(status: 200, body: "", headers: {})
+
+      stub_request(:patch, "#{host}/api/public/media/media-123")
+        .to_return(status: 200, body: "", headers: {})
     end
 
     it "processes the queue, uploads the media, and assigns a reference_id" do
@@ -76,39 +79,38 @@ RSpec.describe NitroIntelligence::Observability::UploadHandler do
 
       results = handler.upload(trace_id, upload_queue: queue)
 
-      expect(HTTParty).to have_received(:post).with(
-        "#{host}/api/public/media",
-        body: expected_post_body,
-        headers: expected_api_headers
-      )
+      expect(
+        a_request(:post, "#{host}/api/public/media")
+          .with(body: expected_post_body, headers: expected_api_headers)
+      ).to have_been_made
 
-      expect(HTTParty).to have_received(:put).with(
-        "https://s3.example/upload",
-        headers: hash_including("x-amz-checksum-sha256" => media_sha256),
-        body: media_bytes
-      )
+      expect(
+        a_request(:put, "https://s3.example/upload")
+          .with(headers: { "x-amz-checksum-sha256" => media_sha256 })
+      ).to have_been_made
 
       expect(mock_media).to have_received(:reference_id=).with("media-123")
       expect(results).to contain_exactly(mock_media)
     end
 
     context "when the media already exists in Langfuse (uploadUrl is nil)" do
-      let(:upload_url_response) do
-        { "mediaId" => "media-123", "uploadUrl" => nil }
+      let(:upload_url_response_body) do
+        { "mediaId" => "media-123", "uploadUrl" => nil }.to_json
       end
 
       it "skips the PUT and PATCH requests but still assigns the reference_id" do
         handler.upload(trace_id, upload_queue: queue)
 
-        expect(HTTParty).not_to have_received(:put)
-        expect(HTTParty).not_to have_received(:patch)
+        expect(a_request(:put, "https://s3.example/upload")).not_to have_been_made
+        expect(a_request(:patch, "#{host}/api/public/media/media-123")).not_to have_been_made
         expect(mock_media).to have_received(:reference_id=).with("media-123")
       end
     end
 
     context "when the upload HTTP response is not 200" do
-      let(:put_response) do
-        double("HTTParty::Response", code: 500, body: "Server Error", present?: true)
+      before do
+        stub_request(:put, "https://s3.example/upload")
+          .to_return(status: 500, body: "Server Error", headers: {})
       end
 
       it "sends the error details in the PATCH request" do
@@ -120,11 +122,10 @@ RSpec.describe NitroIntelligence::Observability::UploadHandler do
 
         handler.upload(trace_id, upload_queue: queue)
 
-        expect(HTTParty).to have_received(:patch).with(
-          "#{host}/api/public/media/media-123",
-          body: expected_patch_body,
-          headers: expected_api_headers
-        )
+        expect(
+          a_request(:patch, "#{host}/api/public/media/media-123")
+            .with(body: expected_patch_body, headers: expected_api_headers)
+        ).to have_been_made
       end
     end
   end

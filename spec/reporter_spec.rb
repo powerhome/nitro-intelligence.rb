@@ -1,5 +1,6 @@
 require "openai"
 require "spec_helper"
+require "webmock/rspec"
 
 RSpec.describe NitroIntelligence::Reporter do
   let(:auth_token) { Base64.strict_encode64("fake-public-key:fake-secret-key") }
@@ -78,18 +79,20 @@ RSpec.describe NitroIntelligence::Reporter do
         metadata: { key: "value" },
       }
 
-      expect(HTTParty).to receive(:post).with(
-        "https://fake-observability-host.com/api/public/dataset-items",
-        body: dataset_item_attributes.to_json,
-        headers: {
-          "Content-Type" => "application/json",
-          "Authorization" => "Basic #{auth_token}",
-        }
-      ).and_return(double(code: 200))
+      stub = stub_request(:post, "https://fake-observability-host.com/api/public/dataset-items")
+             .with(
+               body: dataset_item_attributes.to_json,
+               headers: {
+                 "Content-Type" => "application/json",
+                 "Authorization" => "Basic #{auth_token}",
+               }
+             )
+             .to_return(status: 200, body: "", headers: {})
 
       response = handler.create_dataset_item(dataset_item_attributes)
 
-      expect(response.code).to eq(200)
+      expect(stub).to have_been_requested
+      expect(response.code).to eq("200")
     end
   end
 end
