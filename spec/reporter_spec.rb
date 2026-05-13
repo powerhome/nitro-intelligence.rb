@@ -80,14 +80,14 @@ RSpec.describe NitroIntelligence::Reporter do
       }
 
       stub = stub_request(:post, "https://fake-observability-host.com/api/public/dataset-items")
-        .with(
-          body: dataset_item_attributes.to_json,
-          headers: {
-            "Content-Type" => "application/json",
-            "Authorization" => "Basic #{auth_token}",
-          }
-        )
-        .to_return(status: 200, body: "", headers: {})
+             .with(
+               body: dataset_item_attributes.to_json,
+               headers: {
+                 "Content-Type" => "application/json",
+                 "Authorization" => "Basic #{auth_token}",
+               }
+             )
+             .to_return(status: 200, body: "", headers: {})
 
       response = handler.create_dataset_item(dataset_item_attributes)
 

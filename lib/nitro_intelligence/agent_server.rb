@@ -77,31 +77,6 @@ module NitroIntelligence
 
   private
 
-    # A lightweight wrapper around a Net::HTTP response that also exposes the
-    # parsed JSON body via hash-like access, matching the interface previously
-    # provided by HTTParty responses.
-    class Response
-      attr_reader :code, :body
-
-      def initialize(http_response)
-        @code = http_response.code.to_i
-        @body = http_response.body
-        @data = begin
-                  JSON.parse(@body)
-                rescue JSON::ParserError
-                  {}
-                end
-      end
-
-      def [](key)
-        @data[key]
-      end
-
-      def dig(*args)
-        @data.dig(*args)
-      end
-    end
-
     def initialize_thread_if_needed(thread_id:, initial_state:)
       thread_response = post(
         path: "/threads",
@@ -113,25 +88,25 @@ module NitroIntelligence
         }
       )
 
-      raise ThreadInitializationError, thread_response.body if thread_response.code != 200
+      raise ThreadInitializationError, thread_response.body if thread_response.code.to_i != 200
 
-      thread_response
+      JSON.parse(thread_response.body)
     end
 
     def get_thread_state(thread_id:)
       state_response = get(path: "/threads/#{thread_id}/state")
 
-      raise ThreadResumptionError, state_response.body if state_response.code != 200
+      raise ThreadResumptionError, state_response.body if state_response.code.to_i != 200
 
-      state_response
+      JSON.parse(state_response.body)
     end
 
     def get_thread(thread_id:)
       thread_response = get(path: "/threads/#{thread_id}")
 
-      raise ThreadResumptionError, thread_response.body if thread_response.code != 200
+      raise ThreadResumptionError, thread_response.body if thread_response.code.to_i != 200
 
-      thread_response
+      JSON.parse(thread_response.body)
     end
 
     def trigger_run(thread_id:, assistant_id:, last_message:, context: {})
@@ -146,9 +121,10 @@ module NitroIntelligence
         }
       )
 
-      raise RunError, run_response.body if run_response.code != 200
+      raise RunError, run_response.body if run_response.code.to_i != 200
 
-      Array(run_response["messages"]).last&.dig("content")
+      run = JSON.parse(run_response.body)
+      Array(run["messages"]).last&.dig("content")
     end
 
     def resume_run(thread_id:, assistant_id:, resume:, context:)
@@ -163,9 +139,9 @@ module NitroIntelligence
         }
       )
 
-      raise ThreadResumptionError, run_response.body if run_response.code != 200
+      raise ThreadResumptionError, run_response.body if run_response.code.to_i != 200
 
-      run_response
+      JSON.parse(run_response.body)
     end
 
     def interrupted?(thread)
@@ -198,7 +174,7 @@ module NitroIntelligence
       request = Net::HTTP::Get.new(uri)
       request_headers.each { |k, v| request[k] = v }
 
-      Response.new(http.request(request))
+      http.request(request)
     end
 
     def post(path:, body:)
@@ -210,7 +186,7 @@ module NitroIntelligence
       request_headers.each { |k, v| request[k] = v }
       request.body = body.to_json
 
-      Response.new(http.request(request))
+      http.request(request)
     end
 
     def request_headers
