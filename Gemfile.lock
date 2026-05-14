@@ -326,16 +326,16 @@ PLATFORMS
   x86_64-linux-musl
 
 DEPENDENCIES
-  license_finder (~> 7.2)
+  license_finder (= 7.2.1)
   nitro_intelligence!
-  parser (~> 3.3)
-  pry (~> 0.14)
-  pry-byebug (~> 3.10)
-  rainbow (~> 3.0)
-  rspec (~> 3.13)
-  rubocop-powerhome (~> 0.6)
-  webmock (~> 3.26)
-  yard (~> 0.9)
+  parser (= 3.3.11.1)
+  pry (= 0.14.2)
+  pry-byebug (= 3.10.1)
+  rainbow (= 3.1.1)
+  rspec (= 3.13.0)
+  rubocop-powerhome (= 0.6.1)
+  webmock (= 3.26.1)
+  yard (= 0.9.42)
 
 BUNDLED WITH
    2.7.2
