@@ -233,7 +233,7 @@ GEM
     reline (0.6.3)
       io-console (~> 0.5)
     rexml (3.4.4)
-    rspec (3.13.0)
+    rspec (3.13.2)
       rspec-core (~> 3.13.0)
       rspec-expectations (~> 3.13.0)
       rspec-mocks (~> 3.13.0)
@@ -325,11 +325,11 @@ PLATFORMS
   x86_64-linux-musl
 
 DEPENDENCIES
-  license_finder (~> 7.2)
+  license_finder (= 7.2.1)
   nitro_intelligence!
-  rspec (~> 3.13)
-  rubocop-powerhome (~> 0.6)
-  webmock (~> 3.26)
+  rspec (= 3.13.2)
+  rubocop-powerhome (= 0.6.1)
+  webmock (= 3.26.1)
 
 BUNDLED WITH
    2.7.2
