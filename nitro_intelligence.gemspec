@@ -18,7 +18,5 @@ Gem::Specification.new do |s|
   s.add_dependency "langfuse-rb", "0.7.0"
   s.add_dependency "mini_magick", "~> 4.10"
   s.add_dependency "openai", "~> 0.58"
-  s.add_dependency "railties", "~> 7.1"
-
   s.metadata["rubygems_mfa_required"] = "true"
 end

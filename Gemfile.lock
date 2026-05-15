@@ -6,7 +6,6 @@ PATH
       langfuse-rb (= 0.7.0)
       mini_magick (~> 4.10)
       openai (~> 0.58)
-      railties (~> 7.1)
 
 GEM
   remote: https://rubygems.org/
@@ -328,14 +327,9 @@ PLATFORMS
 DEPENDENCIES
   license_finder (= 7.2.1)
   nitro_intelligence!
-  parser (= 3.3.11.1)
-  pry (= 0.14.2)
-  pry-byebug (= 3.10.1)
-  rainbow (= 3.1.1)
   rspec (= 3.13.2)
   rubocop-powerhome (= 0.6.1)
   webmock (= 3.26.1)
-  yard (= 0.9.42)
 
 BUNDLED WITH
    2.7.2
