@@ -1,10 +1,15 @@
 name: Agentic PR Review
 
-# Runs when label `agentic-review` is applied, or when someone comments on a PR
-# with @nitro-pr-review in the body (e.g. "@nitro-pr-review review this PR again …").
+# Runs automatically on:
+#  - PR opened (including drafts)
+#  - PR marked ready for review (draft -> ready)
+#  - `agentic-review` label (re-)applied for a manual rerun
+#  - PR comment containing @nitro-pr-review
+#
+# Never runs when the PR carries the `agentic-review-opt-out` label.
 on:
   pull_request:
-    types: [labeled]
+    types: [opened, ready_for_review, labeled]
   issue_comment:
     types: [created]
 
@@ -20,8 +25,23 @@ jobs:
   agentic-review:
     name: PR Review
     if: |
-      (github.event_name == 'pull_request' && github.event.label.name == 'agentic-review') ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@nitro-pr-review') && github.event.issue.pull_request && github.event.issue_comment.author_association == 'MEMBER')
+      !contains(github.event.pull_request.labels.*.name, 'agentic-review-opt-out') &&
+      !contains(github.event.issue.labels.*.name, 'agentic-review-opt-out') &&
+      (
+        (
+          github.event_name == 'pull_request' && (
+            github.event.action == 'opened' ||
+            github.event.action == 'ready_for_review' ||
+            (github.event.action == 'labeled' && github.event.label.name == 'agentic-review')
+          )
+        ) ||
+        (
+          github.event_name == 'issue_comment' &&
+          github.event.issue.pull_request &&
+          contains(github.event.comment.body, '@nitro-pr-review') &&
+          github.event.issue_comment.author_association == 'MEMBER'
+        )
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Skip ineligible PRs
