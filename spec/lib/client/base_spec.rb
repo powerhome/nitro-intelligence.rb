@@ -29,6 +29,14 @@ RSpec.describe NitroIntelligence::Client::Base do
       expect(mock_handler).to receive(:create).with(message: "transcribe", audio_file: nil, parameters: {})
       base_client.transcribe_audio(message: "transcribe")
     end
+
+    it "delegates #text_to_speech to the TextToSpeechHandler" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::TextToSpeechHandler)
+      allow(NitroIntelligence::Client::Handlers::TextToSpeechHandler).to receive(:new).with(client: fake_openai_client).and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create).with(message: "say hi", parameters: {})
+      base_client.text_to_speech(message: "say hi")
+    end
   end
 
   describe "method_missing delegation" do

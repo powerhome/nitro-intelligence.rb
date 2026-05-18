@@ -4,53 +4,55 @@ require "nitro_intelligence/models/model_factory"
 RSpec.describe NitroIntelligence::ModelFactory do
   describe ".build" do
     it "symbolizes string keys before building" do
-      # Using a mock to intercept the initialized class to ensure keys were symbolized
       expect(NitroIntelligence::TextModel).to receive(:new).with(
+        type: "text",
         name: "gpt-4",
         max_tokens: 1000
       )
 
-      # ActiveSupport's symbolize_keys should be active in your environment
-      described_class.build({ "name" => "gpt-4", "max_tokens" => 1000 })
+      described_class.build({ "type" => "text", "name" => "gpt-4", "max_tokens" => 1000 })
     end
 
-    context "when the metadata indicates an image model" do
-      it "builds and returns an ImageModel if aspect_ratios are present" do
-        metadata = { name: "dall-e", aspect_ratios: ["1:1"] }
-        model = described_class.build(metadata)
-
-        expect(model).to be_an_instance_of(NitroIntelligence::ImageModel)
-      end
-
-      it "builds and returns an ImageModel if resolutions are present" do
-        metadata = { name: "dall-e", resolutions: ["1024x1024"] }
-        model = described_class.build(metadata)
-
-        expect(model).to be_an_instance_of(NitroIntelligence::ImageModel)
-      end
+    it "builds a TextModel when type is 'text'" do
+      model = described_class.build({ type: "text", name: "gpt-4" })
+      expect(model).to be_an_instance_of(NitroIntelligence::TextModel)
     end
 
-    context "when the metadata indicates a text model" do
-      it "builds and returns a TextModel" do
-        metadata = { name: "gpt-4" } # No aspect_ratios or resolutions
-        model = described_class.build(metadata)
-
-        expect(model).to be_an_instance_of(NitroIntelligence::TextModel)
-      end
-    end
-  end
-
-  describe ".image_model?" do
-    it "returns true if :aspect_ratios is a key" do
-      expect(described_class.image_model?({ aspect_ratios: [] })).to be true
+    it "builds a TextModel when type is 'audio_transcription'" do
+      model = described_class.build({ type: "audio_transcription", name: "whisper-1" })
+      expect(model).to be_an_instance_of(NitroIntelligence::TextModel)
     end
 
-    it "returns true if :resolutions is a key" do
-      expect(described_class.image_model?({ resolutions: [] })).to be true
+    it "builds an ImageModel when type is 'image'" do
+      model = described_class.build({
+                                      type: "image",
+                                      name: "dall-e-3",
+                                      aspect_ratios: ["1:1"],
+                                      resolutions: ["1024x1024"],
+                                    })
+      expect(model).to be_an_instance_of(NitroIntelligence::ImageModel)
     end
 
-    it "returns false if neither key is present" do
-      expect(described_class.image_model?({ name: "gpt-4", max_tokens: 100 })).to be false
+    it "builds a TextToSpeechModel when type is 'text_to_speech'" do
+      model = described_class.build({
+                                      type: "text_to_speech",
+                                      name: "tts-1",
+                                      default_voice: "alloy",
+                                      default_response_format: "mp3",
+                                      voices: ["alloy"],
+                                      response_formats: ["mp3"],
+                                    })
+      expect(model).to be_an_instance_of(NitroIntelligence::TextToSpeechModel)
+    end
+
+    it "raises ArgumentError when type is unknown" do
+      expect { described_class.build({ type: "audio_synthesis", name: "x" }) }
+        .to raise_error(ArgumentError, /Unknown model type: "audio_synthesis"/)
+    end
+
+    it "raises ArgumentError when type is missing" do
+      expect { described_class.build({ name: "gpt-4" }) }
+        .to raise_error(ArgumentError, /Unknown model type: nil/)
     end
   end
 end

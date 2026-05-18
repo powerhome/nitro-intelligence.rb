@@ -6,18 +6,21 @@ RSpec.describe NitroIntelligence::ModelCatalog do
     {
       models: [
         { name: "gpt-4", type: "text" },
-        { name: "dall-e-3", aspect_ratios: ["1:1"] },
-        { name: "whisper-1", type: "audio" },
+        { name: "dall-e-3", type: "image", aspect_ratios: ["1:1"] },
+        { name: "whisper-1", type: "audio_transcription" },
+        { name: "tts-1", type: "text_to_speech" },
       ],
       default_audio_transcription_model: "whisper-1",
       default_image_model: "dall-e-3",
       default_text_model: "gpt-4",
+      default_text_to_speech_model: "tts-1",
     }
   end
 
   let(:fake_gpt4) { double("TextModel", name: "gpt-4") }
   let(:fake_dalle) { double("ImageModel", name: "dall-e-3") }
   let(:fake_whisper) { double("TextModel", name: "whisper-1") }
+  let(:fake_tts) { double("TextToSpeechModel", name: "tts-1") }
 
   before do
     # Stub the ModelFactory to return our fake models for easy testing
@@ -26,18 +29,22 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       .and_return(fake_gpt4)
 
     allow(NitroIntelligence::ModelFactory).to receive(:build)
-      .with({ name: "dall-e-3", aspect_ratios: ["1:1"] })
+      .with({ name: "dall-e-3", type: "image", aspect_ratios: ["1:1"] })
       .and_return(fake_dalle)
 
     allow(NitroIntelligence::ModelFactory).to receive(:build)
-      .with({ name: "whisper-1", type: "audio" })
+      .with({ name: "whisper-1", type: "audio_transcription" })
       .and_return(fake_whisper)
+
+    allow(NitroIntelligence::ModelFactory).to receive(:build)
+      .with({ name: "tts-1", type: "text_to_speech" })
+      .and_return(fake_tts)
   end
 
   describe "#initialize" do
     it "builds models using the ModelFactory" do
       catalog = described_class.new(model_config)
-      expect(catalog.models).to contain_exactly(fake_gpt4, fake_dalle, fake_whisper)
+      expect(catalog.models).to contain_exactly(fake_gpt4, fake_dalle, fake_whisper, fake_tts)
     end
 
     it "sets the default models by performing lookups" do
@@ -46,6 +53,17 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       expect(catalog.default_text_model).to eq(fake_gpt4)
       expect(catalog.default_image_model).to eq(fake_dalle)
       expect(catalog.default_audio_transcription_model).to eq(fake_whisper)
+      expect(catalog.default_text_to_speech_model).to eq(fake_tts)
+    end
+
+    it "accepts string-keyed configuration" do
+      string_config = {
+        "models" => [{ name: "gpt-4", type: "text" }],
+        "default_text_model" => "gpt-4",
+      }
+      catalog = described_class.new(string_config)
+
+      expect(catalog.default_text_model).to eq(fake_gpt4)
     end
 
     it "handles missing :models key gracefully by defaulting to an empty array" do

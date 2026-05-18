@@ -63,3 +63,55 @@ RSpec.describe NitroIntelligence::ImageModel do
     end
   end
 end
+
+RSpec.describe NitroIntelligence::TextToSpeechModel do
+  describe "#initialize" do
+    it "assigns voice and response_format settings" do
+      model = described_class.new(
+        name: "tts-1",
+        default_voice: "alloy",
+        default_response_format: "mp3",
+        voices: %w[alloy echo nova],
+        response_formats: %w[mp3 wav]
+      )
+
+      expect(model.name).to eq("tts-1")
+      expect(model.default_voice).to eq("alloy")
+      expect(model.default_response_format).to eq("mp3")
+      expect(model.voices).to eq(%w[alloy echo nova])
+      expect(model.response_formats).to eq(%w[mp3 wav])
+    end
+
+    it "defaults voices and response_formats to empty arrays" do
+      model = described_class.new(
+        name: "tts-1",
+        default_voice: "alloy",
+        default_response_format: "mp3"
+      )
+
+      expect(model.voices).to eq([])
+      expect(model.response_formats).to eq([])
+    end
+
+    it "inherits from NitroIntelligence::Model" do
+      model = described_class.new(
+        name: "tts-1",
+        default_voice: "alloy",
+        default_response_format: "mp3"
+      )
+
+      expect(model).to be_a(NitroIntelligence::Model)
+    end
+
+    it "ignores unknown keyword arguments (e.g. :type from factory)" do
+      expect do
+        described_class.new(
+          name: "tts-1",
+          type: "text_to_speech",
+          default_voice: "alloy",
+          default_response_format: "mp3"
+        )
+      end.not_to raise_error
+    end
+  end
+end
