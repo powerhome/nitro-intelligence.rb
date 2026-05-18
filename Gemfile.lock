@@ -98,7 +98,7 @@ GEM
     mustache (1.1.2)
     net-http (0.9.1)
       uri (>= 0.11.1)
-    openai (0.62.0)
+    openai (0.63.0)
       base64
       cgi
       connection_pool
@@ -172,7 +172,7 @@ GEM
       rubocop-rails
       rubocop-rake
       rubocop-rspec
-    rubocop-rails (2.35.0)
+    rubocop-rails (2.35.1)
       activesupport (>= 4.2.0)
       lint_roller (~> 1.1)
       rack (>= 1.1)
