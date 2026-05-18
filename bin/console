@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+require "bundler/setup"
+require "nitro_intelligence"
+require "pry"
+Pry.start
