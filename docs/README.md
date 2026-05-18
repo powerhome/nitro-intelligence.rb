@@ -114,6 +114,38 @@ puts result
 # <OpenAI::Models::Audio::Transcription:0x2fd8c {:text=>"Hola, ¿cómo estás hoy?", :usage=>{:input_tokens=>37, :output_tokens=>9, :total_tokens=>46, :type=>:tokens, :input_token_details=>{:audio_tokens=>28, :text_tokens=>9}}}>
 ```
 
+### Text-to-Speech
+
+Nitro Intelligence can be used to create spoken-word audio files from text.
+
+Basic example of usage:
+
+```ruby
+client = NitroIntelligence::Client.new
+tts = client.text_to_speech(message: 'Hello, this is Power Home Remodeling Group.')
+
+# tts is a StringIO object, we can write the file to disk
+File.binwrite('tts.mp3', tts.string)
+```
+
+Supplying custom parameters:
+
+```ruby
+client = NitroIntelligence::Client.new
+tts = client.text_to_speech(
+  message: 'Hello, this is Power Home Remodeling Group.',
+  parameters: {
+    voice: 'marin',
+    response_format: 'mp3',
+    instructions: 'Translate the English into Spanish before speaking.',
+    speed: 1.25
+  }
+)
+
+# tts is a StringIO object, we can write the file to disk
+File.binwrite('tts.mp3', tts.string)
+```
+
 ### Image Editing and Generation
 
 Nitro Intelligence can be used for image editing and generation
