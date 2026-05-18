@@ -2,18 +2,18 @@ require "nitro_intelligence/models/model"
 
 module NitroIntelligence
   class ModelFactory
+    TYPES = {
+      "text" => TextModel,
+      "audio_transcription" => TextModel,
+      "image" => ImageModel,
+      "text_to_speech" => TextToSpeechModel,
+    }.freeze
+
     def self.build(model_metadata)
       model_metadata = model_metadata.symbolize_keys
-
-      if image_model?(model_metadata)
-        ImageModel.new(**model_metadata)
-      else
-        TextModel.new(**model_metadata)
-      end
-    end
-
-    def self.image_model?(model_metadata)
-      model_metadata.key?(:aspect_ratios) || model_metadata.key?(:resolutions)
+      type = model_metadata[:type]
+      model_class = TYPES.fetch(type) { raise ArgumentError, "Unknown model type: #{type.inspect}" }
+      model_class.new(**model_metadata)
     end
   end
 end

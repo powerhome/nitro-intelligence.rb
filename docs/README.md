@@ -33,6 +33,9 @@ NitroIntelligence.configure do |config|
 
   # Agent server settings (optional)
   config.agent_server_config = {}                # Hash of AgentServer keyword arguments
+
+  # Model configuration
+  config.model_config = {}
 end
 ```
 
