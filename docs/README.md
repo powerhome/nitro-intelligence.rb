@@ -35,7 +35,37 @@ NitroIntelligence.configure do |config|
   config.agent_server_config = {}                # Hash of AgentServer keyword arguments
 
   # Model configuration
-  config.model_config = {}
+  config.model_config = {
+    "default_audio_transcription_model" => "gpt-4o-transcribe",
+    "default_text_model" => "gpt-4o-mini",
+    "default_image_model" => "nano-banana-2",
+    "default_text_to_speech_model" => "gpt-4o-mini-tts",
+    "models" => [
+      {
+        "name" => "gpt-4o-mini",
+        "type" => "text"
+      },
+      {
+        "name" => "gpt-4o-transcribe",
+        "type" => "audio_transcription"
+      },
+      {
+        "name" => "nano-banana-2",
+        "type" => "image",
+        "aspect_ratios" => ["1:1", "2:3", "3:2", "3:4", "4:3"],
+        "resolutions" => ["512", "1K", "2K"],
+        "omit_output_fields" => ["provider_specific_fields.thought_signatures"]
+      },
+      {
+        "name" => "gpt-4o-mini-tts",
+        "type" => "text_to_speech",
+        "default_voice" => "marin",
+        "default_response_format" => "mp3",
+        "voices" => ["echo", "nova", "marin", "cedar"],
+        "response_formats" => ["mp3", "wav"]
+      }
+    ]
+  }
 end
 ```
 
@@ -51,6 +81,7 @@ end
 | `observability_base_url` | `String`      | `""`                  | Base URL for the Langfuse observability service                                                                                                                                                            |
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
 | `agent_server_config`    | `Hash`        | `{}`                  | Credentials for `AgentServer.new`. Expected keys: `base_url` (String) — HTTP base URL of the agent server; `api_key` (String) — bearer token; `user_id` (String, default: `"default-user"`) — caller identity |
+| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
 
 ## Basic Usage
 
@@ -145,6 +176,8 @@ tts = client.text_to_speech(
 # tts is a StringIO object, we can write the file to disk
 File.binwrite('tts.mp3', tts.string)
 ```
+
+For a full list of supported parameters, see the [API reference here](https://platform.openai.com/docs/api-reference/audio/createSpeech). Note that `voice` and `response_format` are further constrained to the `voices` and `response_formats` listed for the chosen model in `config.model_config`.
 
 ### Image Editing and Generation
 
