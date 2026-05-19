@@ -13,9 +13,10 @@ module NitroIntelligence
           end
 
           def create(message: "", parameters: {})
+            prompt = handle_prompt(parameters:)
+
             @base_handler.validate_and_resolve!(parameters)
 
-            prompt = handle_prompt(parameters:)
             trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
 
             @observer.observe(
@@ -56,7 +57,7 @@ module NitroIntelligence
             prompt
           end
 
-           def handle_text_to_speech_upload(tts_file, trace_id)
+          def handle_text_to_speech_upload(tts_file, trace_id)
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(
               auth_token: @observer.project_client.project.auth_token
             )
