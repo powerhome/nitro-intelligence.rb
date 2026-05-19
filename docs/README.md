@@ -177,7 +177,7 @@ tts = client.text_to_speech(
 File.binwrite('tts.mp3', tts.string)
 ```
 
-For a full list of supported parameters, see the [API reference here](https://platform.openai.com/docs/api-reference/audio/createSpeech). Note that `voice` and `response_format` are further constrained to the `voices` and `response_formats` listed for the chosen model in `config.model_config`.
+For a full list of supported parameters, see the [API reference here](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create ). Note that `voice` and `response_format` are further constrained to the `voices` and `response_formats` listed for the chosen model in `config.model_config`.
 
 ### Image Editing and Generation
 
