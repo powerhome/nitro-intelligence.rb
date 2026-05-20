@@ -1,6 +1,7 @@
 require "nitro_intelligence/client/handlers/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/chat_handler"
 require "nitro_intelligence/client/handlers/image_handler"
+require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
 module NitroIntelligence
   module Client
@@ -26,6 +27,11 @@ module NitroIntelligence
         audio_transcription_handler.create(message:, audio_file:, parameters:)
       end
 
+      # Returns StringIO
+      def text_to_speech(message: "", parameters: {})
+        text_to_speech_handler.create(message:, parameters:)
+      end
+
     private
 
       def audio_transcription_handler
@@ -46,6 +52,10 @@ module NitroIntelligence
 
       def respond_to_missing?(method_name, include_private = false)
         @client.respond_to?(method_name, include_private) || super
+      end
+
+      def text_to_speech_handler
+        @text_to_speech_handler ||= Handlers::TextToSpeechHandler.new(client: @client)
       end
     end
   end

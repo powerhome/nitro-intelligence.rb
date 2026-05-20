@@ -5,6 +5,8 @@ require:
 
 AllCops:
   TargetRubyVersion: 3.3
+  Exclude:
+    - '.console_setup.rb'
 
 Layout/LineLength:
   Exclude:

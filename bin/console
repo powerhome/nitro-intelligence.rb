@@ -1,0 +1,9 @@
+#!/usr/bin/env ruby
+require "bundler/setup"
+require "nitro_intelligence"
+
+local = File.expand_path("../.console_setup.rb", __dir__)
+load local if File.exist?(local)
+
+require "irb"
+IRB.start(__FILE__)

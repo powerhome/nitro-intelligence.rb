@@ -93,6 +93,12 @@ RSpec.describe NitroIntelligence::Observability::UploadHandler do
       expect(results).to contain_exactly(mock_media)
     end
 
+    it "exposes the uploaded media via the #uploaded_media reader" do
+      handler.upload(trace_id, upload_queue: queue)
+
+      expect(handler.uploaded_media).to contain_exactly(mock_media)
+    end
+
     context "when the media already exists in Langfuse (uploadUrl is nil)" do
       let(:upload_url_response_body) do
         { "mediaId" => "media-123", "uploadUrl" => nil }.to_json

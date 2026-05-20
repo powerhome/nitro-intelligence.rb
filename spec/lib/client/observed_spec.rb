@@ -37,5 +37,15 @@ RSpec.describe NitroIntelligence::Client::Observed do
       expect(mock_handler).to receive(:create).with(message: "transcribe", audio_file: nil, parameters: {})
       observed_client.transcribe_audio(message: "transcribe")
     end
+
+    it "delegates #text_to_speech to the Observed::TextToSpeechHandler" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandler)
+      allow(NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandler)
+        .to receive(:new).with(base_handler: instance_of(NitroIntelligence::Client::Handlers::TextToSpeechHandler), observer: fake_observer)
+        .and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create).with(message: "say hi", parameters: {})
+      observed_client.text_to_speech(message: "say hi")
+    end
   end
 end

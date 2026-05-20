@@ -8,6 +8,8 @@ require "uri"
 module NitroIntelligence
   module Observability
     class UploadHandler
+      attr_reader :uploaded_media
+
       def initialize(auth_token:)
         @host = NitroIntelligence.config.observability_base_url
         @auth_token = auth_token
