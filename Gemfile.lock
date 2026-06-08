@@ -41,7 +41,7 @@ GEM
       faraday-net_http (>= 2.0, < 3.5)
       json
       logger
-    faraday-net_http (3.4.3)
+    faraday-net_http (3.4.4)
       net-http (~> 0.5)
     faraday-retry (2.4.0)
       faraday (~> 2.0)
@@ -71,7 +71,7 @@ GEM
     hashdiff (1.2.1)
     i18n (1.14.8)
       concurrent-ruby (~> 1.0)
-    json (2.19.7)
+    json (2.19.8)
     langfuse-rb (0.7.0)
       base64 (~> 0.2)
       concurrent-ruby (~> 1.2)
@@ -98,7 +98,7 @@ GEM
     mustache (1.1.2)
     net-http (0.9.1)
       uri (>= 0.11.1)
-    openai (0.64.0)
+    openai (0.66.1)
       base64
       cgi
       connection_pool
@@ -121,7 +121,7 @@ GEM
       opentelemetry-common (~> 0.20)
       opentelemetry-registry (~> 0.2)
       opentelemetry-semantic_conventions
-    opentelemetry-semantic_conventions (1.38.0)
+    opentelemetry-semantic_conventions (1.39.0)
       opentelemetry-api (~> 1.0)
     parallel (1.28.0)
     parser (3.3.11.1)
@@ -172,7 +172,7 @@ GEM
       rubocop-rails
       rubocop-rake
       rubocop-rspec
-    rubocop-rails (2.35.3)
+    rubocop-rails (2.35.4)
       activesupport (>= 4.2.0)
       lint_roller (~> 1.1)
       rack (>= 1.1)
