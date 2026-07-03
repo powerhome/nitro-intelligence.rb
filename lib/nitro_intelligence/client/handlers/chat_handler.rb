@@ -1,14 +1,11 @@
 require "openai"
+require "nitro_intelligence/client/handlers/base_handler"
 
 module NitroIntelligence
   module Client
     module Handlers
-      class ChatHandler
+      class ChatHandler < BaseHandler
         ALLOWED_EXTRA_PARAMETERS = OpenAI::Models::Chat::CompletionCreateParams.fields.keys.uniq.freeze
-
-        def initialize(client:)
-          @client = client
-        end
 
         def create(message: "", parameters: {})
           validate_and_resolve!(parameters, message)
@@ -33,6 +30,7 @@ module NitroIntelligence
           }
 
           parameters.replace(default_parameters.merge(parameters))
+          add_request_headers(parameters, "nip-requested-model" => parameters[:model])
           Client.validate_model(parameters[:model])
         end
       end

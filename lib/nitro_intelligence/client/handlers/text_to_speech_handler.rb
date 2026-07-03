@@ -1,14 +1,11 @@
 require "openai"
+require "nitro_intelligence/client/handlers/base_handler"
 
 module NitroIntelligence
   module Client
     module Handlers
-      class TextToSpeechHandler
+      class TextToSpeechHandler < BaseHandler
         ALLOWED_EXTRA_PARAMETERS = OpenAI::Models::Audio::SpeechCreateParams.fields.keys.uniq.freeze
-
-        def initialize(client:)
-          @client = client
-        end
 
         def create(message: "", parameters: {})
           validate_and_resolve!(parameters)
@@ -25,8 +22,6 @@ module NitroIntelligence
         def validate_and_resolve!(parameters)
           model_name = parameters[:model] || NitroIntelligence.model_catalog.default_text_to_speech_model&.name
           model = NitroIntelligence.model_catalog.lookup_by_name(model_name)
-
-          # Check model supported
           raise ArgumentError, "Unsupported model: '#{model_name}'" unless model
 
           default_parameters = {
@@ -35,17 +30,20 @@ module NitroIntelligence
             voice: model.default_voice,
             response_format: model.default_response_format,
           }
-
           parameters.replace(default_parameters.merge(parameters))
+          add_request_headers(parameters, "nip-modality" => "audio", "nip-requested-model" => parameters[:model])
+          validate_voice_and_format!(model, parameters)
+        end
 
-          # Check voice supported
+      private
+
+        def validate_voice_and_format!(model, parameters)
           unless model.voices.include?(parameters[:voice])
             raise ArgumentError,
                   "Unsupported voice: '#{parameters[:voice]}'. " \
                   "Supported voices for #{model.name} are: #{model.voices}"
           end
 
-          # Check format supported
           return if model.response_formats.include?(parameters[:response_format])
 
           raise ArgumentError,

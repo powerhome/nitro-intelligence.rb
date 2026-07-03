@@ -33,6 +33,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::ImageHandler do
             extra_body: {
               image_config: { aspect_ratio: "16:9", image_size: "1024x1024" },
             },
+            extra_headers: { "nip-modality" => "image", "nip-requested-model" => "custom-model" },
           }
         )
       ).and_return("fake_chat_completion")

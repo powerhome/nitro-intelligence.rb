@@ -43,5 +43,23 @@ RSpec.describe NitroIntelligence::Client::Handlers::ChatHandler do
         parameters: { model: "custom-model", messages: [{ role: "system", content: "Custom" }] }
       )
     end
+
+    it "tags the request with nip-requested-model and no nip-modality (routes to the text pool)" do
+      expect(fake_completions).to receive(:create) do |kwargs|
+        headers = kwargs.dig(:request_options, :extra_headers)
+        expect(headers).to eq("nip-requested-model" => "default-text-model")
+        expect(headers).not_to have_key("nip-modality")
+      end
+
+      handler.create(message: "hi")
+    end
+
+    it "sets nip-requested-model to the caller-provided model" do
+      expect(fake_completions).to receive(:create) do |kwargs|
+        expect(kwargs.dig(:request_options, :extra_headers, "nip-requested-model")).to eq("custom-model")
+      end
+
+      handler.create(message: "hi", parameters: { model: "custom-model" })
+    end
   end
 end

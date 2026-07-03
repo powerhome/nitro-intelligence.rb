@@ -1,14 +1,11 @@
 require "openai"
+require "nitro_intelligence/client/handlers/base_handler"
 
 module NitroIntelligence
   module Client
     module Handlers
-      class AudioTranscriptionHandler
+      class AudioTranscriptionHandler < BaseHandler
         ALLOWED_EXTRA_PARAMETERS = OpenAI::Models::Audio::TranscriptionCreateParams.fields.keys.uniq.freeze
-
-        def initialize(client:)
-          @client = client
-        end
 
         def create(audio_file:, message: "", parameters: {})
           validate_and_resolve!(parameters)
@@ -30,6 +27,7 @@ module NitroIntelligence
           }
 
           parameters.replace(default_parameters.merge(parameters))
+          add_request_headers(parameters, "nip-modality" => "audio", "nip-requested-model" => parameters[:model])
           Client.validate_model(parameters[:model])
         end
       end
