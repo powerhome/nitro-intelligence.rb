@@ -85,5 +85,23 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
         handler.create(message: "hello", parameters: { prompt_name: "test-prompt" })
       end
     end
+
+    context "when the prompt config overrides the model (after validate_and_resolve!)" do
+      let(:fake_prompt) { double("Prompt", name: "test-prompt", config: { model: "prompt-model" }) }
+
+      it "stamps nip-requested-model with the final prompt model, not the pre-prompt default" do
+        allow(fake_prompt_store).to receive(:get_prompt).and_return(fake_prompt)
+        allow(fake_prompt).to receive(:interpolate).and_return([{ role: "user", content: "hi" }])
+        allow(fake_observer).to receive(:observe).and_yield(double)
+
+        expect(fake_completions).to receive(:create) do |kwargs|
+          expect(kwargs[:model]).to eq("prompt-model")
+          expect(kwargs.dig(:request_options, :extra_headers, "nip-requested-model")).to eq("prompt-model")
+          fake_completion_response
+        end
+
+        handler.create(message: "hello", parameters: { prompt_name: "test-prompt" })
+      end
+    end
   end
 end

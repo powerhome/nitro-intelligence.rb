@@ -61,5 +61,17 @@ RSpec.describe NitroIntelligence::Client::Handlers::ChatHandler do
 
       handler.create(message: "hi", parameters: { model: "custom-model" })
     end
+
+    it "stamps nip-requested-model from the model at request time (survives a later override)" do
+      parameters = {}
+      handler.validate_and_resolve!(parameters, "hi")
+      parameters[:model] = "changed-after-validate" # e.g. an Observed prompt-config merge
+
+      expect(fake_completions).to receive(:create) do |kwargs|
+        expect(kwargs.dig(:request_options, :extra_headers, "nip-requested-model")).to eq("changed-after-validate")
+      end
+
+      handler.perform_request(parameters:)
+    end
   end
 end

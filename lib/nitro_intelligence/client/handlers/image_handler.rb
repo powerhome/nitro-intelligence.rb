@@ -20,6 +20,7 @@ module NitroIntelligence
         end
 
         def perform_request(parameters: {})
+          add_request_headers(parameters, MODALITY_HEADER => "image", REQUESTED_MODEL_HEADER => parameters[:model])
           @client.chat.completions.create(**parameters.slice(*ALLOWED_EXTRA_PARAMETERS))
         end
 
@@ -40,7 +41,6 @@ module NitroIntelligence
             },
           }
           parameters.replace(default_parameters.merge(parameters))
-          add_request_headers(parameters, "nip-modality" => "image", "nip-requested-model" => parameters[:model])
           Client.validate_model(parameters[:model])
         end
 

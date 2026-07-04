@@ -2,6 +2,9 @@ module NitroIntelligence
   module Client
     module Handlers
       class BaseHandler
+        MODALITY_HEADER = "nip-modality".freeze
+        REQUESTED_MODEL_HEADER = "nip-requested-model".freeze
+
         def initialize(client:)
           @client = client
         end

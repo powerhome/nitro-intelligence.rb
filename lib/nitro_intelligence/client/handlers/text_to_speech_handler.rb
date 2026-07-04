@@ -13,6 +13,7 @@ module NitroIntelligence
         end
 
         def perform_request(message: "", parameters: {})
+          add_request_headers(parameters, MODALITY_HEADER => "audio", REQUESTED_MODEL_HEADER => parameters[:model])
           @client.audio.speech.create(
             input: message,
             **parameters.slice(*ALLOWED_EXTRA_PARAMETERS)
@@ -31,7 +32,6 @@ module NitroIntelligence
             response_format: model.default_response_format,
           }
           parameters.replace(default_parameters.merge(parameters))
-          add_request_headers(parameters, "nip-modality" => "audio", "nip-requested-model" => parameters[:model])
           validate_voice_and_format!(model, parameters)
         end
 

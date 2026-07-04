@@ -13,6 +13,7 @@ module NitroIntelligence
         end
 
         def perform_request(audio_file:, message: "", parameters: {})
+          add_request_headers(parameters, MODALITY_HEADER => "audio", REQUESTED_MODEL_HEADER => parameters[:model])
           @client.audio.transcriptions.create(
             prompt: message,
             file: audio_file,
@@ -27,7 +28,6 @@ module NitroIntelligence
           }
 
           parameters.replace(default_parameters.merge(parameters))
-          add_request_headers(parameters, "nip-modality" => "audio", "nip-requested-model" => parameters[:model])
           Client.validate_model(parameters[:model])
         end
       end
