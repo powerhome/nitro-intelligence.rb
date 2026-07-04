@@ -13,7 +13,7 @@ module NitroIntelligence
 
         def add_request_headers(parameters, headers)
           request_options = (parameters[:request_options] ||= {})
-          (request_options[:extra_headers] ||= {}).merge!(headers)
+          (request_options[:extra_headers] ||= {}).merge!(headers.compact)
           parameters
         end
       end

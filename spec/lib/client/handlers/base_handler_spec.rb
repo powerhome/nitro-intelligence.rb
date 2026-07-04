@@ -27,6 +27,14 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
       expect(parameters[:request_options][:extra_headers]).to eq("existing" => "1", "nip-modality" => "image")
     end
 
+    it "drops headers with nil values (HTTP clients reject a nil header value)" do
+      parameters = {}
+
+      handler.send(:add_request_headers, parameters, "nip-modality" => "image", "nip-requested-model" => nil)
+
+      expect(parameters[:request_options][:extra_headers]).to eq("nip-modality" => "image")
+    end
+
     it "returns the parameters hash" do
       parameters = {}
 
