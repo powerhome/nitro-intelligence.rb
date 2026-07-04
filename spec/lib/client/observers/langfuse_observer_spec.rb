@@ -41,6 +41,7 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
     it "wraps execution in Langfuse propagation and observability blocks" do
       expect(Langfuse).to receive(:propagate_attributes).with(
         user_id: "global-user-123",
+        session_id: nil,
         metadata: {}
       ).and_yield
 
@@ -68,6 +69,7 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
 
       expect(Langfuse).to receive(:propagate_attributes).with(
         user_id: "global-user-123",
+        session_id: nil,
         metadata: { custom_key: "value", another_key: "another_value" }
       ).and_yield
 
@@ -90,6 +92,21 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
       end
 
       expect(result).to eq("success_result")
+    end
+
+    it "forwards session_id from parameters to Langfuse propagation" do
+      expect(Langfuse).to receive(:propagate_attributes).with(
+        user_id: "global-user-123",
+        session_id: "conversation-789",
+        metadata: {}
+      ).and_yield
+
+      observer.observe(
+        "chat-completion",
+        **default_args, parameters: { model: "gpt-4", metadata: {}, session_id: "conversation-789" }
+      ) do
+        ["result", nil]
+      end
     end
 
     it "generates a trace_id if trace_seed is provided" do
