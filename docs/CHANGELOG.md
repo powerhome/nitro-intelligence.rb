@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Tag inference requests with custom NIP headers
+- Tag inference requests with custom NIP headers (#54)
 
 ## [2.0.0] - 2026-05-20
 
