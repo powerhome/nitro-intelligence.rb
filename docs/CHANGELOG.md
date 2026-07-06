@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Tag inference requests with custom NIP headers (#54)
 
+### Changed
+
+- Remove malformed wait header (#54)
+
 ## [2.0.0] - 2026-05-20
 
 ### Added

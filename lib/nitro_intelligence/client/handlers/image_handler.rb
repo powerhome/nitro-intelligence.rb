@@ -30,7 +30,6 @@ module NitroIntelligence
             metadata: {},
             messages: image_generation.messages,
             model: image_generation.config.model,
-            extra_headers: { "Prefer" => "wait" },
             request_options: {
               extra_body: {
                 image_config: {

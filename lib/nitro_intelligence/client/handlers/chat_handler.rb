@@ -27,7 +27,6 @@ module NitroIntelligence
             metadata: {},
             messages: [],
             model: NitroIntelligence.model_catalog.default_text_model&.name,
-            extra_headers: { "Prefer" => "wait" },
           }
 
           parameters.replace(default_parameters.merge(parameters))
