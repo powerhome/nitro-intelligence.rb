@@ -1,14 +1,11 @@
 require "openai"
+require "nitro_intelligence/client/handlers/base_handler"
 
 module NitroIntelligence
   module Client
     module Handlers
-      class ChatHandler
+      class ChatHandler < BaseHandler
         ALLOWED_EXTRA_PARAMETERS = OpenAI::Models::Chat::CompletionCreateParams.fields.keys.uniq.freeze
-
-        def initialize(client:)
-          @client = client
-        end
 
         def create(message: "", parameters: {})
           validate_and_resolve!(parameters, message)
@@ -16,6 +13,7 @@ module NitroIntelligence
         end
 
         def perform_request(parameters: {})
+          add_request_headers(parameters, REQUESTED_MODEL_HEADER => parameters[:model])
           @client.chat.completions.create(**parameters.slice(*ALLOWED_EXTRA_PARAMETERS))
         end
 
@@ -29,7 +27,6 @@ module NitroIntelligence
             metadata: {},
             messages: [],
             model: NitroIntelligence.model_catalog.default_text_model&.name,
-            extra_headers: { "Prefer" => "wait" },
           }
 
           parameters.replace(default_parameters.merge(parameters))

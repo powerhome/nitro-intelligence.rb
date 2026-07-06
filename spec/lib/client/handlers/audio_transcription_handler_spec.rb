@@ -23,7 +23,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::AudioTranscriptionHandler do
         prompt: "transcribe this",
         model: "default-audio-model",
         file: audio_file,
-        temperature: 0.5
+        temperature: 0.5,
+        request_options: { extra_headers: { "nip-modality" => "audio", "nip-requested-model" => "default-audio-model" } }
       ).and_return("fake_transcription")
 
       response = handler.create(message: "transcribe this", audio_file:, parameters: { temperature: 0.5, trace_name: "test" })

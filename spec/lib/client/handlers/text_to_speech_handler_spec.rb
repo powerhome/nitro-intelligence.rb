@@ -38,7 +38,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
         input: "hello world",
         model: "tts-1",
         voice: "alloy",
-        response_format: "mp3"
+        response_format: "mp3",
+        request_options: { extra_headers: { "nip-modality" => "audio", "nip-requested-model" => "tts-1" } }
       ).and_return("fake_audio_stream")
 
       response = handler.create(message: "hello world")
