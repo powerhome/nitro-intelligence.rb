@@ -3,6 +3,11 @@ module NitroIntelligence
     module Handlers
       module Observed
         class ChatHandler
+          # A prompt the caller has already resolved and interpolated itself, supplied purely so the trace
+          # can be linked to it (populates Langfuse promptName/promptVersion). Unlike `prompt_name`, it does
+          # not trigger a fetch, interpolation, or config merge -- only `.name`/`.version` are read.
+          LinkedPrompt = Data.define(:name, :version)
+
           def initialize(base_handler:, observer:)
             @base_handler = base_handler
             @observer = observer
@@ -11,7 +16,7 @@ module NitroIntelligence
           def create(message: "", parameters: {})
             @base_handler.validate_and_resolve!(parameters, message)
 
-            prompt = handle_prompt(parameters:)
+            prompt = handle_prompt(parameters:) || link_only_prompt(parameters)
             trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
 
             @observer.observe(
@@ -47,6 +52,15 @@ module NitroIntelligence
             end
 
             prompt
+          end
+
+          # Links a pre-resolved prompt (name + version) without any fetch/interpolation. Returns nil when no
+          # linked_prompt was supplied, so the caller falls through to the unlinked case.
+          def link_only_prompt(parameters)
+            reference = parameters[:linked_prompt]
+            return if reference.blank?
+
+            LinkedPrompt.new(**reference)
           end
 
           def workflow(parameters:)
