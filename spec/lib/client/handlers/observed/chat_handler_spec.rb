@@ -64,6 +64,30 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
       end
     end
 
+    context "with a linked_prompt (pre-resolved, link-only)" do
+      it "links the given prompt name/version without fetching or interpolating" do
+        expect(fake_prompt_store).not_to receive(:get_prompt)
+
+        expect(fake_observer).to receive(:observe).with(
+          "chat-completion",
+          hash_including(
+            trace_name: "transcripts.chat.answering.complete",
+            prompt: have_attributes(name: "transcripts.chat.answering", version: 2)
+          )
+        ).and_yield(double("Generation"))
+
+        expect(fake_completions).to receive(:create).and_return(fake_completion_response)
+
+        handler.create(
+          message: "hello",
+          parameters: {
+            trace_name: "transcripts.chat.answering.complete",
+            linked_prompt: { name: "transcripts.chat.answering", version: 2 },
+          }
+        )
+      end
+    end
+
     context "with a prompt" do
       let(:fake_prompt) do
         double("Prompt", name: "test-prompt", config: { temperature: 0.8 })

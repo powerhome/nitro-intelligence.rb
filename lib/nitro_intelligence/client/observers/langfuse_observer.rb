@@ -12,6 +12,7 @@ module NitroIntelligence
           metadata = parameters[:metadata]
           seed = parameters[:trace_seed]
           user_id = parameters[:user_id] || NitroIntelligence.configuration.observability_user_id
+          session_id = parameters[:session_id]
           trace_id = NitroIntelligence::Trace.create_id(seed:) if seed.present?
 
           if prompt
@@ -23,6 +24,7 @@ module NitroIntelligence
 
           Langfuse.propagate_attributes(
             user_id:,
+            session_id:,
             metadata:
           ) do
             @project_client.observability_client.observe(
