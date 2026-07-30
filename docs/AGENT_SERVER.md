@@ -57,6 +57,15 @@ content = agent_server.await_run(
 "I'm doing well, thank you!"
 ```
 
+### Thread initialization
+
+`#await_run` treats the last entry in `messages` as the message to run, and everything before it as the conversation the agent should already know about. Getting that history in front of the agent takes two requests, because Aegra accepts an `initial_state` on thread creation but never applies it:
+
+1. `POST /threads` creates the thread with `ifExists: "raise"` and tags it with `metadata.graph_id` set to the `assistant_id`. The `graph_id` is what allows the thread's state to be updated before its first run.
+2. `POST /threads/:thread_id/state` seeds the thread with the earlier messages.
+
+Because `ifExists` is `raise`, Aegra answers with a `409` when the thread is already there. That is not treated as an error — it means the thread is already under way, so the seeding step is skipped and the run proceeds against the state the thread's earlier runs have built up. Seeding only ever happens once, when the thread is first created; a thread whose conversation consists of a single message has nothing to seed and skips step 2 as well.
+
 ## `#tool_calls_pending_review`
 
 Returns all tool calls in a thread that are still waiting for human review.

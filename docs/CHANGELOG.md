@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Remove malformed wait header (#54)
 
+### Fixed
+
+- Seed new agent threads through the thread state endpoint, so the agent's context includes the messages sent before the run (METAL-350)
+
 ## [2.0.0] - 2026-05-20
 
 ### Added
