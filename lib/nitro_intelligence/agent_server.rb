@@ -10,6 +10,9 @@ module NitroIntelligence
     class RunError < StandardError; end
     class ThreadResumptionError < StandardError; end
 
+    # Aegra answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
+    THREAD_CONFLICT_CODE = 409
+
     attr_reader :base_url, :user_id
 
     def initialize(base_url:, api_key:, user_id: "default-user")
@@ -29,7 +32,7 @@ module NitroIntelligence
       initial_state = messages[0..-2]
       last_message = messages.last
 
-      initialize_thread_if_needed(thread_id:, initial_state:)
+      initialize_thread_if_needed(thread_id:, assistant_id:, initial_state:)
       trigger_run(thread_id:, assistant_id:, context:, last_message:)
     end
 
@@ -77,20 +80,37 @@ module NitroIntelligence
 
   private
 
-    def initialize_thread_if_needed(thread_id:, initial_state:)
+    def initialize_thread_if_needed(thread_id:, assistant_id:, initial_state:)
+      thread_response = create_thread(thread_id:, assistant_id:, initial_state:)
+
+      return if thread_already_exists?(thread_response)
+
+      JSON.parse(thread_response.body)
+    end
+
+    # `ifExists: "raise"` is what tells an existing thread apart from a freshly created one, so a thread
+    # that is already under way is left alone instead of being initialized a second time.
+    def create_thread(thread_id:, assistant_id:, initial_state:)
       thread_response = post(
         path: "/threads",
         body: {
           threadId: thread_id.to_s,
-          ifExists: "do_nothing",
+          ifExists: "raise",
+          # Without a graph_id, the thread state cannot be updated before the thread's first run.
+          metadata: { graph_id: assistant_id },
           initial_state: { messages: initial_state },
           user_id:,
         }
       )
 
+      return thread_response if thread_already_exists?(thread_response)
       raise ThreadInitializationError, thread_response.body if thread_response.code.to_i != 200
 
-      JSON.parse(thread_response.body)
+      thread_response
+    end
+
+    def thread_already_exists?(response)
+      response.code.to_i == THREAD_CONFLICT_CODE
     end
 
     def get_thread_state(thread_id:)

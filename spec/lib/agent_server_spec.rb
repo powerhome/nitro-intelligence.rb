@@ -183,7 +183,8 @@ RSpec.describe NitroIntelligence::AgentServer do
     let(:thread_init_request_body) do
       {
         threadId: thread_id.to_s,
-        ifExists: "do_nothing",
+        ifExists: "raise",
+        metadata: { graph_id: assistant_id },
         initial_state: { messages: messages[0..-2] },
         user_id:,
       }
@@ -224,11 +225,55 @@ RSpec.describe NitroIntelligence::AgentServer do
         .with(body: thread_init_request_body.to_json)
     end
 
+    it "tags the thread with the assistant as its graph_id" do
+      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+
+      expect(WebMock).to have_requested(:post, thread_init_url)
+        .with(body: hash_including(metadata: { graph_id: assistant_id }))
+    end
+
+    it "asks the agent server to raise when the thread already exists" do
+      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+
+      expect(WebMock).to have_requested(:post, thread_init_url)
+        .with(body: hash_including(ifExists: "raise"))
+    end
+
     it "triggers a run with the last message" do
       agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(WebMock).to have_requested(:post, run_url)
         .with(body: run_request_body.to_json)
+    end
+
+    context "when the thread already exists" do
+      before do
+        stub_request(:post, thread_init_url)
+          .to_return(
+            status: 409,
+            body: { error: "Thread #{thread_id} already exists" }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "does not raise ThreadInitializationError" do
+        expect do
+          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.not_to raise_error
+      end
+
+      it "still triggers the run" do
+        agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: run_request_body.to_json)
+      end
+
+      it "returns the content of the last message from the run response" do
+        result = agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+
+        expect(result).to eq("I'm doing well, thank you!")
+      end
     end
 
     it "returns the content of the last message from the run response" do
@@ -272,7 +317,8 @@ RSpec.describe NitroIntelligence::AgentServer do
       let(:single_message_thread_init_body) do
         {
           threadId: thread_id.to_s,
-          ifExists: "do_nothing",
+          ifExists: "raise",
+          metadata: { graph_id: assistant_id },
           initial_state: { messages: [] },
           user_id:,
         }
