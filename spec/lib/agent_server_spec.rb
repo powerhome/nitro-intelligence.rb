@@ -130,6 +130,7 @@ RSpec.describe NitroIntelligence::AgentServer do
     let(:assistant_id) { "assistant-789" }
     let(:context) { { key: "value" } }
     let(:thread_init_url) { "#{base_url}/threads" }
+    let(:thread_state_url) { "#{base_url}/threads/#{thread_id}/state" }
     let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
 
     context "when messages is nil" do
@@ -185,8 +186,13 @@ RSpec.describe NitroIntelligence::AgentServer do
         threadId: thread_id.to_s,
         ifExists: "raise",
         metadata: { graph_id: assistant_id },
-        initial_state: { messages: messages[0..-2] },
         user_id:,
+      }
+    end
+
+    let(:thread_state_request_body) do
+      {
+        values: { messages: messages[0..-2] },
       }
     end
 
@@ -209,6 +215,14 @@ RSpec.describe NitroIntelligence::AgentServer do
           headers: { "Content-Type" => "application/json" }
         )
 
+      stub_request(:post, thread_state_url)
+        .with(body: thread_state_request_body.to_json)
+        .to_return(
+          status: 200,
+          body: {}.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+
       stub_request(:post, run_url)
         .with(body: run_request_body.to_json)
         .to_return(
@@ -218,11 +232,18 @@ RSpec.describe NitroIntelligence::AgentServer do
         )
     end
 
-    it "initializes the thread with initial state (all messages except the last)" do
+    it "creates the thread" do
       agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(WebMock).to have_requested(:post, thread_init_url)
         .with(body: thread_init_request_body.to_json)
+    end
+
+    it "seeds the new thread with every message except the last" do
+      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+
+      expect(WebMock).to have_requested(:post, thread_state_url)
+        .with(body: thread_state_request_body.to_json)
     end
 
     it "tags the thread with the assistant as its graph_id" do
@@ -260,6 +281,12 @@ RSpec.describe NitroIntelligence::AgentServer do
         expect do
           agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
         end.not_to raise_error
+      end
+
+      it "does not seed the thread state again" do
+        agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+
+        expect(WebMock).not_to have_requested(:post, thread_state_url)
       end
 
       it "still triggers the run" do
@@ -319,7 +346,6 @@ RSpec.describe NitroIntelligence::AgentServer do
           threadId: thread_id.to_s,
           ifExists: "raise",
           metadata: { graph_id: assistant_id },
-          initial_state: { messages: [] },
           user_id:,
         }
       end
@@ -352,11 +378,17 @@ RSpec.describe NitroIntelligence::AgentServer do
           )
       end
 
-      it "initializes thread with empty initial state" do
+      it "creates the thread" do
         agent_server.await_run(thread_id:, assistant_id:, messages: single_message, context:)
 
         expect(WebMock).to have_requested(:post, thread_init_url)
           .with(body: single_message_thread_init_body.to_json)
+      end
+
+      it "does not seed the thread state, as there is nothing to seed it with" do
+        agent_server.await_run(thread_id:, assistant_id:, messages: single_message, context:)
+
+        expect(WebMock).not_to have_requested(:post, thread_state_url)
       end
 
       it "triggers run with the single message" do
@@ -370,6 +402,32 @@ RSpec.describe NitroIntelligence::AgentServer do
     context "when thread initialization fails" do
       before do
         stub_request(:post, thread_init_url)
+          .to_return(
+            status: 500,
+            body: { error: "Internal Server Error" }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "raises ThreadInitializationError" do
+        expect do
+          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError, '{"error":"Internal Server Error"}')
+      end
+
+      it "does not attempt to seed the thread state or trigger the run" do
+        expect do
+          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError)
+
+        expect(WebMock).not_to have_requested(:post, thread_state_url)
+        expect(WebMock).not_to have_requested(:post, run_url)
+      end
+    end
+
+    context "when seeding the thread state fails" do
+      before do
+        stub_request(:post, thread_state_url)
           .to_return(
             status: 500,
             body: { error: "Internal Server Error" }.to_json,

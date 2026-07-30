@@ -80,33 +80,41 @@ module NitroIntelligence
 
   private
 
+    # Aegra accepts `initial_state` on thread creation but never applies it, so a brand new thread is
+    # seeded through the thread state endpoint instead. A thread that already exists is left untouched:
+    # its state was seeded when it was created and has been built up by every run since.
     def initialize_thread_if_needed(thread_id:, assistant_id:, initial_state:)
-      thread_response = create_thread(thread_id:, assistant_id:, initial_state:)
+      thread_response = create_thread(thread_id:, assistant_id:)
 
       return if thread_already_exists?(thread_response)
+      raise ThreadInitializationError, thread_response.body if thread_response.code.to_i != 200
+      return if initial_state.blank?
 
-      JSON.parse(thread_response.body)
+      seed_thread_state(thread_id:, initial_state:)
     end
 
-    # `ifExists: "raise"` is what tells an existing thread apart from a freshly created one, so a thread
-    # that is already under way is left alone instead of being initialized a second time.
-    def create_thread(thread_id:, assistant_id:, initial_state:)
-      thread_response = post(
+    def create_thread(thread_id:, assistant_id:)
+      post(
         path: "/threads",
         body: {
           threadId: thread_id.to_s,
           ifExists: "raise",
           # Without a graph_id, the thread state cannot be updated before the thread's first run.
           metadata: { graph_id: assistant_id },
-          initial_state: { messages: initial_state },
           user_id:,
         }
       )
+    end
 
-      return thread_response if thread_already_exists?(thread_response)
-      raise ThreadInitializationError, thread_response.body if thread_response.code.to_i != 200
+    def seed_thread_state(thread_id:, initial_state:)
+      state_response = post(
+        path: "/threads/#{thread_id}/state",
+        body: { values: { messages: initial_state } }
+      )
 
-      thread_response
+      raise ThreadInitializationError, state_response.body if state_response.code.to_i != 200
+
+      JSON.parse(state_response.body)
     end
 
     def thread_already_exists?(response)
