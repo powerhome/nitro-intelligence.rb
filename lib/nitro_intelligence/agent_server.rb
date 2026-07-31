@@ -24,6 +24,7 @@ module NitroIntelligence
       @api_key = api_key
       @user_id = user_id
       @tool_call_review_validator = ToolCallReviewValidator.new
+      @graph_ids = {}
     end
 
     def await_run(thread_id:, assistant_id:, messages:, context: {})
@@ -100,10 +101,28 @@ module NitroIntelligence
           threadId: thread_id.to_s,
           ifExists: "raise",
           # Without a graph_id, the thread state cannot be updated before the thread's first run.
-          metadata: { graph_id: assistant_id },
+          metadata: { graph_id: graph_id_for(assistant_id) },
           user_id:,
         }
       )
+    end
+
+    # Threads are linked to a graph by name, which is not the assistant's id -- the assistant record is
+    # what maps one to the other. Aegra fails the state update with "Graph not found" when given an id.
+    def graph_id_for(assistant_id)
+      @graph_ids[assistant_id] ||= fetch_graph_id(assistant_id)
+    end
+
+    def fetch_graph_id(assistant_id)
+      assistant_response = get(path: "/assistants/#{assistant_id}")
+
+      raise ThreadInitializationError, assistant_response.body if assistant_response.code.to_i != 200
+
+      graph_id = JSON.parse(assistant_response.body)["graph_id"]
+
+      raise ThreadInitializationError, "Assistant #{assistant_id} has no graph_id" if graph_id.blank?
+
+      graph_id
     end
 
     def seed_thread_state(thread_id:, initial_state:)

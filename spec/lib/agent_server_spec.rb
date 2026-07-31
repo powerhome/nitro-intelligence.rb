@@ -129,6 +129,8 @@ RSpec.describe NitroIntelligence::AgentServer do
     let(:thread_id) { "thread-456" }
     let(:assistant_id) { "assistant-789" }
     let(:context) { { key: "value" } }
+    let(:graph_id) { "confirmation-agent" }
+    let(:assistant_url) { "#{base_url}/assistants/#{assistant_id}" }
     let(:thread_init_url) { "#{base_url}/threads" }
     let(:thread_state_url) { "#{base_url}/threads/#{thread_id}/state" }
     let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
@@ -185,7 +187,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       {
         threadId: thread_id.to_s,
         ifExists: "raise",
-        metadata: { graph_id: assistant_id },
+        metadata: { graph_id: },
         user_id:,
       }
     end
@@ -207,6 +209,13 @@ RSpec.describe NitroIntelligence::AgentServer do
     end
 
     before do
+      stub_request(:get, assistant_url)
+        .to_return(
+          status: 200,
+          body: { assistant_id:, name: graph_id, graph_id: }.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+
       stub_request(:post, thread_init_url)
         .with(body: thread_init_request_body.to_json)
         .to_return(
@@ -246,11 +255,71 @@ RSpec.describe NitroIntelligence::AgentServer do
         .with(body: thread_state_request_body.to_json)
     end
 
-    it "tags the thread with the assistant as its graph_id" do
+    it "tags the thread with the assistant's graph, not the assistant's id" do
       agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(WebMock).to have_requested(:post, thread_init_url)
+        .with(body: hash_including(metadata: { graph_id: }))
+      expect(WebMock).not_to have_requested(:post, thread_init_url)
         .with(body: hash_including(metadata: { graph_id: assistant_id }))
+    end
+
+    it "looks the graph up on the assistant" do
+      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+
+      expect(WebMock).to have_requested(:get, assistant_url)
+    end
+
+    it "looks the graph up only once per assistant" do
+      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+
+      expect(WebMock).to have_requested(:get, assistant_url).once
+    end
+
+    context "when the assistant cannot be fetched" do
+      before do
+        stub_request(:get, assistant_url)
+          .to_return(
+            status: 404,
+            body: { error: "not_found" }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "raises ThreadInitializationError" do
+        expect do
+          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError, '{"error":"not_found"}')
+      end
+
+      it "does not attempt to create the thread" do
+        expect do
+          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError)
+
+        expect(WebMock).not_to have_requested(:post, thread_init_url)
+      end
+    end
+
+    context "when the assistant has no graph_id" do
+      before do
+        stub_request(:get, assistant_url)
+          .to_return(
+            status: 200,
+            body: { assistant_id: }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "raises ThreadInitializationError" do
+        expect do
+          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(
+          NitroIntelligence::AgentServer::ThreadInitializationError,
+          "Assistant #{assistant_id} has no graph_id"
+        )
+      end
     end
 
     it "asks the agent server to raise when the thread already exists" do
@@ -345,7 +414,7 @@ RSpec.describe NitroIntelligence::AgentServer do
         {
           threadId: thread_id.to_s,
           ifExists: "raise",
-          metadata: { graph_id: assistant_id },
+          metadata: { graph_id: },
           user_id:,
         }
       end
