@@ -107,8 +107,6 @@ module NitroIntelligence
       )
     end
 
-    # Threads are linked to a graph by name, which is not the assistant's id -- the assistant record is
-    # what maps one to the other. Aegra fails the state update with "Graph not found" when given an id.
     def graph_id_for(assistant_id)
       @graph_ids[assistant_id] ||= fetch_graph_id(assistant_id)
     end
