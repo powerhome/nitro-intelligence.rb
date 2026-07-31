@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-07-31
+
 ### Added
 
 - Tag inference requests with custom NIP headers (#54)
@@ -14,10 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Remove malformed wait header (#54)
+- Resolve an agent thread's graph from its assistant, which the agent server requires before a new thread's state can be seeded. Adds one assistant lookup per client, and raises `ThreadInitializationError` when the assistant cannot be fetched or has no graph (#58)
 
 ### Fixed
 
 - Seed new agent threads through the thread state endpoint, so the agent's context includes the messages sent before the run (#58)
+- Discard a newly created agent thread when seeding its state fails, so a retry seeds it again instead of silently running without the earlier messages (#58)
 
 ## [2.0.0] - 2026-05-20
 
@@ -46,7 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.0.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.1.0-nitro_intelligence...HEAD
+[2.1.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.0.0-nitro_intelligence...v2.1.0-nitro_intelligence
 [2.0.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v1.0.1-nitro_intelligence...v2.0.0-nitro_intelligence
 [1.0.1]: https://github.com/powerhome/nitro-intelligence.rb/compare/v1.0.0-nitro_intelligence...v1.0.1-nitro_intelligence
 [1.0.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v0.0.1-nitro_intelligence...v1.0.0-nitro_intelligence
