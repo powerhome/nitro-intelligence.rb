@@ -10,6 +10,9 @@ module NitroIntelligence
     class RunError < StandardError; end
     class ThreadResumptionError < StandardError; end
 
+    # Aegra answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
+    THREAD_CONFLICT_CODE = 409
+
     attr_reader :base_url, :user_id
 
     def initialize(base_url:, api_key:, user_id: "default-user")
@@ -21,6 +24,7 @@ module NitroIntelligence
       @api_key = api_key
       @user_id = user_id
       @tool_call_review_validator = ToolCallReviewValidator.new
+      @graph_ids = {}
     end
 
     def await_run(thread_id:, assistant_id:, messages:, context: {})
@@ -29,7 +33,7 @@ module NitroIntelligence
       initial_state = messages[0..-2]
       last_message = messages.last
 
-      initialize_thread_if_needed(thread_id:, initial_state:)
+      initialize_thread_if_needed(thread_id:, assistant_id:, initial_state:)
       trigger_run(thread_id:, assistant_id:, context:, last_message:)
     end
 
@@ -77,20 +81,78 @@ module NitroIntelligence
 
   private
 
-    def initialize_thread_if_needed(thread_id:, initial_state:)
-      thread_response = post(
+    # Aegra accepts `initial_state` on thread creation but never applies it, so a brand new thread is
+    # seeded through the thread state endpoint instead. A thread that already exists is left untouched:
+    # its state was seeded when it was created and has been built up by every run since.
+    def initialize_thread_if_needed(thread_id:, assistant_id:, initial_state:)
+      thread_response = create_thread(thread_id:, assistant_id:)
+
+      return if thread_already_exists?(thread_response)
+      raise ThreadInitializationError, thread_response.body if thread_response.code.to_i != 200
+      return if initial_state.blank?
+
+      seed_new_thread_state(thread_id:, initial_state:)
+    end
+
+    # Creating the thread and seeding its state are separate requests, so a failure between them leaves
+    # an empty thread behind. A retry would find that thread, take it for one already under way, skip
+    # seeding and run without the history -- losing the very thing seeding exists for, without an error.
+    # Discard the thread instead, so a retry starts over from a clean slate.
+    def seed_new_thread_state(thread_id:, initial_state:)
+      seed_thread_state(thread_id:, initial_state:)
+    rescue
+      discard_thread(thread_id:)
+      raise
+    end
+
+    def discard_thread(thread_id:)
+      delete(path: "/threads/#{thread_id}")
+    rescue
+      # Best effort. The seeding failure is the one worth surfacing, and it is raised either way.
+    end
+
+    def create_thread(thread_id:, assistant_id:)
+      post(
         path: "/threads",
         body: {
           threadId: thread_id.to_s,
-          ifExists: "do_nothing",
-          initial_state: { messages: initial_state },
+          ifExists: "raise",
+          # Without a graph_id, the thread state cannot be updated before the thread's first run.
+          metadata: { graph_id: graph_id_for(assistant_id) },
           user_id:,
         }
       )
+    end
 
-      raise ThreadInitializationError, thread_response.body if thread_response.code.to_i != 200
+    def graph_id_for(assistant_id)
+      @graph_ids[assistant_id] ||= fetch_graph_id(assistant_id)
+    end
 
-      JSON.parse(thread_response.body)
+    def fetch_graph_id(assistant_id)
+      assistant_response = get(path: "/assistants/#{assistant_id}")
+
+      raise ThreadInitializationError, assistant_response.body if assistant_response.code.to_i != 200
+
+      graph_id = JSON.parse(assistant_response.body)["graph_id"]
+
+      raise ThreadInitializationError, "Assistant #{assistant_id} has no graph_id" if graph_id.blank?
+
+      graph_id
+    end
+
+    def seed_thread_state(thread_id:, initial_state:)
+      state_response = post(
+        path: "/threads/#{thread_id}/state",
+        body: { values: { messages: initial_state } }
+      )
+
+      raise ThreadInitializationError, state_response.body if state_response.code.to_i != 200
+
+      JSON.parse(state_response.body)
+    end
+
+    def thread_already_exists?(response)
+      response.code.to_i == THREAD_CONFLICT_CODE
     end
 
     def get_thread_state(thread_id:)
@@ -172,6 +234,17 @@ module NitroIntelligence
       http.use_ssl = uri.scheme == "https"
 
       request = Net::HTTP::Get.new(uri)
+      request_headers.each { |k, v| request[k] = v }
+
+      http.request(request)
+    end
+
+    def delete(path:)
+      uri = URI("#{base_url}#{path}")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == "https"
+
+      request = Net::HTTP::Delete.new(uri)
       request_headers.each { |k, v| request[k] = v }
 
       http.request(request)
