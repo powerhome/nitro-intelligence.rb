@@ -91,7 +91,24 @@ module NitroIntelligence
       raise ThreadInitializationError, thread_response.body if thread_response.code.to_i != 200
       return if initial_state.blank?
 
+      seed_new_thread_state(thread_id:, initial_state:)
+    end
+
+    # Creating the thread and seeding its state are separate requests, so a failure between them leaves
+    # an empty thread behind. A retry would find that thread, take it for one already under way, skip
+    # seeding and run without the history -- losing the very thing seeding exists for, without an error.
+    # Discard the thread instead, so a retry starts over from a clean slate.
+    def seed_new_thread_state(thread_id:, initial_state:)
       seed_thread_state(thread_id:, initial_state:)
+    rescue
+      discard_thread(thread_id:)
+      raise
+    end
+
+    def discard_thread(thread_id:)
+      delete(path: "/threads/#{thread_id}")
+    rescue
+      # Best effort. The seeding failure is the one worth surfacing, and it is raised either way.
     end
 
     def create_thread(thread_id:, assistant_id:)
@@ -217,6 +234,17 @@ module NitroIntelligence
       http.use_ssl = uri.scheme == "https"
 
       request = Net::HTTP::Get.new(uri)
+      request_headers.each { |k, v| request[k] = v }
+
+      http.request(request)
+    end
+
+    def delete(path:)
+      uri = URI("#{base_url}#{path}")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == "https"
+
+      request = Net::HTTP::Delete.new(uri)
       request_headers.each { |k, v| request[k] = v }
 
       http.request(request)

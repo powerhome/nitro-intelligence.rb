@@ -132,6 +132,7 @@ RSpec.describe NitroIntelligence::AgentServer do
     let(:graph_id) { "confirmation-agent" }
     let(:assistant_url) { "#{base_url}/assistants/#{assistant_id}" }
     let(:thread_init_url) { "#{base_url}/threads" }
+    let(:thread_url) { "#{base_url}/threads/#{thread_id}" }
     let(:thread_state_url) { "#{base_url}/threads/#{thread_id}/state" }
     let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
 
@@ -500,6 +501,8 @@ RSpec.describe NitroIntelligence::AgentServer do
             body: { error: "Internal Server Error" }.to_json,
             headers: { "Content-Type" => "application/json" }
           )
+
+        stub_request(:delete, thread_url).to_return(status: 200, body: {}.to_json)
       end
 
       it "raises ThreadInitializationError" do
@@ -514,6 +517,51 @@ RSpec.describe NitroIntelligence::AgentServer do
         end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError)
 
         expect(WebMock).not_to have_requested(:post, run_url)
+      end
+
+      it "discards the thread it just created, so a retry can seed it again" do
+        expect do
+          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError)
+
+        expect(WebMock).to have_requested(:delete, thread_url)
+      end
+
+      context "when discarding the thread also fails" do
+        before do
+          stub_request(:delete, thread_url).to_return(status: 500, body: {}.to_json)
+        end
+
+        it "still raises the seeding failure" do
+          expect do
+            agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+          end.to raise_error(
+            NitroIntelligence::AgentServer::ThreadInitializationError,
+            '{"error":"Internal Server Error"}'
+          )
+        end
+      end
+
+      context "when the connection drops while seeding" do
+        before do
+          stub_request(:post, thread_state_url).to_timeout
+        end
+
+        it "discards the thread and lets the connection error surface" do
+          expect do
+            agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+          end.to raise_error(Net::OpenTimeout)
+
+          expect(WebMock).to have_requested(:delete, thread_url)
+        end
+      end
+    end
+
+    context "when seeding the thread state succeeds" do
+      it "leaves the thread in place" do
+        agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+
+        expect(WebMock).not_to have_requested(:delete, thread_url)
       end
     end
 
