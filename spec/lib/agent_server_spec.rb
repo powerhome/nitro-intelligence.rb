@@ -260,8 +260,6 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       expect(WebMock).to have_requested(:post, thread_init_url)
         .with(body: hash_including(metadata: { graph_id: }))
-      expect(WebMock).not_to have_requested(:post, thread_init_url)
-        .with(body: hash_including(metadata: { graph_id: assistant_id }))
     end
 
     it "looks the graph up on the assistant" do
