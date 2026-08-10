@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Tag inference requests with custom NIP headers (#54)
+- Resolve an agent thread's graph from its assistant, which the agent server requires before a new thread's state can be seeded. Adds one assistant lookup per client, and raises `ThreadInitializationError` when the assistant cannot be fetched or has no graph (#58)
 
 ### Changed
 
@@ -20,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Seed new agent threads through the thread state endpoint, so the agent's context includes the messages sent before the run (#58)
+- Discard a newly created agent thread when seeding its state fails, so a retry seeds it again instead of silently running without the earlier messages (#58)
 
 ## [2.0.0] - 2026-05-20
 
