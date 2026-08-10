@@ -98,10 +98,10 @@ GEM
     mustache (1.1.2)
     net-http (0.9.1)
       uri (>= 0.11.1)
-    openai (0.75.0)
+    openai (0.78.0)
       base64
       cgi
-      connection_pool
+      connection_pool (>= 2.2.3)
     opentelemetry-api (1.11.0)
       logger
     opentelemetry-common (0.25.1)
