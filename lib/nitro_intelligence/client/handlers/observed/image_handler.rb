@@ -1,4 +1,5 @@
 require "nitro_intelligence/media/image_generation"
+require "nitro_intelligence/observability/prompt_resolver"
 
 module NitroIntelligence
   module Client
@@ -58,23 +59,18 @@ module NitroIntelligence
           end
 
           def handle_prompt(parameters:)
-            return nil if parameters[:prompt_name].blank?
-
-            prompt = @observer.project_client.project.prompt_store.get_prompt(
-              prompt_name: parameters[:prompt_name],
-              prompt_label: parameters[:prompt_label],
-              prompt_version: parameters[:prompt_version]
+            prompt = NitroIntelligence::Observability::PromptResolver.for(
+              store: @observer.project_client.project.prompt_store,
+              parameters:
             )
-            prompt_variables = parameters[:prompt_variables] || {}
+            return nil if prompt.blank?
 
-            if prompt.present?
-              parameters[:messages] = prompt.interpolate(
-                messages: parameters[:messages],
-                variables: prompt_variables
-              )
+            parameters[:messages] = prompt.interpolate(
+              messages: parameters[:messages],
+              variables: parameters[:prompt_variables] || {}
+            )
 
-              parameters.merge!(prompt.config) unless parameters[:prompt_config_disabled]
-            end
+            parameters.merge!(prompt.config) unless parameters[:prompt_config_disabled]
 
             prompt
           end

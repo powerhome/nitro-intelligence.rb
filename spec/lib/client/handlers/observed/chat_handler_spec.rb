@@ -86,6 +86,33 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
       end
     end
 
+    context "with a prompt fallback name" do
+      it "uses the fallback prompt when the selected one cannot be resolved" do
+        base_prompt = double("Prompt", name: "base-prompt", config: { temperature: 0.5 })
+        allow(base_prompt).to receive(:interpolate).and_return([{ role: "user", content: "hi" }])
+        allow(NitroIntelligence).to receive(:logger).and_return(double(info: nil))
+        allow(fake_prompt_store).to receive(:get_prompt)
+          .with(prompt_name: "base-prompt.scheduling", prompt_label: nil, prompt_version: nil)
+          .and_raise(NitroIntelligence::Observability::PromptStore::ObservabilityPromptNotFoundError)
+        allow(fake_prompt_store).to receive(:get_prompt)
+          .with(prompt_name: "base-prompt", prompt_label: nil, prompt_version: nil)
+          .and_return(base_prompt)
+
+        expect(fake_observer).to receive(:observe).with(
+          anything,
+          hash_including(trace_name: "base-prompt", prompt: base_prompt)
+        ).and_yield(double)
+        expect(fake_completions).to receive(:create).with(
+          hash_including(temperature: 0.5)
+        ).and_return(fake_completion_response)
+
+        handler.create(
+          message: "hello",
+          parameters: { prompt_name: "base-prompt.scheduling", prompt_fallback_name: "base-prompt" }
+        )
+      end
+    end
+
     context "when the prompt config overrides the model (after validate_and_resolve!)" do
       let(:fake_prompt) { double("Prompt", name: "test-prompt", config: { model: "prompt-model" }) }
 
