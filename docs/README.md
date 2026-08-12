@@ -254,6 +254,49 @@ client.chat(
 
 If no `prompt_label` or `prompt_version` is provided, the 'production' prompt is used by default.
 
+### Prompt Fallbacks
+
+Pass `prompt_fallback_name` to name a second prompt to use when the one you asked for isn't there. The prompt in `prompt_name` is tried first; if it doesn't exist, or its lookup fails, the fallback is used instead:
+
+```ruby
+client = NitroIntelligence::Client.new(observability_project_slug: "fake-feature-project")
+client.chat(
+  message: "Why is the sky blue?",
+  parameters: {
+    prompt_name: "My Prompt - Scheduling", # used when it exists
+    prompt_fallback_name: "My Prompt",     # used when it doesn't
+    # prompt_fallback_label: "debug",
+    # prompt_fallback_version: "v2",
+    prompt_variables: {
+      appointment_id: "1234",
+    },
+  }
+)
+```
+
+This is for shipping a variant of a prompt — per domain, per locale, per experiment — without having to create one for every caller. Build the specific name however your feature likes; the fallback is just the prompt you'd have asked for anyway.
+
+In practice the caller composes the specific name from something it already knows. Summarising a call, for example: each queue holds a different kind of conversation, so a queue that needs its own wording can have its own prompt while the rest use the general one.
+
+```ruby
+base = "call_summary"
+queue = call.queue.slug # "sales", "support", "collections", ...
+
+client.chat(
+  parameters: {
+    prompt_name: [base, queue].compact.join("."), # call_summary.collections
+    prompt_fallback_name: base,
+    prompt_variables: { transcript: call.transcript },
+  }
+)
+```
+
+The fallback is looked up at its own `prompt_fallback_label` and `prompt_fallback_version`, and inherits neither from the prompt you asked for first. They describe a different prompt: a version number is minted per prompt, so version 3 of one name is an unrelated revision of another, and a label the first prompt carries need not exist on the fallback at all.
+
+That means an omitted `prompt_fallback_label` resolves the fallback the same way any unlabelled lookup does — at the 'production' label. **If you want both prompts to come from the same label, name it for both.**
+
+Whichever prompt is used is the one linked to the trace and merged into your request. If the fallback is missing too, the error is raised rather than swallowed — a request that asked for a prompt shouldn't quietly run without one.
+
 ### Custom Trace Names
 
 To provide custom trace names to the observability platform, you can pass 'trace_name' in parameters. Example:

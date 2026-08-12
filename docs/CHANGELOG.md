@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `prompt_fallback_name`, `prompt_fallback_label` and `prompt_fallback_version` parameters: name a fallback prompt to use when the requested `prompt_name` is missing or its lookup fails, so a feature can ship a prompt variant without one existing for every caller. The fallback is looked up at its own label and version, inheriting neither from the requested prompt (#61)
+
+### Changed
+
+- The observed chat, audio-transcription, image and text-to-speech handlers resolve prompts through a shared `Observability::PromptResolver` rather than each fetching from the prompt store (#61)
+
 ## [2.1.0] - 2026-07-31
 
 ### Added
