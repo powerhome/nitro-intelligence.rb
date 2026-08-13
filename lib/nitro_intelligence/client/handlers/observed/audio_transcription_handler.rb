@@ -1,5 +1,6 @@
 require "base64"
 require "nitro_intelligence/media/audio"
+require "nitro_intelligence/observability/prompt_resolver"
 
 module NitroIntelligence
   module Client
@@ -34,26 +35,21 @@ module NitroIntelligence
         private
 
           def handle_prompt(message:, parameters:)
-            return nil if parameters[:prompt_name].blank?
-
-            prompt = @observer.project_client.project.prompt_store.get_prompt(
-              prompt_name: parameters[:prompt_name],
-              prompt_label: parameters[:prompt_label],
-              prompt_version: parameters[:prompt_version]
+            prompt = NitroIntelligence::Observability::PromptResolver.for(
+              store: @observer.project_client.project.prompt_store,
+              parameters:
             )
-            prompt_variables = parameters[:prompt_variables] || {}
+            return nil if prompt.blank?
 
-            if prompt.present?
-              # Prompts for audio transcriptions should only be text
-              if prompt.type != "text"
-                raise ObservedAudioTranscriptionPromptError,
-                      "Prompt type for audio transcription must be text: #{prompt.name}"
-              end
-              interpolated_prompt = prompt.compile(**prompt_variables)
-
-              message.prepend("#{interpolated_prompt} ").strip!
-              parameters.merge!(prompt.config) unless parameters[:prompt_config_disabled]
+            # Prompts for audio transcriptions should only be text
+            if prompt.type != "text"
+              raise ObservedAudioTranscriptionPromptError,
+                    "Prompt type for audio transcription must be text: #{prompt.name}"
             end
+            interpolated_prompt = prompt.compile(**(parameters[:prompt_variables] || {}))
+
+            message.prepend("#{interpolated_prompt} ").strip!
+            parameters.merge!(prompt.config) unless parameters[:prompt_config_disabled]
 
             prompt
           end

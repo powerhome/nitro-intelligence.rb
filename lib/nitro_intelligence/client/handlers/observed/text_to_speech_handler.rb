@@ -1,4 +1,5 @@
 require "nitro_intelligence/media/audio"
+require "nitro_intelligence/observability/prompt_resolver"
 
 module NitroIntelligence
   module Client
@@ -33,26 +34,21 @@ module NitroIntelligence
         private
 
           def handle_prompt(parameters:)
-            return nil if parameters[:prompt_name].blank?
-
-            prompt = @observer.project_client.project.prompt_store.get_prompt(
-              prompt_name: parameters[:prompt_name],
-              prompt_label: parameters[:prompt_label],
-              prompt_version: parameters[:prompt_version]
+            prompt = NitroIntelligence::Observability::PromptResolver.for(
+              store: @observer.project_client.project.prompt_store,
+              parameters:
             )
-            prompt_variables = parameters[:prompt_variables] || {}
+            return nil if prompt.blank?
 
-            if prompt.present?
-              # Prompts for tts should only be text
-              if prompt.type != "text"
-                raise ObservedTextToSpeechPromptError,
-                      "Prompt type for text-to-speech must be text: #{prompt.name}"
-              end
-              interpolated_prompt = prompt.compile(**prompt_variables)
-
-              parameters.merge!(prompt.config) unless parameters[:prompt_config_disabled]
-              parameters[:instructions] = interpolated_prompt
+            # Prompts for tts should only be text
+            if prompt.type != "text"
+              raise ObservedTextToSpeechPromptError,
+                    "Prompt type for text-to-speech must be text: #{prompt.name}"
             end
+            interpolated_prompt = prompt.compile(**(parameters[:prompt_variables] || {}))
+
+            parameters.merge!(prompt.config) unless parameters[:prompt_config_disabled]
+            parameters[:instructions] = interpolated_prompt
 
             prompt
           end
