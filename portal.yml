@@ -11,5 +11,5 @@ spec:
   system: nitro-intelligence-platform
   type: library
   owner: metal-men
-  domain: technology-foundations-and-tools
+  domain: platform
   lifecycle: production
