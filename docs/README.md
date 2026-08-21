@@ -36,28 +36,28 @@ NitroIntelligence.configure do |config|
 
   # Model configuration
   config.model_config = {
-    "default_audio_transcription_model" => "gpt-4o-transcribe",
-    "default_text_model" => "gpt-4o-mini",
-    "default_image_model" => "nano-banana-2",
-    "default_text_to_speech_model" => "gpt-4o-mini-tts",
+    "default_audio_transcription_model" => "Qwen/Qwen3-ASR-1.7B",
+    "default_text_model" => "Qwen/Qwen3.6-35B-A3B",
+    "default_image_model" => "google/gemini-3.1-flash-image",
+    "default_text_to_speech_model" => "openai/gpt-4o-mini-tts",
     "models" => [
       {
-        "name" => "gpt-4o-mini",
+        "name" => "Qwen/Qwen3.6-35B-A3B",
         "type" => "text"
       },
       {
-        "name" => "gpt-4o-transcribe",
+        "name" => "Qwen/Qwen3-ASR-1.7B",
         "type" => "audio_transcription"
       },
       {
-        "name" => "nano-banana-2",
+        "name" => "google/gemini-3.1-flash-image",
         "type" => "image",
-        "aspect_ratios" => ["1:1", "2:3", "3:2", "3:4", "4:3"],
+        "aspect_ratios" => ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9"],
         "resolutions" => ["512", "1K", "2K"],
         "omit_output_fields" => ["provider_specific_fields.thought_signatures"]
       },
       {
-        "name" => "gpt-4o-mini-tts",
+        "name" => "openai/gpt-4o-mini-tts",
         "type" => "text_to_speech",
         "default_voice" => "marin",
         "default_response_format" => "mp3",
@@ -101,7 +101,7 @@ You may also use [`openai-ruby`](https://github.com/openai/openai-ruby) compatib
 
 ```ruby
 client = NitroIntelligence::Client.new
-client.chat(parameters: { model: "meta-llama/Llama-3.1-8B-Instruct", messages: [{ role: "user", content: "Why is the sky blue?" }]})
+client.chat(parameters: { model: "Qwen/Qwen3.8-27B", messages: [{ role: "user", content: "Why is the sky blue?" }]})
 ```
 
 #### Providing Parameters
@@ -110,7 +110,7 @@ Parameters such as 'max_tokens' and 'temperature' can be passed in under the `pa
 
 ```ruby
 client = NitroIntelligence::Client.new
-client.chat(parameters: { model: "meta-llama/Llama-3.1-8B-Instruct", max_tokens: 1000, temperature: 0.7, messages: [{ role: "user", content: "Why is the sky blue?" }]})
+client.chat(parameters: { model: "Qwen/Qwen3.8-27B", max_tokens: 1000, temperature: 0.7, messages: [{ role: "user", content: "Why is the sky blue?" }]})
 ```
 
 For a full list of supported parameters, see the [API reference here](https://developers.openai.com/api/reference/resources/completions/methods/create).
@@ -380,18 +380,18 @@ Consider this prompt config:
 
 ```json
 {
-  "model": "gpt-4o-mini"
+  "model": "Qwen/Qwen3.6-35B-A3B"
 }
 ```
 
-Invoking this request would result in "gpt-4o-mini" being used as the model, even if supplied manually:
+Invoking this request would result in "Qwen/Qwen3.6-35B-A3B" being used as the model, even if supplied manually:
 
 ```ruby
 client = NitroIntelligence::Client.new(observability_project_slug: "fake-feature-project")
 client.chat(
   message: "Where is the appointment?",
   parameters: {
-    model: "meta-llama/Llama-3.1-8B-Instruct", # Will not be used, will be overridden by config "gpt-4o-mini"
+    model: "Qwen/Qwen3.8-27B", # Will not be used, will be overridden by config "Qwen/Qwen3.6-35B-A3B"
     prompt_name: "My Prompt With Variables",
     prompt_variables: {
       appointment_id: "1234",
@@ -410,7 +410,7 @@ client = NitroIntelligence::Client.new(observability_project_slug: "fake-feature
 client.chat(
   message: "Where is the appointment?",
   parameters: {
-    model: "meta-llama/Llama-3.1-8B-Instruct", # This will now be used since "prompt_config_disabled" is true
+    model: "Qwen/Qwen3.8-27B", # This will now be used since "prompt_config_disabled" is true
     prompt_name: "My Prompt With Variables",
     prompt_variables: {
       appointment_id: "1234",
