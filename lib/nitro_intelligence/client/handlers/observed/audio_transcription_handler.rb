@@ -56,7 +56,9 @@ module NitroIntelligence
           end
 
           def workflow(generation:, message:, audio_file:, parameters:)
-            audio_transcription = @base_handler.perform_request(audio_file:, message:, parameters:)
+            audio_transcription = @base_handler.perform_request(
+              audio_file:, message:, parameters:, correlation_trace_id: generation.trace_id
+            )
 
             audio_file.rewind
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(

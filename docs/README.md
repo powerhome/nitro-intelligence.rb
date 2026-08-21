@@ -355,6 +355,12 @@ Every observed request is correlated across three systems automatically:
   `x-litellm-spend-logs-metadata` (dropped if it exceeds 4KB). W3C trace context
   is propagated as `traceparent`, so the gateway nests its own spans under the
   trace when it has OpenTelemetry enabled.
+
+  These headers are sent only on the observed path. A client built without an
+  `observability_project_slug` sends none of them, and that holds even inside a
+  host application with its own OpenTelemetry instrumentation - the trace ID comes
+  from the observation being recorded, never from whatever span happens to be
+  active.
 * **Inference gateway → observability platform.** When a request fails, the
   gateway's own request identifier is read from the error response and recorded on
   the observation as `litellm_call_id` metadata.

@@ -12,9 +12,9 @@ module NitroIntelligence
           perform_request(message:, parameters:)
         end
 
-        def perform_request(message: "", parameters: {})
+        def perform_request(message: "", parameters: {}, correlation_trace_id: nil)
           add_request_headers(parameters, MODALITY_HEADER => "audio", REQUESTED_MODEL_HEADER => parameters[:model])
-          add_correlation_headers(parameters)
+          add_correlation_headers(parameters, trace_id: correlation_trace_id)
           @client.audio.speech.create(
             input: message,
             **parameters.slice(*ALLOWED_EXTRA_PARAMETERS)

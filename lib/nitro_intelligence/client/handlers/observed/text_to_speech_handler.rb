@@ -68,7 +68,7 @@ module NitroIntelligence
           end
 
           def workflow(message:, parameters:, trace_id:)
-            tts = @base_handler.perform_request(message:, parameters:)
+            tts = @base_handler.perform_request(message:, parameters:, correlation_trace_id: trace_id)
             output = ""
 
             Tempfile.create(["tts", ".#{parameters[:response_format]}"]) do |tempfile|
