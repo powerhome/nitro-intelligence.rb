@@ -36,7 +36,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
         type: :generation,
         parameters: instance_of(Hash),
         trace_name: "test-project",
-        prompt: nil
+        prompt: nil,
+        input: [{ role: "user", content: "hello" }]
       ).and_yield(double("Generation"))
 
       expect(fake_completions).to receive(:create).and_return(fake_completion_response)
@@ -55,7 +56,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
           type: :generation,
           parameters: hash_including(metadata: { custom_key: "custom_value" }),
           trace_name: "test-project",
-          prompt: nil
+          prompt: nil,
+          input: [{ role: "user", content: "hello" }]
         ).and_yield(double("Generation"))
 
         expect(fake_completions).to receive(:create).and_return(fake_completion_response)

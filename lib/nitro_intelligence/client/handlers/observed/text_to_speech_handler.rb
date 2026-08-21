@@ -25,7 +25,8 @@ module NitroIntelligence
               type: :generation,
               parameters:,
               trace_name:,
-              prompt:
+              prompt:,
+              input: message
             ) do |generation|
               workflow(message:, parameters:, trace_id: generation.trace_id)
             end

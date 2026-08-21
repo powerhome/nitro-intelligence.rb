@@ -26,7 +26,8 @@ module NitroIntelligence
               type: :generation,
               parameters:,
               trace_name:,
-              prompt:
+              prompt:,
+              input: message
             ) do |generation|
               workflow(generation:, message:, audio_file:, parameters:)
             end

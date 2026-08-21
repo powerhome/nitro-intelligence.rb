@@ -14,6 +14,7 @@ module NitroIntelligence
 
         def perform_request(parameters: {})
           add_request_headers(parameters, REQUESTED_MODEL_HEADER => parameters[:model])
+          add_correlation_headers(parameters)
           @client.chat.completions.create(**parameters.slice(*ALLOWED_EXTRA_PARAMETERS))
         end
 

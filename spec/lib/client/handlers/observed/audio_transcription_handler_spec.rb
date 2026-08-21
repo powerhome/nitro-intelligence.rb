@@ -63,7 +63,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
           type: :generation,
           parameters: hash_including(metadata: { custom_key: "custom_value" }),
           trace_name: "test-project",
-          prompt: nil
+          prompt: nil,
+          input: "transcribe"
         ).and_yield(fake_generation)
 
         expect(fake_transcriptions).to receive(:create).with(

@@ -14,7 +14,8 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
       :model= => nil,
       :usage_details= => nil,
       :input= => nil,
-      :output= => nil
+      :output= => nil,
+      :metadata= => nil
     )
   end
 
@@ -180,5 +181,118 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
         end
       end
     end
+
+    describe "recording the input before the request runs" do
+      it "records input on the observation and the trace up front" do
+        expect(fake_generation).to receive(:input=).with([{ role: "user", content: "hi" }])
+        expect(fake_generation).to receive(:update_trace).with(input: [{ role: "user", content: "hi" }])
+
+        observer.observe("chat-completion", **default_args, input: [{ role: "user", content: "hi" }]) do
+          ["result", nil]
+        end
+      end
+
+      it "records nothing when the handler supplies no input" do
+        expect(fake_generation).not_to receive(:input=)
+
+        observer.observe("chat-completion", **default_args) { ["result", nil] }
+      end
+    end
+
+    describe "when the request raises" do
+      let(:error) { StandardError.new("boom") }
+
+      it "re-raises so callers still see the failure" do
+        expect { observer.observe("chat-completion", **default_args) { raise error } }
+          .to raise_error(error)
+      end
+
+      it "marks the observation as an error with the exception detail" do
+        expect(fake_generation).to receive(:update).with(
+          level: "ERROR",
+          status_message: "StandardError: boom"
+        )
+
+        suppress_error { observer.observe("chat-completion", **default_args) { raise error } }
+      end
+
+      it "truncates a status message that would bloat the observation" do
+        expect(fake_generation).to receive(:update) do |attrs|
+          expect(attrs[:status_message].length).to eq(described_class::MAX_STATUS_MESSAGE_LENGTH)
+        end
+
+        suppress_error do
+          observer.observe("chat-completion", **default_args) { raise StandardError, "x" * 5000 }
+        end
+      end
+
+      it "records the gateway call ID from the error response headers" do
+        api_error = StandardError.new("bad request")
+        allow(api_error).to receive(:headers).and_return("x-litellm-call-id" => "call-abc-123")
+
+        expect(fake_generation).to receive(:metadata=).with({ litellm_call_id: "call-abc-123" })
+
+        suppress_error { observer.observe("chat-completion", **default_args) { raise api_error } }
+      end
+
+      it "records no call ID when the error carries no response headers" do
+        expect(fake_generation).not_to receive(:metadata=)
+
+        suppress_error { observer.observe("chat-completion", **default_args) { raise error } }
+      end
+
+      it "still records the input that was sent" do
+        expect(fake_generation).to receive(:input=).with("the prompt")
+
+        suppress_error do
+          observer.observe("chat-completion", **default_args, input: "the prompt") { raise error }
+        end
+      end
+    end
+
+    describe "session and tag propagation" do
+      it "forwards session_id and tags when the caller sets them" do
+        expect(Langfuse).to receive(:propagate_attributes).with(
+          user_id: "global-user-123",
+          metadata: {},
+          session_id: "deploy-42",
+          tags: ["deployment-failure-analyzer"]
+        ).and_yield
+
+        observer.observe(
+          "chat-completion",
+          **default_args,
+          parameters: { model: "gpt-4", metadata: {}, session_id: "deploy-42",
+                        tags: ["deployment-failure-analyzer"] }
+        ) { ["result", nil] }
+      end
+
+      it "omits them entirely when the caller sets neither" do
+        expect(Langfuse).to receive(:propagate_attributes).with(
+          user_id: "global-user-123",
+          metadata: {}
+        ).and_yield
+
+        observer.observe("chat-completion", **default_args) { ["result", nil] }
+      end
+
+      it "prefers a caller-supplied user_id over the global one" do
+        expect(Langfuse).to receive(:propagate_attributes).with(
+          hash_including(user_id: "caller-user")
+        ).and_yield
+
+        observer.observe(
+          "chat-completion",
+          **default_args,
+          parameters: { model: "gpt-4", metadata: {}, user_id: "caller-user" }
+        ) { ["result", nil] }
+      end
+    end
+  end
+
+  def suppress_error
+    yield
+  rescue
+    nil
   end
 end
