@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Record an observation's `input` before the request runs, so a request that raises still shows what was sent. Image generation is excluded: its input carries base64 payloads that are only replaced with media references on success (#66)
+- Mark a failed observation with `level: "ERROR"` and a `status_message` carrying the exception class and message, and record the inference gateway's `x-litellm-call-id` from the error response as observation metadata. Previously a request that raised left an observation carrying only its name, requested model and metadata, with no indication anything had gone wrong. The exception is still re-raised, so caller behaviour is unchanged (#66)
+- Send the observation's trace ID to the inference gateway as `x-litellm-trace-id`, so a trace can be matched to a gateway request even when the request fails and never produces a response body. Sent only on the observed path: the trace ID comes from the observation being recorded, never from whatever tracing context happens to be active, so a client built without an `observability_project_slug` sends none even inside an instrumented host (#66)
+- Send `metadata` to the inference gateway as `x-litellm-spend-logs-metadata`, so gateway spend can be attributed to the work that caused it. Sent whenever metadata is set, observed or not, and omitted above 4KB to stay within proxy header limits (#66)
+- `session_id` and `tags` parameters, forwarded to the observability platform when set (#66)
+
 ## [2.2.0] - 2026-08-13
 
 ### Added
