@@ -352,9 +352,7 @@ Every observed request is correlated across three systems automatically:
 
 * **Observability platform → inference gateway.** The trace ID is sent to the
   gateway as `x-litellm-trace-id`, and `metadata` is sent as
-  `x-litellm-spend-logs-metadata` (dropped if it exceeds 4KB). W3C trace context
-  is propagated as `traceparent`, so the gateway nests its own spans under the
-  trace when it has OpenTelemetry enabled.
+  `x-litellm-spend-logs-metadata` (dropped if it exceeds 4KB).
 
   These headers are sent only on the observed path. A client built without an
   `observability_project_slug` sends none of them, and that holds even inside a

@@ -69,9 +69,10 @@ module NitroIntelligence
               upload_queue: Queue.new([NitroIntelligence::Audio.new(audio_file)])
             )
 
+            # The model and input are already recorded on the observation before the
+            # request runs, and the response carries no model of its own
+            # (OpenAI::Models::Audio::Transcription), so neither is set again here.
             trace_attributes = {
-              model: parameters[:model], # Model isn't in response object OpenAI::Models::Audio::Transcription
-              input: message,
               output: audio_transcription.text,
               usage_details: {
                 input_tokens: audio_transcription.usage.input_tokens,

@@ -96,58 +96,6 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
         expect(handler.send(:add_correlation_headers, parameters, trace_id: nil)).to be(parameters)
         expect(parameters).to eq({})
       end
-
-      it "adds nothing even inside an unrelated instrumented span" do
-        parameters = {}
-
-        in_span("abcdef0123456789abcdef0123456789") do
-          handler.send(:add_correlation_headers, parameters, trace_id: nil)
-        end
-
-        expect(parameters).to eq({})
-      end
     end
-
-    describe "W3C trace context propagation" do
-      it "propagates context when the active span is the one being correlated" do
-        parameters = {}
-
-        in_span(trace_id) { handler.send(:add_correlation_headers, parameters, trace_id:) }
-
-        expect(parameters.dig(:request_options, :extra_headers, "traceparent")).to include(trace_id)
-      end
-
-      it "propagates nothing when the active span belongs to a different trace" do
-        parameters = {}
-
-        in_span("99999999999999999999999999999999") do
-          handler.send(:add_correlation_headers, parameters, trace_id:)
-        end
-
-        headers = parameters[:request_options][:extra_headers]
-        expect(headers).not_to have_key("traceparent")
-        expect(headers["x-litellm-trace-id"]).to eq(trace_id)
-      end
-
-      it "propagates nothing when there is no active span" do
-        parameters = {}
-
-        handler.send(:add_correlation_headers, parameters, trace_id:)
-
-        expect(parameters[:request_options][:extra_headers]).not_to have_key("traceparent")
-      end
-    end
-  end
-
-  # NitroIntelligence::LangfuseTracerProvider installs this propagator at boot.
-  def in_span(hex_trace_id, &block)
-    OpenTelemetry.propagation = OpenTelemetry::Trace::Propagation::TraceContext::TextMapPropagator.new
-
-    span_context = OpenTelemetry::Trace::SpanContext.new(
-      trace_id: [hex_trace_id].pack("H*"),
-      span_id: ["0123456789abcdef"].pack("H*")
-    )
-    span = OpenTelemetry::Trace.non_recording_span(span_context)
-    OpenTelemetry::Context.with_current(OpenTelemetry::Trace.context_with_span(span), &block)
   end
 end

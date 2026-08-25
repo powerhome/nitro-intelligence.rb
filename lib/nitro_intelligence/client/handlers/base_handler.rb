@@ -1,5 +1,4 @@
 require "json"
-require "opentelemetry"
 
 module NitroIntelligence
   module Client
@@ -35,29 +34,17 @@ module NitroIntelligence
         # response body.
         #
         # The trace ID is passed in by the observed handlers rather than read from
-        # the ambient OpenTelemetry span: a host application with its own
-        # instrumentation has spans of its own, and their trace IDs mean nothing to
+        # whatever tracing context happens to be active: a host application with its
+        # own instrumentation has traces of its own, and their IDs mean nothing to
         # the observability platform. Callers who supply none - every caller of the
         # unobserved client - send no correlation headers at all.
         def add_correlation_headers(parameters, trace_id:)
           return parameters if trace_id.blank?
 
           headers = { TRACE_ID_HEADER => trace_id }
-          inject_trace_context(headers, trace_id)
           headers[SPEND_LOGS_METADATA_HEADER] = spend_logs_metadata(parameters[:metadata])
 
           add_request_headers(parameters, headers)
-        end
-
-        # Propagates W3C trace context so the gateway nests its own spans under
-        # ours when it has OpenTelemetry enabled. Only when the active span really
-        # is the one being correlated, so the traceparent can never describe a
-        # different trace than the header above it.
-        def inject_trace_context(headers, trace_id)
-          span_context = OpenTelemetry::Trace.current_span.context
-          return unless span_context.valid? && span_context.hex_trace_id == trace_id
-
-          OpenTelemetry.propagation.inject(headers)
         end
 
         def spend_logs_metadata(metadata)
