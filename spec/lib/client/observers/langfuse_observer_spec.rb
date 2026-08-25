@@ -235,6 +235,26 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
         suppress_error { observer.observe("chat-completion", **default_args) { raise api_error } }
       end
 
+      # `generation.metadata =` reads like a replacement, and the failure path would be
+      # broken if it were one: an error carrying x-litellm-call-id would drop the
+      # rails_request_id and job_id that make the observation findable from the logs.
+      # It is not a replacement - langfuse-rb flattens each key into its own OTel span
+      # attribute - but that is a guarantee of the SDK rather than of this code, so it
+      # is pinned here.
+      it "adds the call ID alongside existing metadata rather than replacing it" do
+        existing = Langfuse::OtelAttributes.create_observation_attributes(
+          "generation", { metadata: { rails_request_id: "req-1", job_id: "job-1" } }
+        )
+        added = Langfuse::OtelAttributes.create_observation_attributes(
+          "generation", { metadata: { litellm_call_id: "call-abc-123" } }
+        )
+
+        metadata_keys = ->(attributes) { attributes.keys.grep(/\Alangfuse\.observation\.metadata\./) }
+
+        expect(metadata_keys.call(added)).to eq(["langfuse.observation.metadata.litellm_call_id"])
+        expect(metadata_keys.call(existing) & metadata_keys.call(added)).to be_empty
+      end
+
       it "records no call ID when the error carries no response headers" do
         expect(fake_generation).not_to receive(:metadata=)
 
