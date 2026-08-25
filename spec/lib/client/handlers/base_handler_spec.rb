@@ -90,11 +90,28 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
     end
 
     context "when no trace ID is supplied (the unobserved client)" do
-      it "adds no correlation headers" do
+      it "sends no trace ID" do
+        parameters = { metadata: { source: "MyJob" } }
+
+        handler.send(:add_correlation_headers, parameters, trace_id: nil)
+
+        expect(parameters[:request_options][:extra_headers]).not_to have_key("x-litellm-trace-id")
+      end
+
+      it "still attributes gateway spend, which does not depend on anything observing" do
+        parameters = { metadata: { source: "MyJob" } }
+
+        handler.send(:add_correlation_headers, parameters, trace_id: nil)
+
+        expect(parameters.dig(:request_options, :extra_headers, "x-litellm-spend-logs-metadata"))
+          .to eq('{"source":"MyJob"}')
+      end
+
+      it "adds nothing at all when there is no metadata either" do
         parameters = {}
 
         expect(handler.send(:add_correlation_headers, parameters, trace_id: nil)).to be(parameters)
-        expect(parameters).to eq({})
+        expect(parameters[:request_options][:extra_headers]).to eq({})
       end
     end
   end

@@ -28,23 +28,26 @@ module NitroIntelligence
           parameters
         end
 
-        # Hands the inference gateway the trace ID the observability platform is
-        # recording this request under, so a Langfuse trace can be matched to a
-        # LiteLLM request even when the request fails and never produces a
-        # response body.
+        # Hands the inference gateway what it needs to be matched up with the rest of
+        # the picture: the trace ID the observability platform is recording this
+        # request under, so a Langfuse trace can be found from a LiteLLM request even
+        # when the request fails and never produces a response body, and the caller's
+        # metadata, so gateway spend can be attributed to the work that caused it.
         #
-        # The trace ID is passed in by the observed handlers rather than read from
-        # whatever tracing context happens to be active: a host application with its
-        # own instrumentation has traces of its own, and their IDs mean nothing to
-        # the observability platform. Callers who supply none - every caller of the
-        # unobserved client - send no correlation headers at all.
+        # The two are independent. Metadata is worth sending whether or not anything
+        # is observing, whereas the trace ID is supplied by the observed handlers and
+        # is never read from whatever tracing context happens to be active: a host
+        # application with its own instrumentation has traces of its own, and their
+        # IDs mean nothing to the observability platform.
+        #
+        # add_request_headers drops nil values, so each header appears only when it
+        # has something to say.
         def add_correlation_headers(parameters, trace_id:)
-          return parameters if trace_id.blank?
-
-          headers = { TRACE_ID_HEADER => trace_id }
-          headers[SPEND_LOGS_METADATA_HEADER] = spend_logs_metadata(parameters[:metadata])
-
-          add_request_headers(parameters, headers)
+          add_request_headers(
+            parameters,
+            TRACE_ID_HEADER => trace_id.presence,
+            SPEND_LOGS_METADATA_HEADER => spend_logs_metadata(parameters[:metadata])
+          )
         end
 
         def spend_logs_metadata(metadata)
