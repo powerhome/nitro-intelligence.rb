@@ -41,4 +41,78 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
       expect(handler.send(:add_request_headers, parameters, "a" => "b")).to be(parameters)
     end
   end
+
+  describe "#add_correlation_headers" do
+    let(:trace_id) { "abcdef0123456789abcdef0123456789" }
+
+    it "sends the supplied trace ID to the inference gateway" do
+      parameters = {}
+
+      handler.send(:add_correlation_headers, parameters, trace_id:)
+
+      expect(parameters.dig(:request_options, :extra_headers, "x-litellm-trace-id")).to eq(trace_id)
+    end
+
+    it "sends metadata to the gateway spend logs" do
+      parameters = { metadata: { source: "MyJob", rails_request_id: "req-1" } }
+
+      handler.send(:add_correlation_headers, parameters, trace_id:)
+
+      expect(parameters.dig(:request_options, :extra_headers, "x-litellm-spend-logs-metadata"))
+        .to eq('{"source":"MyJob","rails_request_id":"req-1"}')
+    end
+
+    it "omits the metadata header when there is no metadata" do
+      parameters = { metadata: {} }
+
+      handler.send(:add_correlation_headers, parameters, trace_id:)
+
+      expect(parameters[:request_options][:extra_headers]).not_to have_key("x-litellm-spend-logs-metadata")
+    end
+
+    it "omits metadata that would exceed the header size limit" do
+      allow(NitroIntelligence).to receive(:logger).and_return(double("Logger", warn: nil))
+      parameters = { metadata: { blob: "x" * 5000 } }
+
+      handler.send(:add_correlation_headers, parameters, trace_id:)
+
+      expect(parameters[:request_options][:extra_headers]).not_to have_key("x-litellm-spend-logs-metadata")
+      expect(parameters.dig(:request_options, :extra_headers, "x-litellm-trace-id")).to eq(trace_id)
+    end
+
+    it "preserves headers added by the caller" do
+      parameters = {}
+      handler.send(:add_request_headers, parameters, "nip-modality" => "image")
+
+      handler.send(:add_correlation_headers, parameters, trace_id:)
+
+      expect(parameters.dig(:request_options, :extra_headers, "nip-modality")).to eq("image")
+    end
+
+    context "when no trace ID is supplied (the unobserved client)" do
+      it "sends no trace ID" do
+        parameters = { metadata: { source: "MyJob" } }
+
+        handler.send(:add_correlation_headers, parameters, trace_id: nil)
+
+        expect(parameters[:request_options][:extra_headers]).not_to have_key("x-litellm-trace-id")
+      end
+
+      it "still attributes gateway spend, which does not depend on anything observing" do
+        parameters = { metadata: { source: "MyJob" } }
+
+        handler.send(:add_correlation_headers, parameters, trace_id: nil)
+
+        expect(parameters.dig(:request_options, :extra_headers, "x-litellm-spend-logs-metadata"))
+          .to eq('{"source":"MyJob"}')
+      end
+
+      it "adds nothing at all when there is no metadata either" do
+        parameters = {}
+
+        expect(handler.send(:add_correlation_headers, parameters, trace_id: nil)).to be(parameters)
+        expect(parameters[:request_options][:extra_headers]).to eq({})
+      end
+    end
+  end
 end

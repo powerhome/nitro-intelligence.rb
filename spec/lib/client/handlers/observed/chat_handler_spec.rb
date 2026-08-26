@@ -12,6 +12,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
   let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
   let(:fake_observer) { double("LangfuseObserver", project_client: fake_project_client) }
+  let(:fake_generation) { double("Generation", trace_id: "abcdef0123456789abcdef0123456789") }
 
   let(:handler) { described_class.new(base_handler:, observer: fake_observer) }
 
@@ -36,8 +37,9 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
         type: :generation,
         parameters: instance_of(Hash),
         trace_name: "test-project",
-        prompt: nil
-      ).and_yield(double("Generation"))
+        prompt: nil,
+        input: [{ role: "user", content: "hello" }]
+      ).and_yield(fake_generation)
 
       expect(fake_completions).to receive(:create).and_return(fake_completion_response)
 
@@ -55,8 +57,9 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
           type: :generation,
           parameters: hash_including(metadata: { custom_key: "custom_value" }),
           trace_name: "test-project",
-          prompt: nil
-        ).and_yield(double("Generation"))
+          prompt: nil,
+          input: [{ role: "user", content: "hello" }]
+        ).and_yield(fake_generation)
 
         expect(fake_completions).to receive(:create).and_return(fake_completion_response)
 
@@ -76,7 +79,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
         expect(fake_observer).to receive(:observe).with(
           anything,
           hash_including(trace_name: "test-prompt", prompt: fake_prompt)
-        ).and_yield(double)
+        ).and_yield(fake_generation)
 
         expect(fake_completions).to receive(:create).with(
           hash_including(messages: [{ role: "user", content: "interpolated hello" }], temperature: 0.8)
@@ -101,7 +104,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
         expect(fake_observer).to receive(:observe).with(
           anything,
           hash_including(trace_name: "base-prompt", prompt: base_prompt)
-        ).and_yield(double)
+        ).and_yield(fake_generation)
         expect(fake_completions).to receive(:create).with(
           hash_including(temperature: 0.5)
         ).and_return(fake_completion_response)
@@ -119,7 +122,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
       it "stamps nip-requested-model with the final prompt model, not the pre-prompt default" do
         allow(fake_prompt_store).to receive(:get_prompt).and_return(fake_prompt)
         allow(fake_prompt).to receive(:interpolate).and_return([{ role: "user", content: "hi" }])
-        allow(fake_observer).to receive(:observe).and_yield(double)
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
 
         expect(fake_completions).to receive(:create) do |kwargs|
           expect(kwargs[:model]).to eq("prompt-model")

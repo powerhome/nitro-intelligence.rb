@@ -26,7 +26,8 @@ module NitroIntelligence
               type: :generation,
               parameters:,
               trace_name:,
-              prompt:
+              prompt:,
+              input: message
             ) do |generation|
               workflow(generation:, message:, audio_file:, parameters:)
             end
@@ -55,7 +56,9 @@ module NitroIntelligence
           end
 
           def workflow(generation:, message:, audio_file:, parameters:)
-            audio_transcription = @base_handler.perform_request(audio_file:, message:, parameters:)
+            audio_transcription = @base_handler.perform_request(
+              audio_file:, message:, parameters:, correlation_trace_id: generation.trace_id
+            )
 
             audio_file.rewind
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(
@@ -66,9 +69,10 @@ module NitroIntelligence
               upload_queue: Queue.new([NitroIntelligence::Audio.new(audio_file)])
             )
 
+            # The model and input are already recorded on the observation before the
+            # request runs, and the response carries no model of its own
+            # (OpenAI::Models::Audio::Transcription), so neither is set again here.
             trace_attributes = {
-              model: parameters[:model], # Model isn't in response object OpenAI::Models::Audio::Transcription
-              input: message,
               output: audio_transcription.text,
               usage_details: {
                 input_tokens: audio_transcription.usage.input_tokens,

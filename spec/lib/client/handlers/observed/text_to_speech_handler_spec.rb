@@ -49,7 +49,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
     it "observes the request, uploads the audio, and builds trace attributes" do
       expect(fake_observer).to receive(:observe).with(
         "text-to-speech",
-        hash_including(type: :generation, trace_name: "test-project", prompt: nil)
+        hash_including(type: :generation, trace_name: "test-project", prompt: nil, input: "say hi")
       ).and_yield(fake_generation)
 
       expect(fake_speech).to receive(:create).with(
@@ -61,9 +61,10 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
       tts, trace_attributes = handler.create(message: "say hi")
 
       expect(tts).to eq(fake_tts_response)
-      expect(trace_attributes[:model]).to eq("tts-1")
-      expect(trace_attributes[:input]).to eq("say hi")
       expect(trace_attributes[:output]).to eq("@@@langfuseMedia:type=audio/mp3|id=media-321|source=bytes@@@")
+      # The requested model and the input are set on the observation before the
+      # request runs, so they are deliberately not repeated here.
+      expect(trace_attributes.keys).to eq([:output])
     end
 
     context "with a custom trace_name" do

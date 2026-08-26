@@ -19,8 +19,9 @@ module NitroIntelligence
           image_generation
         end
 
-        def perform_request(parameters: {})
+        def perform_request(parameters: {}, correlation_trace_id: nil)
           add_request_headers(parameters, MODALITY_HEADER => "image", REQUESTED_MODEL_HEADER => parameters[:model])
+          add_correlation_headers(parameters, trace_id: correlation_trace_id)
           @client.chat.completions.create(**parameters.slice(*ALLOWED_EXTRA_PARAMETERS))
         end
 

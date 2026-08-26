@@ -2,16 +2,23 @@ module NitroIntelligence
   module Client
     module Observers
       class LangfuseObserver
+        # The inference gateway returns its own request identifier on every
+        # response, including error responses. Recording it on the observation is
+        # the only way to line a failed generation up with the gateway's logs.
+        # See https://docs.litellm.ai/docs/proxy/response_headers
+        LITELLM_CALL_ID_HEADER = "x-litellm-call-id".freeze
+
+        MAX_STATUS_MESSAGE_LENGTH = 2000
+
         attr_reader :project_client
 
         def initialize(project_client:)
           @project_client = project_client
         end
 
-        def observe(operation_name, type:, parameters:, trace_name:, prompt: nil) # rubocop:disable Metrics/AbcSize, Metrics/MethodLength
+        def observe(operation_name, type:, parameters:, trace_name:, prompt: nil, input: nil) # rubocop:disable Metrics/AbcSize
           metadata = parameters[:metadata]
           seed = parameters[:trace_seed]
-          user_id = parameters[:user_id] || NitroIntelligence.configuration.observability_user_id
           trace_id = NitroIntelligence::Trace.create_id(seed:) if seed.present?
 
           if prompt
@@ -21,10 +28,7 @@ module NitroIntelligence
 
           metadata = metadata.transform_values(&:to_s)
 
-          Langfuse.propagate_attributes(
-            user_id:,
-            metadata:
-          ) do
+          Langfuse.propagate_attributes(**propagated_attributes(parameters, metadata)) do
             @project_client.observability_client.observe(
               operation_name,
               as_type: type,
@@ -35,8 +39,9 @@ module NitroIntelligence
             ) do |generation|
               generation.update_trace(name: trace_name, release: NitroIntelligence.configuration.current_revision)
               generation.update({ prompt: { name: prompt.name, version: prompt.version } }) if prompt
+              record_input(generation, input)
 
-              result, trace_attributes = yield(generation)
+              result, trace_attributes = observe_failures(generation) { yield(generation) }
 
               if trace_attributes
                 handle_truncation(trace_attributes[:input], trace_attributes[:output], trace_attributes[:model])
@@ -55,6 +60,56 @@ module NitroIntelligence
         end
 
       private
+
+        # Recorded before the request is made so that a request which raises still
+        # shows what was sent. Handlers whose input is not safe to record twice
+        # (image generation sends base64 payloads that are replaced with media
+        # references on success) pass no input and rely on the failure record alone.
+        def record_input(generation, input)
+          return if input.blank?
+
+          generation.input = input
+          generation.update_trace(input:)
+        end
+
+        # `session_id` and `tags` are only forwarded when set so that callers who
+        # pass neither keep the existing propagation payload.
+        def propagated_attributes(parameters, metadata)
+          attributes = {
+            user_id: parameters[:user_id] || NitroIntelligence.configuration.observability_user_id,
+            metadata:,
+          }
+          attributes[:session_id] = parameters[:session_id] if parameters[:session_id].present?
+          attributes[:tags] = parameters[:tags] if parameters[:tags].present?
+          attributes
+        end
+
+        # Without this, a request that raises leaves an observation carrying only
+        # its name and model - no input, no output, no indication anything went
+        # wrong - because langfuse-rb ends the span in an `ensure` and never
+        # records the exception.
+        def observe_failures(generation)
+          yield
+        rescue => e
+          record_failure(generation, e)
+          raise
+        end
+
+        def record_failure(generation, error)
+          generation.update(
+            level: "ERROR",
+            status_message: "#{error.class}: #{error.message}".truncate(MAX_STATUS_MESSAGE_LENGTH)
+          )
+
+          call_id = litellm_call_id(error)
+          generation.metadata = { litellm_call_id: call_id } if call_id
+        end
+
+        def litellm_call_id(error)
+          return nil unless error.respond_to?(:headers)
+
+          error.headers&.[](LITELLM_CALL_ID_HEADER)
+        end
 
         def handle_truncation(_input, output, model_name)
           model = NitroIntelligence.model_catalog.lookup_by_name(model_name)

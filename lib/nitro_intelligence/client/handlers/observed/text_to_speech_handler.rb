@@ -25,7 +25,8 @@ module NitroIntelligence
               type: :generation,
               parameters:,
               trace_name:,
-              prompt:
+              prompt:,
+              input: message
             ) do |generation|
               workflow(message:, parameters:, trace_id: generation.trace_id)
             end
@@ -67,7 +68,7 @@ module NitroIntelligence
           end
 
           def workflow(message:, parameters:, trace_id:)
-            tts = @base_handler.perform_request(message:, parameters:)
+            tts = @base_handler.perform_request(message:, parameters:, correlation_trace_id: trace_id)
             output = ""
 
             Tempfile.create(["tts", ".#{parameters[:response_format]}"]) do |tempfile|
@@ -78,12 +79,10 @@ module NitroIntelligence
               output = handle_text_to_speech_upload(tempfile, trace_id)
             end
 
-            # We only get StringIO object as a response
-            # We dont have usage on tokens and the actual model that was used
-            # We will log the requested model instead
+            # We only get StringIO object as a response, so there are no usage details
+            # and no resolved model to record. The requested model and the input are
+            # already on the observation from before the request ran.
             trace_attributes = {
-              model: parameters[:model],
-              input: message,
               output:,
             }
 

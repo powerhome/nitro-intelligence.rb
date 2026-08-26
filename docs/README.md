@@ -330,6 +330,72 @@ client.chat(
 )
 ```
 
+### Grouping Traces: Sessions and Tags
+
+`session_id` groups related traces in the observability platform, and `tags` label
+them for filtering. Both are optional and are only sent when you set them.
+
+```ruby
+client = NitroIntelligence::Client.new(observability_project_slug: "fake-feature-project")
+client.chat(
+  message: "why did this deploy fail?",
+  parameters: {
+    session_id: "deploy-9f2c1ab",
+    tags: ["deployment-failure-analyzer"],
+  }
+)
+```
+
+### Correlating With Application Logs and the Inference Gateway
+
+Every observed request is correlated across three systems automatically:
+
+* **Observability platform → inference gateway.** The trace ID is sent to the
+  gateway as `x-litellm-trace-id`, and `metadata` is sent as
+  `x-litellm-spend-logs-metadata` (dropped if it exceeds 4KB).
+
+  The two are independent. Metadata is sent whenever you set it, observed or not,
+  so gateway spend can be attributed even without observability. The trace ID is
+  sent only on the observed path - it comes from the observation being recorded,
+  never from whatever span happens to be active, so a client built without an
+  `observability_project_slug` sends none even inside a host application with its
+  own OpenTelemetry instrumentation.
+* **Inference gateway → observability platform.** When a request fails, the
+  gateway's own request identifier is read from the error response and recorded on
+  the observation as `litellm_call_id` metadata.
+* **Application logs → observability platform.** Put whatever your logs are keyed
+  by into `metadata` — it lands on the trace *and* in the gateway's spend logs.
+
+```ruby
+client.chat(
+  message: "why did this deploy fail?",
+  parameters: {
+    trace_seed: deploy_url,
+    metadata: {
+      source: self.class,
+      rails_request_id: request_id,
+      job_id: job_id,
+    },
+  }
+)
+```
+
+To log the trace ID from application code, derive it from the same seed with
+`NitroIntelligence::Trace.create_id(seed:)`.
+
+#### Failed Requests
+
+A request that raises still produces a usable trace. The observation records:
+
+* the `input` that was sent (recorded before the request runs)
+* `level: "ERROR"` and a `status_message` carrying the exception class and message
+* `litellm_call_id` metadata when the gateway returned one
+
+The exception is then re-raised, so this changes what is observed, not how callers
+handle failures. Image generation is the one exception to input recording: its
+input carries base64 payloads that are replaced with media references only on
+success, so it records no input up front.
+
 ### Scoring
 
 You can use `NitroIntelligence::Reporter` to evaluate existing traces. Calling `NitroIntelligence::Reporter#score` lets you attach metrics to a trace in the observability platform.

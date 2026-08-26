@@ -21,9 +21,10 @@ module NitroIntelligence
               type: :generation,
               parameters:,
               trace_name:,
-              prompt:
-            ) do |_generation|
-              workflow(parameters:)
+              prompt:,
+              input: parameters[:messages]
+            ) do |generation|
+              workflow(generation:, parameters:)
             end
           end
 
@@ -46,14 +47,12 @@ module NitroIntelligence
             prompt
           end
 
-          def workflow(parameters:)
-            chat_completion = @base_handler.perform_request(parameters:)
-            input = parameters[:messages]
+          def workflow(generation:, parameters:)
+            chat_completion = @base_handler.perform_request(parameters:, correlation_trace_id: generation.trace_id)
             output = chat_completion.choices.first.message.to_h
 
             trace_attributes = {
               model: chat_completion.model,
-              input:,
               output:,
               usage_details: {
                 prompt_tokens: chat_completion.usage.prompt_tokens,
