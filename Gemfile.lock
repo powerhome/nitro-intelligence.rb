@@ -167,7 +167,7 @@ GEM
       lint_roller (~> 1.1)
       rubocop (>= 1.75.0, < 2.0)
       rubocop-ast (>= 1.47.1, < 2.0)
-    rubocop-powerhome (0.6.1)
+    rubocop-powerhome (0.7.0)
       rubocop (= 1.82.1)
       rubocop-performance
       rubocop-rails
@@ -226,7 +226,7 @@ DEPENDENCIES
   license_finder (= 7.2.1)
   nitro_intelligence!
   rspec (= 3.13.2)
-  rubocop-powerhome (= 0.6.1)
+  rubocop-powerhome (= 0.7.0)
   webmock (= 3.26.3)
 
 BUNDLED WITH
