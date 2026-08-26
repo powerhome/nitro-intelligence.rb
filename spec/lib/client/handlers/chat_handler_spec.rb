@@ -62,6 +62,17 @@ RSpec.describe NitroIntelligence::Client::Handlers::ChatHandler do
       handler.create(message: "hi", parameters: { model: "custom-model" })
     end
 
+    it "sends the gateway tags the observed layer supplied, and keeps them out of the request body" do
+      expect(fake_completions).to receive(:create) do |kwargs|
+        expect(kwargs.dig(:request_options, :extra_headers, "x-litellm-tags"))
+          .to eq("cerebro_observability_project_id:proj-1")
+        expect(kwargs).not_to have_key(:gateway_tags)
+      end
+
+      handler.perform_request(parameters: { model: "custom-model",
+                                            gateway_tags: ["cerebro_observability_project_id:proj-1"] })
+    end
+
     it "stamps nip-requested-model from the model at request time (survives a later override)" do
       parameters = {}
       handler.validate_and_resolve!(parameters, "hi")

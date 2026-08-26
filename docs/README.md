@@ -351,15 +351,17 @@ client.chat(
 Every observed request is correlated across three systems automatically:
 
 * **Observability platform → inference gateway.** The trace ID is sent to the
-  gateway as `x-litellm-trace-id`, and `metadata` is sent as
-  `x-litellm-spend-logs-metadata` (dropped if it exceeds 4KB).
+  gateway as `x-litellm-trace-id`, `metadata` is sent as
+  `x-litellm-spend-logs-metadata` (dropped if it exceeds 4KB), and the feature
+  behind the request is sent as `x-litellm-tags` (see
+  [Searching Gateway Logs By Feature](#searching-gateway-logs-by-feature)).
 
-  The two are independent. Metadata is sent whenever you set it, observed or not,
-  so gateway spend can be attributed even without observability. The trace ID is
-  sent only on the observed path - it comes from the observation being recorded,
-  never from whatever span happens to be active, so a client built without an
-  `observability_project_slug` sends none even inside a host application with its
-  own OpenTelemetry instrumentation.
+  These are independent. Metadata is sent whenever you set it, observed or not,
+  so gateway spend can be attributed even without observability. The trace ID and
+  tags are sent only on the observed path - the trace ID comes from the
+  observation being recorded, never from whatever span happens to be active, so a
+  client built without an `observability_project_slug` sends neither, even inside
+  a host application with its own OpenTelemetry instrumentation.
 * **Inference gateway → observability platform.** When a request fails, the
   gateway's own request identifier is read from the error response and recorded on
   the observation as `litellm_call_id` metadata.
@@ -382,6 +384,48 @@ client.chat(
 
 To log the trace ID from application code, derive it from the same seed with
 `NitroIntelligence::Trace.create_id(seed:)`.
+
+#### Searching Gateway Logs By Feature
+
+Observed requests carry [LiteLLM custom
+tags](https://docs.litellm.ai/docs/proxy/cost_tracking#custom-tags), which the
+gateway aggregates spend and usage by. They are set for you - there is no
+parameter to pass:
+
+| Tag                                  | Value                                                           |
+| ------------------------------------ | --------------------------------------------------------------- |
+| `cerebro_observability_project_id`   | `id` of the observability project the client was built for      |
+| `cerebro_prompt_name`                | name of the managed prompt behind the request, if there was one |
+| `cerebro_prompt_version`             | version of that prompt                                          |
+
+Name and version are separate tags because the observability platform mints no id
+of its own for a prompt - a prompt is identified by the two together. Tagging them
+separately lets you follow one prompt across every version it has had, or pin a
+cost change to the version that caused it.
+
+A commonly-tagged request looks like this on the wire:
+
+```
+x-litellm-tags: cerebro_observability_project_id:cmb1x2y3z,cerebro_prompt_name:deploy-failure-analysis,cerebro_prompt_version:4
+```
+
+Tags land in `LiteLLM_SpendLogs.request_tags`, which is what `/spend/tags`,
+`/spend/all_tag_names` and `/tag/daily/activity?tags=...` query, and what the UI's
+tag usage view is built on. Note that they group and aggregate - the log list
+itself (`/spend/logs/v2`, `/spend/logs/ui`) takes no tag filter, so pulling
+one feature's individual requests means fetching a date range and filtering on the
+`request_tags` each row carries.
+
+An unobserved client - one built without an `observability_project_slug` - has no
+project and resolves no prompts, so it sends no tags. Tags are unrelated to the
+`tags` parameter, which sets tags on the observability trace and is never sent to
+the gateway.
+
+> The gateway reads `x-litellm-tags` for [tag-based
+> routing](https://docs.litellm.ai/docs/proxy/tag_routing) as well as for spend
+> tracking. With `enable_tag_filtering` off, tags are recorded and ignored for
+> routing. Turning it on makes these tags route, and every deployment meant to
+> serve them then needs a matching tag or `tags: ["default"]`.
 
 #### Failed Requests
 

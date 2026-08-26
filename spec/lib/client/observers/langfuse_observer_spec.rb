@@ -3,7 +3,10 @@ require "nitro_intelligence/client/observers/langfuse_observer"
 
 RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
   let(:fake_observability_client) { double("ObservabilityClient") }
-  let(:fake_project_client) { double("ProjectClient", observability_client: fake_observability_client) }
+  let(:fake_project) { double("Project", id: "project-abc") }
+  let(:fake_project_client) do
+    double("ProjectClient", observability_client: fake_observability_client, project: fake_project)
+  end
   let(:observer) { described_class.new(project_client: fake_project_client) }
 
   let(:fake_generation) do
@@ -305,6 +308,54 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
           "chat-completion",
           **default_args,
           parameters: { model: "gpt-4", metadata: {}, user_id: "caller-user" }
+        ) { ["result", nil] }
+      end
+    end
+
+    describe "gateway tags" do
+      it "tags the request with the observability project so gateway logs can be searched by feature" do
+        parameters = { model: "gpt-4", metadata: {} }
+
+        observer.observe("chat-completion", **default_args, parameters:) { ["result", nil] }
+
+        expect(parameters[:gateway_tags]).to eq(["cerebro_observability_project_id:project-abc"])
+      end
+
+      it "tags the prompt behind the request by name and version" do
+        parameters = { model: "gpt-4", metadata: {} }
+        prompt = double("Prompt", name: "onboarding-prompt", version: 3)
+
+        observer.observe("chat-completion", **default_args, parameters:, prompt:) { ["result", nil] }
+
+        expect(parameters[:gateway_tags]).to eq(
+          [
+            "cerebro_observability_project_id:project-abc",
+            "cerebro_prompt_name:onboarding-prompt",
+            "cerebro_prompt_version:3",
+          ]
+        )
+      end
+
+      it "tags before the request runs, so a request that raises is still attributed" do
+        parameters = { model: "gpt-4", metadata: {} }
+
+        suppress_error do
+          observer.observe("chat-completion", **default_args, parameters:) do
+            expect(parameters[:gateway_tags]).to include("cerebro_observability_project_id:project-abc")
+            raise StandardError, "boom"
+          end
+        end
+      end
+
+      it "keeps gateway tags out of the Langfuse trace tags the caller asked for" do
+        expect(Langfuse).to receive(:propagate_attributes).with(
+          hash_including(tags: ["deployment-failure-analyzer"])
+        ).and_yield
+
+        observer.observe(
+          "chat-completion",
+          **default_args,
+          parameters: { model: "gpt-4", metadata: {}, tags: ["deployment-failure-analyzer"] }
         ) { ["result", nil] }
       end
     end
