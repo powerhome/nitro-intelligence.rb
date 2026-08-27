@@ -73,8 +73,14 @@ RSpec.describe NitroIntelligence do
     end
 
     describe "NitroIntelligence::AgentServer" do
-      it "resolves to NitroIntelligence::Assistants" do
-        expect(NitroIntelligence::AgentServer).to eq(NitroIntelligence::Assistants)
+      it "resolves to NitroIntelligence::Assistants itself" do
+        expect(NitroIntelligence::AgentServer).to be(NitroIntelligence::Assistants)
+      end
+
+      it "still matches an Assistants instance, so type checks survive the rename" do
+        assistants = NitroIntelligence::Assistants.new(base_url:, api_key:)
+
+        expect(assistants).to be_a(NitroIntelligence::AgentServer)
       end
 
       it "resolves the errors nested under NitroIntelligence::Assistants" do
@@ -82,10 +88,10 @@ RSpec.describe NitroIntelligence do
           .to be(NitroIntelligence::Assistants::ThreadResumptionError)
       end
 
-      it "warns when it is used" do
+      it "warns when it is referenced" do
         expect(NitroIntelligence.deprecator).to receive(:warn).at_least(:once)
 
-        NitroIntelligence::AgentServer::ThreadResumptionError
+        NitroIntelligence::AgentServer
       end
     end
 

@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 
-- `NitroIntelligence::AgentServer`, `NitroIntelligence.agent_server` and the `agent_server_config` setting. Each still works and warns through `NitroIntelligence.deprecator`; all three are removed in 3.0. A host that sets both `assistants_config` and `agent_server_config` gets `assistants_config`, so a stale legacy setting cannot override the one that replaced it
+- `NitroIntelligence::AgentServer`, `NitroIntelligence.agent_server` and the `agent_server_config` setting. Each still works and warns through `NitroIntelligence.deprecator`; all three are removed in 3.0. `NitroIntelligence::AgentServer` resolves to the `Assistants` class itself rather than to a stand-in for it, so `is_a?`, `===`, `rescue` and the nested error constants all keep working against the old name. A host that sets both `assistants_config` and `agent_server_config` gets `assistants_config`, so a stale legacy setting cannot override the one that replaced it
 
 ## [2.3.0] - 2026-08-26
 
