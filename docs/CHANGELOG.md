@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AgentServer#thread_state` and `AgentServer#thread_messages`: read a thread's state, or just its messages, as the agent server reports them. Consumers displaying an existing conversation no longer have to repeat the request, authentication, parsing and error handling the SDK already does. Both raise the new `AgentServer::ThreadStateError` when the state cannot be fetched; the error raised by the existing review flows is unchanged (#36)
+
 ## [2.3.0] - 2026-08-26
 
 ### Added

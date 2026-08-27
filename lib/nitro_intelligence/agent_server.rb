@@ -9,6 +9,7 @@ module NitroIntelligence
     class ThreadInitializationError < StandardError; end
     class RunError < StandardError; end
     class ThreadResumptionError < StandardError; end
+    class ThreadStateError < StandardError; end
 
     # Aegra answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
     THREAD_CONFLICT_CODE = 409
@@ -37,9 +38,21 @@ module NitroIntelligence
       trigger_run(thread_id:, assistant_id:, context:, last_message:)
     end
 
+    # The thread's state as the agent server reports it, unformatted. Callers that only want the
+    # conversation should reach for #thread_messages instead.
+    def thread_state(thread_id:)
+      get_thread_state(thread_id:, error: ThreadStateError)
+    end
+
+    # The thread's messages as the agent server reports them, unformatted, oldest first. Each message
+    # carries its own `type` ("human", "ai", "tool", ...), which callers map to their own roles.
+    def thread_messages(thread_id:)
+      messages_in(thread_state(thread_id:))
+    end
+
     def tool_calls_pending_review(thread_id:)
       thread_state = get_thread_state(thread_id:)
-      messages = thread_messages(thread_state)
+      messages = messages_in(thread_state)
       reviewed_tool_call_ids = tool_messages(messages).map { |message| message["tool_call_id"] }
 
       messages.each_with_index.flat_map do |message, index|
@@ -155,10 +168,12 @@ module NitroIntelligence
       response.code.to_i == THREAD_CONFLICT_CODE
     end
 
-    def get_thread_state(thread_id:)
+    # The review flows have always raised ThreadResumptionError when a state read fails, and consumers
+    # rescue it as such. A plain read resumes nothing, so #thread_state asks for ThreadStateError.
+    def get_thread_state(thread_id:, error: ThreadResumptionError)
       state_response = get(path: "/threads/#{thread_id}/state")
 
-      raise ThreadResumptionError, state_response.body if state_response.code.to_i != 200
+      raise error, state_response.body if state_response.code.to_i != 200
 
       JSON.parse(state_response.body)
     end
@@ -214,7 +229,7 @@ module NitroIntelligence
       thread_state.dig("interrupts", 0, "value", "context") || {}
     end
 
-    def thread_messages(thread_state)
+    def messages_in(thread_state)
       Array(thread_state.dig("values", "messages"))
     end
 

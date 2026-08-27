@@ -67,6 +67,77 @@ content = agent_server.await_run(
 
 Because `ifExists` is `raise`, Aegra answers with a `409` when the thread is already there. That is not treated as an error — it means the thread is already under way, so the seeding step is skipped and the run proceeds against the state the thread's earlier runs have built up. Seeding only ever happens once, when the thread is first created; a thread whose conversation consists of a single message has nothing to seed and skips step 3 as well.
 
+## `#thread_state`
+
+Returns a thread's state exactly as the agent server reports it, with no formatting applied.
+
+This is the general-purpose read: the response carries the conversation under `values.messages` alongside whatever else the agent server tracks for the thread, such as pending `interrupts`. Callers that only want the conversation should reach for [`#thread_messages`](#thread_messages) instead.
+
+Raises `ThreadStateError` when the thread state cannot be fetched, carrying the agent server's response body as the message. A thread that does not exist is one such case.
+
+### Usage example
+
+```ruby
+agent_server = NitroIntelligence.agent_server
+
+state = agent_server.thread_state(thread_id: "thread-456")
+```
+
+### Response example
+
+```json
+{
+  "values": {
+    "messages": [
+      {
+        "type": "human",
+        "id": "communication-1",
+        "content": "Hello"
+      },
+      {
+        "type": "ai",
+        "id": "ai-message-1",
+        "content": "Hi there!"
+      }
+    ]
+  },
+  "next": []
+}
+```
+
+## `#thread_messages`
+
+Returns a thread's messages exactly as the agent server reports them, oldest first, with no formatting applied.
+
+Each message carries its own `type` — `human`, `ai`, `tool` — which callers map onto the roles their own presentation uses. Returns an empty array for a thread whose state holds no messages.
+
+Raises `ThreadStateError` under the same conditions as [`#thread_state`](#thread_state).
+
+### Usage example
+
+```ruby
+agent_server = NitroIntelligence.agent_server
+
+messages = agent_server.thread_messages(thread_id: "thread-456")
+```
+
+### Response example
+
+```json
+[
+  {
+    "type": "human",
+    "id": "communication-1",
+    "content": "Hello"
+  },
+  {
+    "type": "ai",
+    "id": "ai-message-1",
+    "content": "Hi there!"
+  }
+]
+```
+
 ## `#tool_calls_pending_review`
 
 Returns all tool calls in a thread that are still waiting for human review.
