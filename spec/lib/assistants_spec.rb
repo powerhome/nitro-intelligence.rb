@@ -1167,6 +1167,143 @@ RSpec.describe NitroIntelligence::Assistants do
     end
   end
 
+  describe "#thread_state" do
+    let(:thread_id) { "thread-456" }
+    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    let(:thread_state) do
+      {
+        "values" => {
+          "messages" => [
+            {
+              "type" => "human",
+              "id" => "communication-1",
+              "content" => "Hello",
+            },
+            {
+              "type" => "ai",
+              "id" => "ai-message-1",
+              "content" => "Hi there!",
+            },
+          ],
+        },
+        "next" => [],
+      }
+    end
+
+    context "when the thread state is fetched successfully" do
+      before do
+        stub_request(:get, state_url)
+          .to_return(
+            status: 200,
+            body: thread_state.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "returns the thread state as reported by Assistants" do
+        expect(assistants.thread_state(thread_id:)).to eq(thread_state)
+      end
+
+      it "authenticates the request" do
+        assistants.thread_state(thread_id:)
+
+        expect(WebMock).to have_requested(:get, state_url)
+          .with(headers: { "Authorization" => "Bearer #{api_key}" })
+      end
+    end
+
+    context "when the thread state cannot be fetched" do
+      before do
+        stub_request(:get, state_url)
+          .to_return(
+            status: 404,
+            body: { "detail" => "Thread not found" }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "raises ThreadStateError carrying the response body" do
+        expect do
+          assistants.thread_state(thread_id:)
+        end.to raise_error(
+          NitroIntelligence::Assistants::ThreadStateError,
+          { "detail" => "Thread not found" }.to_json
+        )
+      end
+    end
+  end
+
+  describe "#thread_messages" do
+    let(:thread_id) { "thread-456" }
+    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    let(:messages) do
+      [
+        {
+          "type" => "human",
+          "id" => "communication-1",
+          "content" => "Hello",
+        },
+        {
+          "type" => "ai",
+          "id" => "ai-message-1",
+          "content" => "Hi there!",
+        },
+      ]
+    end
+
+    before do
+      stub_request(:get, state_url)
+        .to_return(
+          status: 200,
+          body: thread_state.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+    end
+
+    context "when the thread has messages" do
+      let(:thread_state) { { "values" => { "messages" => messages } } }
+
+      it "returns the messages as reported by Assistants" do
+        expect(assistants.thread_messages(thread_id:)).to eq(messages)
+      end
+    end
+
+    context "when the thread has no messages" do
+      let(:thread_state) { { "values" => {} } }
+
+      it "returns an empty array" do
+        expect(assistants.thread_messages(thread_id:)).to eq([])
+      end
+    end
+
+    context "when the thread has no state values" do
+      let(:thread_state) { {} }
+
+      it "returns an empty array" do
+        expect(assistants.thread_messages(thread_id:)).to eq([])
+      end
+    end
+
+    context "when the thread state cannot be fetched" do
+      let(:thread_state) { {} }
+
+      before do
+        stub_request(:get, state_url)
+          .to_return(
+            status: 500,
+            body: "boom",
+            headers: { "Content-Type" => "text/plain" }
+          )
+      end
+
+      it "raises ThreadStateError" do
+        expect do
+          assistants.thread_messages(thread_id:)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadStateError, "boom")
+      end
+    end
+  end
+
   describe "#tool_calls_pending_review" do
     let(:thread_id) { "thread-456" }
     let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }

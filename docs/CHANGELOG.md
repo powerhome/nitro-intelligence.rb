@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Assistants#thread_state` and `Assistants#thread_messages`: read a thread's state, or just its messages, as Assistants reports them. Consumers displaying an existing conversation no longer have to repeat the request, authentication, parsing and error handling the SDK already does. Both raise the new `Assistants::ThreadStateError` when the state cannot be fetched; the error raised by the existing review flows is unchanged (#36)
+
 ### Changed
 
 - The agent server is now Nitro Intelligence Assistants. `NitroIntelligence::AgentServer` is `NitroIntelligence::Assistants`, `NitroIntelligence.agent_server` is `NitroIntelligence.assistants`, and the `agent_server_config` setting is `assistants_config`. Documentation refers to the service by that name and defers to the [Nitro Intelligence Assistants documentation](https://portal.powerapp.cloud/docs/default/system/nip-assistants) rather than to the underlying Agent Protocol server
