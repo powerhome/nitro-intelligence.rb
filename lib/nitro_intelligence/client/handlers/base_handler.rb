@@ -56,10 +56,25 @@ module NitroIntelligence
 
         # Which requests are worth tagging is the observed layer's call - it is what
         # knows the observability project and the prompt behind a request - so this
-        # only decides how the tags travel. Unlike spend logs metadata, which the
-        # gateway stores but offers no way to query, tags are dimensions it
-        # aggregates spend and usage by.
+        # only decides how the tags travel.
+        #
+        # Tags serve whoever operates the gateway, not the feature teams calling this
+        # library: they read gateway spend, and feature teams read the observability
+        # platform. Nothing here is caller-facing, which is why no parameter exposes
+        # it and the README does not document it.
+        #
+        # Unlike spend logs metadata, which the gateway stores but offers no way to
+        # query, tags are dimensions it aggregates spend and usage by
+        # (`/spend/tags`, `/tag/daily/activity`). They aggregate rather than search:
+        # the spend log list takes no tag filter, so picking one feature's requests
+        # out means pulling a date range and filtering on each row's tags.
         # See https://docs.litellm.ai/docs/proxy/cost_tracking#custom-tags
+        #
+        # Note the gateway also reads this header for tag-based routing. That is off
+        # unless `enable_tag_filtering` is set, but were it ever enabled, a request
+        # whose tags match no deployment fails outright unless `allow_fail_open` is
+        # set or deployments carry `tags: ["default"]`.
+        # See https://docs.litellm.ai/docs/proxy/tag_routing
         def spend_tags(tags)
           return nil if tags.blank?
 
