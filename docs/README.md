@@ -31,8 +31,8 @@ NitroIntelligence.configure do |config|
     },
   ]
 
-  # Agent server settings (optional)
-  config.agent_server_config = {}                # Hash of AgentServer keyword arguments
+  # Nitro Intelligence Assistants settings (optional)
+  config.assistants_config = {}                  # Hash of Assistants keyword arguments
 
   # Model configuration
   config.model_config = {
@@ -80,7 +80,7 @@ end
 | `inference_base_url`     | `String`      | `""`                  | Base URL for the LLM inference service                                                                                                                                                                     |
 | `observability_base_url` | `String`      | `""`                  | Base URL for the Langfuse observability service                                                                                                                                                            |
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
-| `agent_server_config`    | `Hash`        | `{}`                  | Credentials for `AgentServer.new`. Expected keys: `base_url` (String) — HTTP base URL of the agent server; `api_key` (String) — bearer token; `user_id` (String, default: `"default-user"`) — caller identity |
+| `assistants_config`      | `Hash`        | `{}`                  | Credentials for `Assistants.new`. Expected keys: `base_url` (String) — HTTP base URL of Nitro Intelligence Assistants; `api_key` (String) — bearer token; `user_id` (String, default: `"default-user"`) — caller identity |
 | `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
 
 ## Basic Usage
@@ -489,8 +489,8 @@ client.chat(
 )
 ```
 
-## Agent Server
+## Nitro Intelligence Assistants
 
-The Agent Server is Nitro Intelligence's lightweight SDK for working with hosted agent threads, runs, and human review flows. It is mainly used to initialize conversation threads, trigger agent runs, inspect agent tool calls pending human approval, and resume interrupted threads after human reviews.
+`NitroIntelligence::Assistants` is Nitro Intelligence's lightweight SDK for working with hosted agent threads, runs, and human review flows. It is mainly used to initialize conversation threads, trigger agent runs, inspect agent tool calls pending human approval, and resume interrupted threads after human reviews.
 
-For the full Agent Server guide, see [AGENT_SERVER.md](AGENT_SERVER.md).
+For the full guide, see [ASSISTANTS.md](ASSISTANTS.md). For the service this SDK talks to, see the [Nitro Intelligence Assistants documentation](https://portal.powerapp.cloud/docs/default/system/nip-assistants).

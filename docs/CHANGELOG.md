@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The agent server is now Nitro Intelligence Assistants. `NitroIntelligence::AgentServer` is `NitroIntelligence::Assistants`, `NitroIntelligence.agent_server` is `NitroIntelligence.assistants`, and the `agent_server_config` setting is `assistants_config`. Documentation refers to the service by that name and defers to the [Nitro Intelligence Assistants documentation](https://portal.powerapp.cloud/docs/default/system/nip-assistants) rather than to the underlying Agent Protocol server
+
+### Deprecated
+
+- `NitroIntelligence::AgentServer`, `NitroIntelligence.agent_server` and the `agent_server_config` setting. Each still works and warns through `NitroIntelligence.deprecator`; all three are removed in 3.0. A host that sets both `assistants_config` and `agent_server_config` gets `assistants_config`, so a stale legacy setting cannot override the one that replaced it
+
 ## [2.3.0] - 2026-08-26
 
 ### Added

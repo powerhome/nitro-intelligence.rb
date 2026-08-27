@@ -10,13 +10,17 @@ module NitroIntelligence
     config_accessor :cache_provider, default: NitroIntelligence::NullCache.new
     config_accessor :current_revision, default: ""
     config_accessor :environment, default: "test"
-    config_accessor :agent_server_config, default: {}
+    config_accessor :assistants_config, default: {}
     config_accessor :inference_api_key, default: ""
     config_accessor :inference_base_url, default: ""
     config_accessor :model_config, default: {}
     config_accessor :observability_base_url, default: ""
     config_accessor :observability_projects, default: []
     config_accessor :observability_user_id, default: ""
+
+    # Deprecated: configure `assistants_config` instead. Left unset by default so that
+    # `NitroIntelligence.assistants` can tell a host that still configures it from one that does not.
+    config_accessor :agent_server_config, default: nil
 
     class << self
       def configure

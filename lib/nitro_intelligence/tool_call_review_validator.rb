@@ -63,7 +63,7 @@ module NitroIntelligence
     end
 
     def raise_error!(message)
-      raise NitroIntelligence::AgentServer::ThreadResumptionError, message
+      raise NitroIntelligence::Assistants::ThreadResumptionError, message
     end
   end
 end

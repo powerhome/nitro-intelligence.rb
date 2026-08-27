@@ -57,7 +57,7 @@ RSpec.describe NitroIntelligence::ToolCallReviewValidator do
       expect do
         validator.validate!(thread_state:, tool_calls:, pending_tool_calls:)
       end.to raise_error(
-        NitroIntelligence::AgentServer::ThreadResumptionError,
+        NitroIntelligence::Assistants::ThreadResumptionError,
         "Unknown tool call ids: tool_call_id_3"
       )
     end
@@ -70,7 +70,7 @@ RSpec.describe NitroIntelligence::ToolCallReviewValidator do
       expect do
         validator.validate!(thread_state:, tool_calls:, pending_tool_calls:)
       end.to raise_error(
-        NitroIntelligence::AgentServer::ThreadResumptionError,
+        NitroIntelligence::Assistants::ThreadResumptionError,
         "Missing reviews for tool calls: tool_call_id_2"
       )
     end
@@ -88,7 +88,7 @@ RSpec.describe NitroIntelligence::ToolCallReviewValidator do
       expect do
         validator.validate!(thread_state:, tool_calls:, pending_tool_calls:)
       end.to raise_error(
-        NitroIntelligence::AgentServer::ThreadResumptionError,
+        NitroIntelligence::Assistants::ThreadResumptionError,
         "Invalid edited args for tool call tool_call_id_2: arg_3"
       )
     end
