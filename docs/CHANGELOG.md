@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Tag observed inference requests with the feature behind them as LiteLLM custom tags (`x-litellm-tags`), so gateway spend and usage can be aggregated by feature: `cerebro_observability_project_id` with the observability project's `id`, plus `cerebro_prompt_name` and `cerebro_prompt_version` when a managed prompt was resolved. Name and version are separate tags because the observability platform mints no id of its own for a prompt. Sent only on the observed path - a client built without an `observability_project_slug` has no project and resolves no prompts, so it sends no tags. Unrelated to the `tags` parameter, which sets tags on the observability trace
+- `AgentServer#thread_state` and `AgentServer#thread_messages`: read a thread's state, or just its messages, as the agent server reports them. Consumers displaying an existing conversation no longer have to repeat the request, authentication, parsing and error handling the SDK already does. Both raise the new `AgentServer::ThreadStateError` when the state cannot be fetched; the error raised by the existing review flows is unchanged (#36)
+- Tag observed inference requests with the feature behind them as LiteLLM custom tags (`x-litellm-tags`), so gateway spend and usage can be aggregated by feature: `cerebro_observability_project_id` with the observability project's `id`, plus `cerebro_prompt_name` and `cerebro_prompt_version` when a managed prompt was resolved. Name and version are separate tags because the observability platform mints no id of its own for a prompt. Sent only on the observed path - a client built without an `observability_project_slug` has no project and resolves no prompts, so it sends no tags. Unrelated to the `tags` parameter, which sets tags on the observability trace (#71)
 
 ## [2.3.0] - 2026-08-26
 
