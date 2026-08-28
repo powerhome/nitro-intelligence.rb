@@ -1,43 +1,43 @@
 require "spec_helper"
-require "nitro_intelligence/agent_server"
+require "nitro_intelligence/assistants"
 require "webmock/rspec"
 
 RSpec.describe NitroIntelligence do
-  describe ".agent_server" do
-    let(:base_url) { "https://agent-server.example.com" }
+  describe ".assistants" do
+    let(:base_url) { "https://assistants.example.com" }
     let(:api_key) { "test-api-key" }
 
     before do
-      NitroIntelligence.configuration.agent_server_config = {
+      NitroIntelligence.configuration.assistants_config = {
         "base_url" => base_url,
         "api_key" => api_key,
       }
     end
 
     after do
-      NitroIntelligence.configuration.agent_server_config = {}
+      NitroIntelligence.configuration.assistants_config = {}
     end
 
-    it "returns an instance of AgentServer" do
-      expect(described_class.agent_server).to be_a(NitroIntelligence::AgentServer)
+    it "returns an instance of Assistants" do
+      expect(described_class.assistants).to be_a(NitroIntelligence::Assistants)
     end
 
-    it "configures the AgentServer with agent_server_config" do
-      agent_server = described_class.agent_server
+    it "configures Assistants with assistants_config" do
+      assistants = described_class.assistants
 
-      expect(agent_server.base_url).to eq(base_url)
+      expect(assistants.base_url).to eq(base_url)
     end
 
     it "returns a new instance on each call" do
-      first_instance = described_class.agent_server
-      second_instance = described_class.agent_server
+      first_instance = described_class.assistants
+      second_instance = described_class.assistants
 
       expect(first_instance).not_to be(second_instance)
     end
 
     context "with custom user_id in config" do
       before do
-        NitroIntelligence.configuration.agent_server_config = {
+        NitroIntelligence.configuration.assistants_config = {
           "base_url" => base_url,
           "api_key" => api_key,
           "user_id" => "custom-user",
@@ -45,40 +45,142 @@ RSpec.describe NitroIntelligence do
       end
 
       it "uses the configured user_id" do
-        expect(described_class.agent_server.user_id).to eq("custom-user")
+        expect(described_class.assistants.user_id).to eq("custom-user")
       end
     end
 
     context "without user_id in config" do
       it "uses the default user_id" do
-        expect(described_class.agent_server.user_id).to eq("default-user")
+        expect(described_class.assistants.user_id).to eq("default-user")
+      end
+    end
+  end
+
+  describe "deprecated agent server names" do
+    let(:base_url) { "https://assistants.example.com" }
+    let(:api_key) { "test-api-key" }
+
+    around do |example|
+      original_behavior = NitroIntelligence.deprecator.behavior
+      NitroIntelligence.deprecator.behavior = :silence
+      example.run
+      NitroIntelligence.deprecator.behavior = original_behavior
+    end
+
+    after do
+      NitroIntelligence.configuration.assistants_config = {}
+      NitroIntelligence.configuration.agent_server_config = {}
+    end
+
+    describe "NitroIntelligence::AgentServer" do
+      it "resolves to NitroIntelligence::Assistants itself" do
+        expect(NitroIntelligence::AgentServer).to be(NitroIntelligence::Assistants)
+      end
+
+      it "still matches an Assistants instance, so type checks survive the rename" do
+        assistants = NitroIntelligence::Assistants.new(base_url:, api_key:)
+
+        expect(assistants).to be_a(NitroIntelligence::AgentServer)
+      end
+
+      it "resolves the errors nested under NitroIntelligence::Assistants" do
+        expect(NitroIntelligence::AgentServer::ThreadResumptionError)
+          .to be(NitroIntelligence::Assistants::ThreadResumptionError)
+      end
+
+      it "warns when it is referenced" do
+        expect(NitroIntelligence.deprecator).to receive(:warn).at_least(:once)
+
+        NitroIntelligence::AgentServer
+      end
+    end
+
+    describe ".agent_server" do
+      before do
+        NitroIntelligence.configuration.assistants_config = {
+          "base_url" => base_url,
+          "api_key" => api_key,
+        }
+      end
+
+      it "returns an instance of Assistants" do
+        expect(described_class.agent_server).to be_a(NitroIntelligence::Assistants)
+      end
+
+      it "warns that it is deprecated" do
+        expect(NitroIntelligence.deprecator).to receive(:warn).with(/`NitroIntelligence.agent_server` is deprecated/)
+
+        described_class.agent_server
+      end
+    end
+
+    describe "agent_server_config" do
+      before do
+        NitroIntelligence.configuration.agent_server_config = {
+          "base_url" => base_url,
+          "api_key" => api_key,
+          "user_id" => "legacy-user",
+        }
+      end
+
+      it "configures Assistants when assistants_config is unset" do
+        expect(described_class.assistants.user_id).to eq("legacy-user")
+      end
+
+      it "warns that it is deprecated" do
+        expect(NitroIntelligence.deprecator).to receive(:warn).with(/`agent_server_config` is deprecated/)
+
+        described_class.assistants
+      end
+
+      it "is a hash a host can build up in place, as it was before it was deprecated" do
+        NitroIntelligence.configuration.agent_server_config = {}
+        legacy_config = NitroIntelligence.configuration.agent_server_config
+
+        expect(legacy_config).to be_a(Hash)
+
+        legacy_config["base_url"] = base_url
+        legacy_config["api_key"] = api_key
+        legacy_config["user_id"] = "in-place-user"
+
+        expect(described_class.assistants.user_id).to eq("in-place-user")
+      end
+
+      it "is ignored when assistants_config is also set" do
+        NitroIntelligence.configuration.assistants_config = {
+          "base_url" => base_url,
+          "api_key" => api_key,
+          "user_id" => "current-user",
+        }
+
+        expect(described_class.assistants.user_id).to eq("current-user")
       end
     end
   end
 end
 
-RSpec.describe NitroIntelligence::AgentServer do
-  let(:base_url) { "https://agent-server.example.com" }
+RSpec.describe NitroIntelligence::Assistants do
+  let(:base_url) { "https://assistants.example.com" }
   let(:api_key) { "test-api-key" }
   let(:user_id) { "user-123" }
-  let(:agent_server) { described_class.new(base_url:, api_key:, user_id:) }
+  let(:assistants) { described_class.new(base_url:, api_key:, user_id:) }
 
   describe "#initialize" do
     context "with valid parameters" do
       it "creates an instance with the provided base_url" do
-        expect(agent_server.base_url).to eq(base_url)
+        expect(assistants.base_url).to eq(base_url)
       end
 
       it "creates an instance with the provided user_id" do
-        expect(agent_server.user_id).to eq(user_id)
+        expect(assistants.user_id).to eq(user_id)
       end
     end
 
     context "with default user_id" do
-      let(:agent_server_with_default_user) { described_class.new(base_url:, api_key:) }
+      let(:assistants_with_default_user) { described_class.new(base_url:, api_key:) }
 
       it "defaults user_id to 'default-user'" do
-        expect(agent_server_with_default_user.user_id).to eq("default-user")
+        expect(assistants_with_default_user.user_id).to eq("default-user")
       end
     end
 
@@ -86,13 +188,13 @@ RSpec.describe NitroIntelligence::AgentServer do
       it "raises ConfigurationError when base_url is nil" do
         expect do
           described_class.new(base_url: nil, api_key:, user_id:)
-        end.to raise_error(NitroIntelligence::AgentServer::ConfigurationError, "base_url is required")
+        end.to raise_error(NitroIntelligence::Assistants::ConfigurationError, "base_url is required")
       end
 
       it "raises ConfigurationError when base_url is empty" do
         expect do
           described_class.new(base_url: "", api_key:, user_id:)
-        end.to raise_error(NitroIntelligence::AgentServer::ConfigurationError, "base_url is required")
+        end.to raise_error(NitroIntelligence::Assistants::ConfigurationError, "base_url is required")
       end
     end
 
@@ -100,13 +202,13 @@ RSpec.describe NitroIntelligence::AgentServer do
       it "raises ConfigurationError when api_key is nil" do
         expect do
           described_class.new(base_url:, api_key: nil, user_id:)
-        end.to raise_error(NitroIntelligence::AgentServer::ConfigurationError, "api_key is required")
+        end.to raise_error(NitroIntelligence::Assistants::ConfigurationError, "api_key is required")
       end
 
       it "raises ConfigurationError when api_key is empty" do
         expect do
           described_class.new(base_url:, api_key: "", user_id:)
-        end.to raise_error(NitroIntelligence::AgentServer::ConfigurationError, "api_key is required")
+        end.to raise_error(NitroIntelligence::Assistants::ConfigurationError, "api_key is required")
       end
     end
 
@@ -114,13 +216,13 @@ RSpec.describe NitroIntelligence::AgentServer do
       it "raises ConfigurationError when user_id is nil" do
         expect do
           described_class.new(base_url:, api_key:, user_id: nil)
-        end.to raise_error(NitroIntelligence::AgentServer::ConfigurationError, "user_id is required")
+        end.to raise_error(NitroIntelligence::Assistants::ConfigurationError, "user_id is required")
       end
 
       it "raises ConfigurationError when user_id is empty" do
         expect do
           described_class.new(base_url:, api_key:, user_id: "")
-        end.to raise_error(NitroIntelligence::AgentServer::ConfigurationError, "user_id is required")
+        end.to raise_error(NitroIntelligence::Assistants::ConfigurationError, "user_id is required")
       end
     end
   end
@@ -139,14 +241,14 @@ RSpec.describe NitroIntelligence::AgentServer do
     context "when messages is nil" do
       it "raises RunError" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages: nil, context:)
-        end.to raise_error(NitroIntelligence::AgentServer::RunError, "messages cannot be empty")
+          assistants.await_run(thread_id:, assistant_id:, messages: nil, context:)
+        end.to raise_error(NitroIntelligence::Assistants::RunError, "messages cannot be empty")
       end
 
       it "does not attempt to initialize the thread" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages: nil, context:)
-        end.to raise_error(NitroIntelligence::AgentServer::RunError)
+          assistants.await_run(thread_id:, assistant_id:, messages: nil, context:)
+        end.to raise_error(NitroIntelligence::Assistants::RunError)
 
         expect(WebMock).not_to have_requested(:post, thread_init_url)
       end
@@ -155,14 +257,14 @@ RSpec.describe NitroIntelligence::AgentServer do
     context "when messages is empty" do
       it "raises RunError" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages: [], context:)
-        end.to raise_error(NitroIntelligence::AgentServer::RunError, "messages cannot be empty")
+          assistants.await_run(thread_id:, assistant_id:, messages: [], context:)
+        end.to raise_error(NitroIntelligence::Assistants::RunError, "messages cannot be empty")
       end
 
       it "does not attempt to initialize the thread" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages: [], context:)
-        end.to raise_error(NitroIntelligence::AgentServer::RunError)
+          assistants.await_run(thread_id:, assistant_id:, messages: [], context:)
+        end.to raise_error(NitroIntelligence::Assistants::RunError)
 
         expect(WebMock).not_to have_requested(:post, thread_init_url)
       end
@@ -243,35 +345,35 @@ RSpec.describe NitroIntelligence::AgentServer do
     end
 
     it "creates the thread" do
-      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+      assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(WebMock).to have_requested(:post, thread_init_url)
         .with(body: thread_init_request_body.to_json)
     end
 
     it "seeds the new thread with every message except the last" do
-      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+      assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(WebMock).to have_requested(:post, thread_state_url)
         .with(body: thread_state_request_body.to_json)
     end
 
     it "tags the thread with the assistant's graph, not the assistant's id" do
-      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+      assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(WebMock).to have_requested(:post, thread_init_url)
         .with(body: hash_including(metadata: { graph_id: }))
     end
 
     it "looks the graph up on the assistant" do
-      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+      assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(WebMock).to have_requested(:get, assistant_url)
     end
 
     it "looks the graph up only once per assistant" do
-      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+      assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+      assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(WebMock).to have_requested(:get, assistant_url).once
     end
@@ -288,14 +390,14 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadInitializationError" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError, '{"error":"not_found"}')
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadInitializationError, '{"error":"not_found"}')
       end
 
       it "does not attempt to create the thread" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError)
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadInitializationError)
 
         expect(WebMock).not_to have_requested(:post, thread_init_url)
       end
@@ -313,23 +415,23 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadInitializationError" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
         end.to raise_error(
-          NitroIntelligence::AgentServer::ThreadInitializationError,
+          NitroIntelligence::Assistants::ThreadInitializationError,
           "Assistant #{assistant_id} has no graph_id"
         )
       end
     end
 
-    it "asks the agent server to raise when the thread already exists" do
-      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+    it "asks Assistants to raise when the thread already exists" do
+      assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(WebMock).to have_requested(:post, thread_init_url)
         .with(body: hash_including(ifExists: "raise"))
     end
 
     it "triggers a run with the last message" do
-      agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+      assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(WebMock).to have_requested(:post, run_url)
         .with(body: run_request_body.to_json)
@@ -347,32 +449,32 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "does not raise ThreadInitializationError" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
         end.not_to raise_error
       end
 
       it "does not seed the thread state again" do
-        agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
         expect(WebMock).not_to have_requested(:post, thread_state_url)
       end
 
       it "still triggers the run" do
-        agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
         expect(WebMock).to have_requested(:post, run_url)
           .with(body: run_request_body.to_json)
       end
 
       it "returns the content of the last message from the run response" do
-        result = agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        result = assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
         expect(result).to eq("I'm doing well, thank you!")
       end
     end
 
     it "returns the content of the last message from the run response" do
-      result = agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+      result = assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
       expect(result).to eq("I'm doing well, thank you!")
     end
@@ -399,7 +501,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       end
 
       it "uses an empty hash as default context" do
-        agent_server.await_run(thread_id:, assistant_id:, messages:)
+        assistants.await_run(thread_id:, assistant_id:, messages:)
 
         expect(WebMock).to have_requested(:post, run_url)
           .with(body: run_request_body_without_context.to_json)
@@ -447,20 +549,20 @@ RSpec.describe NitroIntelligence::AgentServer do
       end
 
       it "creates the thread" do
-        agent_server.await_run(thread_id:, assistant_id:, messages: single_message, context:)
+        assistants.await_run(thread_id:, assistant_id:, messages: single_message, context:)
 
         expect(WebMock).to have_requested(:post, thread_init_url)
           .with(body: single_message_thread_init_body.to_json)
       end
 
       it "does not seed the thread state, as there is nothing to seed it with" do
-        agent_server.await_run(thread_id:, assistant_id:, messages: single_message, context:)
+        assistants.await_run(thread_id:, assistant_id:, messages: single_message, context:)
 
         expect(WebMock).not_to have_requested(:post, thread_state_url)
       end
 
       it "triggers run with the single message" do
-        agent_server.await_run(thread_id:, assistant_id:, messages: single_message, context:)
+        assistants.await_run(thread_id:, assistant_id:, messages: single_message, context:)
 
         expect(WebMock).to have_requested(:post, run_url)
           .with(body: single_message_run_body.to_json)
@@ -479,14 +581,14 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadInitializationError" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError, '{"error":"Internal Server Error"}')
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadInitializationError, '{"error":"Internal Server Error"}')
       end
 
       it "does not attempt to seed the thread state or trigger the run" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError)
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadInitializationError)
 
         expect(WebMock).not_to have_requested(:post, thread_state_url)
         expect(WebMock).not_to have_requested(:post, run_url)
@@ -507,22 +609,22 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadInitializationError" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError, '{"error":"Internal Server Error"}')
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadInitializationError, '{"error":"Internal Server Error"}')
       end
 
       it "does not attempt to trigger the run" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError)
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadInitializationError)
 
         expect(WebMock).not_to have_requested(:post, run_url)
       end
 
       it "discards the thread it just created, so a retry can seed it again" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError)
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadInitializationError)
 
         expect(WebMock).to have_requested(:delete, thread_url)
       end
@@ -534,9 +636,9 @@ RSpec.describe NitroIntelligence::AgentServer do
 
         it "still raises the seeding failure" do
           expect do
-            agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+            assistants.await_run(thread_id:, assistant_id:, messages:, context:)
           end.to raise_error(
-            NitroIntelligence::AgentServer::ThreadInitializationError,
+            NitroIntelligence::Assistants::ThreadInitializationError,
             '{"error":"Internal Server Error"}'
           )
         end
@@ -549,7 +651,7 @@ RSpec.describe NitroIntelligence::AgentServer do
 
         it "discards the thread and lets the connection error surface" do
           expect do
-            agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+            assistants.await_run(thread_id:, assistant_id:, messages:, context:)
           end.to raise_error(Net::OpenTimeout)
 
           expect(WebMock).to have_requested(:delete, thread_url)
@@ -559,7 +661,7 @@ RSpec.describe NitroIntelligence::AgentServer do
 
     context "when seeding the thread state succeeds" do
       it "leaves the thread in place" do
-        agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
         expect(WebMock).not_to have_requested(:delete, thread_url)
       end
@@ -577,8 +679,8 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises RunError" do
         expect do
-          agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-        end.to raise_error(NitroIntelligence::AgentServer::RunError, '{"error":"Internal Server Error"}')
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::Assistants::RunError, '{"error":"Internal Server Error"}')
       end
     end
 
@@ -604,7 +706,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       end
 
       it "returns the content of the last message" do
-        result = agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        result = assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
         expect(result).to eq("Final response")
       end
@@ -618,7 +720,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       end
 
       it "returns nil" do
-        result = agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
+        result = assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
         expect(result).to be_nil
       end
@@ -638,8 +740,8 @@ RSpec.describe NitroIntelligence::AgentServer do
 
           it "raises ThreadInitializationError" do
             expect do
-              agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-            end.to raise_error(NitroIntelligence::AgentServer::ThreadInitializationError)
+              assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+            end.to raise_error(NitroIntelligence::Assistants::ThreadInitializationError)
           end
         end
       end
@@ -659,8 +761,8 @@ RSpec.describe NitroIntelligence::AgentServer do
 
           it "raises RunError" do
             expect do
-              agent_server.await_run(thread_id:, assistant_id:, messages:, context:)
-            end.to raise_error(NitroIntelligence::AgentServer::RunError)
+              assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+            end.to raise_error(NitroIntelligence::Assistants::RunError)
           end
         end
       end
@@ -795,7 +897,7 @@ RSpec.describe NitroIntelligence::AgentServer do
     end
 
     it "fetches the thread and thread state before resuming reviewed tool calls" do
-      agent_server.review_tool_calls(
+      assistants.review_tool_calls(
         thread_id:,
         assistant_id:,
         reviewer_id:,
@@ -808,7 +910,7 @@ RSpec.describe NitroIntelligence::AgentServer do
     end
 
     it "passes the reviewed tool calls and interrupt context to wait-for-run" do
-      agent_server.review_tool_calls(
+      assistants.review_tool_calls(
         thread_id:,
         assistant_id:,
         reviewer_id:,
@@ -821,7 +923,7 @@ RSpec.describe NitroIntelligence::AgentServer do
     end
 
     it "returns nil" do
-      result = agent_server.review_tool_calls(
+      result = assistants.review_tool_calls(
         thread_id:,
         assistant_id:,
         reviewer_id:,
@@ -852,7 +954,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       end
 
       it "defaults reviewed_at to DateTime.current.iso8601" do
-        agent_server.review_tool_calls(
+        assistants.review_tool_calls(
           thread_id:,
           assistant_id:,
           reviewer_id:,
@@ -876,26 +978,26 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadResumptionError" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
             reviewed_at:,
             tool_calls:
           )
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError, "{}")
+        end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError, "{}")
       end
 
       it "does not attempt to resume the thread" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
             reviewed_at:,
             tool_calls:
           )
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
 
         expect(WebMock).not_to have_requested(:get, state_url)
         expect(WebMock).not_to have_requested(:post, run_url)
@@ -907,7 +1009,7 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadResumptionError" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
@@ -915,21 +1017,21 @@ RSpec.describe NitroIntelligence::AgentServer do
             tool_calls:
           )
         end.to raise_error(
-          NitroIntelligence::AgentServer::ThreadResumptionError,
+          NitroIntelligence::Assistants::ThreadResumptionError,
           "Thread #{thread_id} is not in the interrupted state"
         )
       end
 
       it "does not attempt to resume the thread" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
             reviewed_at:,
             tool_calls:
           )
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
 
         expect(WebMock).not_to have_requested(:get, state_url)
         expect(WebMock).not_to have_requested(:post, run_url)
@@ -947,7 +1049,7 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadResumptionError" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
@@ -955,21 +1057,21 @@ RSpec.describe NitroIntelligence::AgentServer do
             tool_calls:
           )
         end.to raise_error(
-          NitroIntelligence::AgentServer::ThreadResumptionError,
+          NitroIntelligence::Assistants::ThreadResumptionError,
           "Unknown tool call ids: tool_call_id_3"
         )
       end
 
       it "does not attempt to resume the thread" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
             reviewed_at:,
             tool_calls:
           )
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
 
         expect(WebMock).not_to have_requested(:post, run_url)
       end
@@ -980,7 +1082,7 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadResumptionError" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
@@ -988,21 +1090,21 @@ RSpec.describe NitroIntelligence::AgentServer do
             tool_calls:
           )
         end.to raise_error(
-          NitroIntelligence::AgentServer::ThreadResumptionError,
+          NitroIntelligence::Assistants::ThreadResumptionError,
           "Invalid review action `edit` for tool call tool_call_id_2"
         )
       end
 
       it "does not attempt to resume the thread" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
             reviewed_at:,
             tool_calls:
           )
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
 
         expect(WebMock).not_to have_requested(:post, run_url)
       end
@@ -1022,7 +1124,7 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadResumptionError" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
@@ -1030,21 +1132,21 @@ RSpec.describe NitroIntelligence::AgentServer do
             tool_calls:
           )
         end.to raise_error(
-          NitroIntelligence::AgentServer::ThreadResumptionError,
+          NitroIntelligence::Assistants::ThreadResumptionError,
           "Invalid edited args for tool call tool_call_id_2: arg_3"
         )
       end
 
       it "does not attempt to resume the thread" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
             reviewed_at:,
             tool_calls:
           )
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadResumptionError)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
 
         expect(WebMock).not_to have_requested(:post, run_url)
       end
@@ -1063,7 +1165,7 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadResumptionError" do
         expect do
-          agent_server.review_tool_calls(
+          assistants.review_tool_calls(
             thread_id:,
             assistant_id:,
             reviewer_id:,
@@ -1071,7 +1173,7 @@ RSpec.describe NitroIntelligence::AgentServer do
             tool_calls:
           )
         end.to raise_error(
-          NitroIntelligence::AgentServer::ThreadResumptionError,
+          NitroIntelligence::Assistants::ThreadResumptionError,
           '{"error":"Internal Server Error"}'
         )
       end
@@ -1111,12 +1213,12 @@ RSpec.describe NitroIntelligence::AgentServer do
           )
       end
 
-      it "returns the thread state as reported by the agent server" do
-        expect(agent_server.thread_state(thread_id:)).to eq(thread_state)
+      it "returns the thread state as reported by Assistants" do
+        expect(assistants.thread_state(thread_id:)).to eq(thread_state)
       end
 
       it "authenticates the request" do
-        agent_server.thread_state(thread_id:)
+        assistants.thread_state(thread_id:)
 
         expect(WebMock).to have_requested(:get, state_url)
           .with(headers: { "Authorization" => "Bearer #{api_key}" })
@@ -1135,9 +1237,9 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadStateError carrying the response body" do
         expect do
-          agent_server.thread_state(thread_id:)
+          assistants.thread_state(thread_id:)
         end.to raise_error(
-          NitroIntelligence::AgentServer::ThreadStateError,
+          NitroIntelligence::Assistants::ThreadStateError,
           { "detail" => "Thread not found" }.to_json
         )
       end
@@ -1174,8 +1276,8 @@ RSpec.describe NitroIntelligence::AgentServer do
     context "when the thread has messages" do
       let(:thread_state) { { "values" => { "messages" => messages } } }
 
-      it "returns the messages as reported by the agent server" do
-        expect(agent_server.thread_messages(thread_id:)).to eq(messages)
+      it "returns the messages as reported by Assistants" do
+        expect(assistants.thread_messages(thread_id:)).to eq(messages)
       end
     end
 
@@ -1183,7 +1285,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       let(:thread_state) { { "values" => {} } }
 
       it "returns an empty array" do
-        expect(agent_server.thread_messages(thread_id:)).to eq([])
+        expect(assistants.thread_messages(thread_id:)).to eq([])
       end
     end
 
@@ -1191,7 +1293,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       let(:thread_state) { {} }
 
       it "returns an empty array" do
-        expect(agent_server.thread_messages(thread_id:)).to eq([])
+        expect(assistants.thread_messages(thread_id:)).to eq([])
       end
     end
 
@@ -1209,8 +1311,8 @@ RSpec.describe NitroIntelligence::AgentServer do
 
       it "raises ThreadStateError" do
         expect do
-          agent_server.thread_messages(thread_id:)
-        end.to raise_error(NitroIntelligence::AgentServer::ThreadStateError, "boom")
+          assistants.thread_messages(thread_id:)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadStateError, "boom")
       end
     end
   end
@@ -1254,7 +1356,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       end
 
       it "returns nil as the previous message id" do
-        expect(agent_server.tool_calls_pending_review(thread_id:)).to eq(
+        expect(assistants.tool_calls_pending_review(thread_id:)).to eq(
           [
             {
               "previous_message_id" => nil,
@@ -1298,7 +1400,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       end
 
       it "returns all pending tool calls with the previous message id" do
-        expect(agent_server.tool_calls_pending_review(thread_id:)).to eq(
+        expect(assistants.tool_calls_pending_review(thread_id:)).to eq(
           [
             {
               "previous_message_id" => "communication-1",
@@ -1375,7 +1477,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       end
 
       it "excludes tool calls that already have tool messages" do
-        expect(agent_server.tool_calls_pending_review(thread_id:)).to eq(
+        expect(assistants.tool_calls_pending_review(thread_id:)).to eq(
           [
             {
               "previous_message_id" => "communication-1",
@@ -1428,7 +1530,7 @@ RSpec.describe NitroIntelligence::AgentServer do
       end
 
       it "returns an empty array" do
-        expect(agent_server.tool_calls_pending_review(thread_id:)).to eq([])
+        expect(assistants.tool_calls_pending_review(thread_id:)).to eq([])
       end
     end
   end
