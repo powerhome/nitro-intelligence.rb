@@ -94,5 +94,36 @@ RSpec.describe NitroIntelligence::Reporter do
       expect(stub).to have_been_requested
       expect(response.code).to eq("200")
     end
+
+    it "returns the response for any successful status, not only 200" do
+      handler = described_class.new(observability_project_slug: "test-slug")
+
+      stub_request(:post, "https://fake-observability-host.com/api/public/dataset-items")
+        .to_return(status: 201, body: "", headers: {})
+
+      expect(handler.create_dataset_item({ datasetName: "test-dataset" }).code).to eq("201")
+    end
+
+    it "raises when the item is rejected, rather than returning the failure as if it worked" do
+      handler = described_class.new(observability_project_slug: "test-slug")
+
+      stub_request(:post, "https://fake-observability-host.com/api/public/dataset-items")
+        .to_return(status: 400, body: "dataset not found", headers: {})
+
+      expect do
+        handler.create_dataset_item({ datasetName: "missing-dataset" })
+      end.to raise_error(NitroIntelligence::Reporter::DatasetItemError, /400.*dataset not found/)
+    end
+
+    it "raises on an unauthorized write" do
+      handler = described_class.new(observability_project_slug: "test-slug")
+
+      stub_request(:post, "https://fake-observability-host.com/api/public/dataset-items")
+        .to_return(status: 401, body: "", headers: {})
+
+      expect do
+        handler.create_dataset_item({ datasetName: "test-dataset" })
+      end.to raise_error(NitroIntelligence::Reporter::DatasetItemError, /401/)
+    end
   end
 end
