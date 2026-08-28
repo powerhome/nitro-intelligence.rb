@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `Reporter#create_dataset_item` raises `Reporter::DatasetItemError` when the write is rejected, instead of returning the failed response as if it had worked. A rejected write - bad credentials, a malformed item, a dataset that does not exist - was indistinguishable from a successful one, so a caller building a dataset could run an experiment against items that were never stored (#78)
+
 ## [2.4.0] - 2026-08-28
 
 ### Added

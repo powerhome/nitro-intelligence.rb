@@ -4,6 +4,8 @@ require "uri"
 
 module NitroIntelligence
   class Reporter
+    class DatasetItemError < StandardError; end
+
     def initialize(observability_project_slug:)
       @observability_project_slug = observability_project_slug
       @project_client = fetch_project_client
@@ -20,7 +22,17 @@ module NitroIntelligence
       request["Authorization"] = "Basic #{@project_client.project.auth_token}"
       request.body = attributes.to_json
 
-      http.request(request)
+      response = http.request(request)
+
+      # Every other request in this gem raises on an unsuccessful response. Without this a
+      # rejected write - bad credentials, a malformed item, a dataset that does not exist -
+      # is indistinguishable from a successful one, and a caller building a dataset ends up
+      # with a run against items that were never stored.
+      unless response.is_a?(Net::HTTPSuccess)
+        raise DatasetItemError, "#{response.code} creating dataset item: #{response.body}"
+      end
+
+      response
     end
 
     def score(trace_id:, name:, value:, id: "#{trace_id}-#{name}")
