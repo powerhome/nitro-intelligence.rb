@@ -69,7 +69,7 @@ RSpec.describe NitroIntelligence do
 
     after do
       NitroIntelligence.configuration.assistants_config = {}
-      NitroIntelligence.configuration.agent_server_config = nil
+      NitroIntelligence.configuration.agent_server_config = {}
     end
 
     describe "NitroIntelligence::AgentServer" do
@@ -131,6 +131,19 @@ RSpec.describe NitroIntelligence do
         expect(NitroIntelligence.deprecator).to receive(:warn).with(/`agent_server_config` is deprecated/)
 
         described_class.assistants
+      end
+
+      it "is a hash a host can build up in place, as it was before it was deprecated" do
+        NitroIntelligence.configuration.agent_server_config = {}
+        legacy_config = NitroIntelligence.configuration.agent_server_config
+
+        expect(legacy_config).to be_a(Hash)
+
+        legacy_config["base_url"] = base_url
+        legacy_config["api_key"] = api_key
+        legacy_config["user_id"] = "in-place-user"
+
+        expect(described_class.assistants.user_id).to eq("in-place-user")
       end
 
       it "is ignored when assistants_config is also set" do

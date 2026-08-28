@@ -18,9 +18,9 @@ module NitroIntelligence
     config_accessor :observability_projects, default: []
     config_accessor :observability_user_id, default: ""
 
-    # Deprecated: configure `assistants_config` instead. Left unset by default so that
-    # `NitroIntelligence.assistants` can tell a host that still configures it from one that does not.
-    config_accessor :agent_server_config, default: nil
+    # Deprecated: configure `assistants_config` instead. Keeps its original `{}` default through the
+    # deprecation window, so a host building the hash up in place still has one to build on.
+    config_accessor :agent_server_config, default: {}
 
     class << self
       def configure
