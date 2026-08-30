@@ -42,17 +42,7 @@ module NitroIntelligence
               record_input(generation, input)
 
               result, trace_attributes = observe_failures(generation) { yield(generation) }
-
-              if trace_attributes
-                handle_truncation(trace_attributes[:input], trace_attributes[:output], trace_attributes[:model])
-
-                generation.model = trace_attributes[:model] if trace_attributes[:model]
-                generation.usage_details = trace_attributes[:usage_details] if trace_attributes[:usage_details]
-                generation.input = trace_attributes[:input] if trace_attributes[:input]
-                generation.output = trace_attributes[:output] if trace_attributes[:output]
-
-                generation.update_trace(input: trace_attributes[:input], output: trace_attributes[:output])
-              end
+              record_result(generation, trace_attributes)
 
               result
             end
@@ -60,6 +50,27 @@ module NitroIntelligence
         end
 
       private
+
+        # Applied once the response is in hand, so the observation reflects what came
+        # back rather than what was asked for. Each attribute is set only when the
+        # handler supplied it: an observation that records nothing is better than one
+        # asserting a value the response never carried. Cost is the clearest case -
+        # the gateway omits the header entirely for a deployment it has no price for,
+        # and writing a zero there would read as a free request rather than an
+        # unpriced one.
+        def record_result(generation, trace_attributes)
+          return unless trace_attributes
+
+          handle_truncation(trace_attributes[:input], trace_attributes[:output], trace_attributes[:model])
+
+          generation.model = trace_attributes[:model] if trace_attributes[:model]
+          generation.usage_details = trace_attributes[:usage_details] if trace_attributes[:usage_details]
+          generation.cost_details = trace_attributes[:cost_details] if trace_attributes[:cost_details]
+          generation.input = trace_attributes[:input] if trace_attributes[:input]
+          generation.output = trace_attributes[:output] if trace_attributes[:output]
+
+          generation.update_trace(input: trace_attributes[:input], output: trace_attributes[:output])
+        end
 
         # Recorded before the request is made so that a request which raises still
         # shows what was sent. Handlers whose input is not safe to record twice

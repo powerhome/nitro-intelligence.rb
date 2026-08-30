@@ -59,6 +59,7 @@ module NitroIntelligence
                 completion_tokens: chat_completion.usage.completion_tokens,
                 total_tokens: chat_completion.usage.total_tokens,
               },
+              cost_details: @base_handler.cost_details(chat_completion),
             }
 
             [chat_completion, trace_attributes]

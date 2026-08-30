@@ -115,4 +115,53 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
       end
     end
   end
+
+  describe "#cost_details" do
+    def response_with(headers)
+      double("Response", last_response: double("LastResponse", headers: headers))
+    end
+
+    it "reads the total and the component breakdown the gateway calculated" do
+      response = response_with(
+        "x-litellm-response-cost" => "5.85e-06",
+        "x-litellm-response-cost-input" => "1.1e-06",
+        "x-litellm-response-cost-output" => "4.75e-06"
+      )
+
+      expect(handler.cost_details(response)).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
+    end
+
+    it "returns just the total when the route reports no component breakdown" do
+      # Routes whose cost comes from the upstream provider rather than the gateway's
+      # own calculation send the total alone.
+      response = response_with("x-litellm-response-cost" => "5.6e-06")
+
+      expect(handler.cost_details(response)).to eq(total: 5.6e-06)
+    end
+
+    it "returns nil when the gateway did not price the request" do
+      # An unpriced deployment omits the header entirely rather than sending a zero,
+      # so this must not be reported as a free request.
+      expect(handler.cost_details(response_with({}))).to be_nil
+    end
+
+    it "returns nil rather than raising when a header is not a number" do
+      expect(handler.cost_details(response_with("x-litellm-response-cost" => "free"))).to be_nil
+    end
+
+    it "ignores a component header that is not a number but keeps the total" do
+      response = response_with(
+        "x-litellm-response-cost" => "5.85e-06",
+        "x-litellm-response-cost-input" => ""
+      )
+
+      expect(handler.cost_details(response)).to eq(total: 5.85e-06)
+    end
+
+    it "returns nil for a response carrying no HTTP metadata" do
+      # Nested and locally constructed models have no last_response at all.
+      expect(handler.cost_details(double("Response"))).to be_nil
+      expect(handler.cost_details(double("Response", last_response: nil))).to be_nil
+    end
+  end
 end

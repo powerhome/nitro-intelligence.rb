@@ -16,11 +16,72 @@ module NitroIntelligence
         # supplied, so cap it rather than turning a large hash into a failed request.
         MAX_SPEND_LOGS_METADATA_BYTES = 4096
 
+        # Cost the inference gateway calculated for a response.
+        # See https://docs.litellm.ai/docs/proxy/response_headers
+        #
+        # The gateway is the only component that knows which deployment actually
+        # served a request, and the same model group can be served by internal
+        # capacity or by any of several third-party providers at different rates.
+        # Recomputing cost downstream from token counts therefore means maintaining
+        # a second price table that silently drifts from the one doing the billing.
+        RESPONSE_COST_HEADER = "x-litellm-response-cost".freeze
+        RESPONSE_COST_INPUT_HEADER = "x-litellm-response-cost-input".freeze
+        RESPONSE_COST_OUTPUT_HEADER = "x-litellm-response-cost-output".freeze
+
         def initialize(client:)
           @client = client
         end
 
+        # Cost breakdown for an observation, or nil when the gateway did not price
+        # the request.
+        #
+        # A deployment the gateway has no price for sends no cost header at all
+        # rather than a zero one, so absence has to mean "unknown" here. Recording
+        # nil leaves the generation without a cost; recording 0.0 would assert the
+        # request was free and quietly understate spend for every model still
+        # awaiting a price.
+        #
+        # Only the total is guaranteed. Where the cost comes from the upstream
+        # provider rather than the gateway's own calculation - OpenRouter reports a
+        # real per-request cost of its own, which the gateway passes through - there
+        # is no component breakdown, so input and output appear only when sent.
+        def cost_details(response)
+          headers = response_headers(response)
+          return nil if headers.nil?
+
+          total = header_amount(headers, RESPONSE_COST_HEADER)
+          return nil if total.nil?
+
+          {
+            total:,
+            input: header_amount(headers, RESPONSE_COST_INPUT_HEADER),
+            output: header_amount(headers, RESPONSE_COST_OUTPUT_HEADER),
+          }.compact
+        end
+
       private
+
+        # `last_response` carries the HTTP metadata of the response a typed model was
+        # built from. The client leaves it unset on nested and locally constructed
+        # models, and on endpoints returning raw or binary payloads, so both the
+        # method and its value are optional.
+        def response_headers(response)
+          return nil unless response.respond_to?(:last_response)
+
+          response.last_response&.headers
+        end
+
+        # Header values arrive as strings. A malformed one is worth ignoring rather
+        # than raising: a trace missing its cost is a far smaller problem than an
+        # inference call failing because the gateway sent something unexpected.
+        def header_amount(headers, name)
+          value = headers[name]
+          return nil if value.blank?
+
+          Float(value)
+        rescue ArgumentError, TypeError
+          nil
+        end
 
         def add_request_headers(parameters, headers)
           request_options = (parameters[:request_options] ||= {})

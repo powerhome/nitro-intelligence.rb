@@ -79,6 +79,7 @@ module NitroIntelligence
                 output_tokens: audio_transcription.usage.output_tokens,
                 total_tokens: audio_transcription.usage.total_tokens,
               },
+              cost_details: @base_handler.cost_details(audio_transcription),
             }
 
             [audio_transcription, trace_attributes]

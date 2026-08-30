@@ -50,6 +50,37 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
       expect(trace_attributes[:output]).to eq({ "content" => "response" })
     end
 
+    it "carries the cost the gateway reported into the trace attributes" do
+      priced_response = double(
+        "CompletionResponse",
+        model: "gpt-4",
+        choices: [double(message: double(to_h: { "content" => "response" }))],
+        usage: double(prompt_tokens: 10, completion_tokens: 20, total_tokens: 30),
+        last_response: double("LastResponse", headers: {
+                                "x-litellm-response-cost" => "5.85e-06",
+                                "x-litellm-response-cost-input" => "1.1e-06",
+                                "x-litellm-response-cost-output" => "4.75e-06",
+                              })
+      )
+
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_completions).to receive(:create).and_return(priced_response)
+
+      _, trace_attributes = handler.create(message: "hello")
+
+      expect(trace_attributes[:cost_details]).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
+    end
+
+    it "leaves the cost unset when the gateway did not price the request" do
+      # Cortex-served models the gateway has no price for send no cost header at all.
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_completions).to receive(:create).and_return(fake_completion_response)
+
+      _, trace_attributes = handler.create(message: "hello")
+
+      expect(trace_attributes[:cost_details]).to be_nil
+    end
+
     context "with custom metadata" do
       it "passes custom metadata through to the observer" do
         expect(fake_observer).to receive(:observe).with(
