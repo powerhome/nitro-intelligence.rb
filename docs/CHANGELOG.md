@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Record the inference gateway's `x-litellm-response-cost` on observed generations as `cost_details`, so the observability platform reports the cost the gateway calculated instead of inferring one from its own per-project model pricing. The gateway is the only component that knows which deployment actually served a request - the same model group can be served by internal capacity or by any of several third-party providers at materially different rates - so a cost inferred downstream duplicates the price table doing the billing and drifts from it silently. Applies to the observed chat, image and audio-transcription handlers. The input and output components are recorded when the gateway sends them; routes whose cost comes from the upstream provider rather than the gateway's own calculation report only a total. A deployment the gateway has no price for sends no cost header at all, and those generations are left without a cost rather than recorded as free, so an unpriced model is never mistaken for a free one (#84)
+
+### Changed
+
+- The minimum `openai` dependency is now 0.79, raised from 0.58. The gateway reports its cost in an HTTP response header, and `last_response` - the only route to a response's headers from a typed model - was added to the OpenAI SDK in 0.79. On an older SDK the cost is silently never recorded rather than failing loudly, so an application holding an older lock would upgrade `nitro_intelligence` and see no cost at all (#84)
+
 ### Fixed
 
 - `Reporter#create_dataset_item` raises `Reporter::DatasetItemError` when the write is rejected, instead of returning the failed response as if it had worked. A rejected write - bad credentials, a malformed item, a dataset that does not exist - was indistinguishable from a successful one, so a caller building a dataset could run an experiment against items that were never stored (#78)

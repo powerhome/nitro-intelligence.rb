@@ -13,6 +13,7 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
       update: nil,
       :model= => nil,
       :usage_details= => nil,
+      :cost_details= => nil,
       :input= => nil,
       :output= => nil,
       :metadata= => nil
@@ -135,6 +136,23 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
       before do
         allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_model_catalog)
         allow(fake_model_catalog).to receive(:lookup_by_name).with("gpt-4").and_return(fake_model_config)
+      end
+
+      it "records the cost the gateway reported" do
+        expect(fake_generation).to receive(:cost_details=).with({ total: 5.85e-06 })
+
+        observer.observe("chat-completion", **default_args) do
+          ["result", { model: "gpt-4", usage_details: { total_tokens: 42 }, cost_details: { total: 5.85e-06 } }]
+        end
+      end
+
+      it "leaves the cost unset when the gateway did not price the request" do
+        # Recording a zero here would assert the request was free rather than unpriced.
+        expect(fake_generation).not_to receive(:cost_details=)
+
+        observer.observe("chat-completion", **default_args) do
+          ["result", { model: "gpt-4", usage_details: { total_tokens: 42 }, cost_details: nil }]
+        end
       end
 
       it "updates generation attributes with trace values" do
