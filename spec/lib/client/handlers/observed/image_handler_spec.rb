@@ -82,6 +82,41 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
       expect(image_generation_result).to eq(fake_image_generation)
     end
 
+    # #create returns the image generation rather than the observation payload, so the
+    # trace attributes are only reachable from inside the observer's block.
+    def trace_attributes_for(completion_response)
+      captured = nil
+      allow(fake_observer).to receive(:observe) do |*, **, &block|
+        _result, captured = block.call(fake_generation)
+      end
+      expect(fake_completions).to receive(:create).and_return(completion_response)
+
+      handler.create(message: "draw a cat")
+
+      captured
+    end
+
+    it "carries the cost the gateway reported into the trace attributes" do
+      priced_response = double(
+        "CompletionResponse",
+        model: "dall-e-3",
+        choices: [double(message: double(to_h: { "content" => "base64_image_data_here" }))],
+        usage: double(prompt_tokens: 15, completion_tokens: 30, total_tokens: 45),
+        last_response: double("LastResponse", headers: {
+                                "x-litellm-response-cost" => "5.85e-06",
+                                "x-litellm-response-cost-input" => "1.1e-06",
+                                "x-litellm-response-cost-output" => "4.75e-06",
+                              })
+      )
+
+      expect(trace_attributes_for(priced_response)[:cost_details]).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
+    end
+
+    it "leaves the cost unset when the gateway did not price the request" do
+      # A deployment the gateway has no price for sends no cost header at all.
+      expect(trace_attributes_for(fake_completion_response)[:cost_details]).to be_nil
+    end
+
     context "with custom metadata" do
       it "passes custom metadata through to the observer" do
         expect(fake_observer).to receive(:observe).with(

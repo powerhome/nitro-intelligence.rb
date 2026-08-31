@@ -56,6 +56,36 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
       expect(trace_attributes[:usage_details][:total_tokens]).to eq(30)
     end
 
+    it "carries the cost the gateway reported into the trace attributes" do
+      priced_response = double(
+        "TranscriptionResponse",
+        text: "transcribed text",
+        usage: double(input_tokens: 10, output_tokens: 20, total_tokens: 30),
+        last_response: double("LastResponse", headers: {
+                                "x-litellm-response-cost" => "5.85e-06",
+                                "x-litellm-response-cost-input" => "1.1e-06",
+                                "x-litellm-response-cost-output" => "4.75e-06",
+                              })
+      )
+
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_transcriptions).to receive(:create).and_return(priced_response)
+
+      _, trace_attributes = handler.create(message: "transcribe", audio_file: fake_audio_file)
+
+      expect(trace_attributes[:cost_details]).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
+    end
+
+    it "leaves the cost unset when the gateway did not price the request" do
+      # A deployment the gateway has no price for sends no cost header at all.
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_transcriptions).to receive(:create).and_return(fake_transcription_response)
+
+      _, trace_attributes = handler.create(message: "transcribe", audio_file: fake_audio_file)
+
+      expect(trace_attributes[:cost_details]).to be_nil
+    end
+
     context "with custom metadata" do
       it "passes custom metadata through to the observer" do
         expect(fake_observer).to receive(:observe).with(
