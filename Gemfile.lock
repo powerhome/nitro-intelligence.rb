@@ -1,11 +1,11 @@
 PATH
   remote: .
   specs:
-    nitro_intelligence (2.3.0)
+    nitro_intelligence (2.5.0)
       activesupport (~> 7.1)
       langfuse-rb (= 0.7.0)
       mini_magick (~> 4.10)
-      openai (~> 0.58)
+      openai (~> 0.79)
 
 GEM
   remote: https://rubygems.org/
@@ -196,7 +196,7 @@ GEM
       unicode-emoji (~> 4.1)
     unicode-emoji (4.2.0)
     uri (1.1.1)
-    webmock (3.26.3)
+    webmock (3.26.4)
       addressable (>= 2.8.0)
       crack (>= 0.3.2)
       hashdiff (>= 0.4.0, < 2.0.0)
@@ -227,7 +227,7 @@ DEPENDENCIES
   nitro_intelligence!
   rspec (= 3.13.2)
   rubocop-powerhome (= 0.7.0)
-  webmock (= 3.26.3)
+  webmock (= 3.26.4)
 
 BUNDLED WITH
    2.7.2

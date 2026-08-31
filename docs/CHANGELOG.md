@@ -9,8 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `Assistants#thread_state` and `Assistants#thread_messages`: read a thread's state, or just its messages, as Assistants reports them. Consumers displaying an existing conversation no longer have to repeat the request, authentication, parsing and error handling the SDK already does. Both raise the new `Assistants::ThreadStateError` when the state cannot be fetched; the error raised by the existing review flows is unchanged (#36)
 - Send `x-litellm-tags` on observed requests, carrying `cerebro_observability_project_id` and, when a managed prompt was resolved, `cerebro_prompt_name` and `cerebro_prompt_version`, so gateway spend can be aggregated per feature. Set automatically with no caller-facing parameter: it serves whoever operates the gateway, not the feature teams calling this library. Nothing is sent on the unobserved path, and this is unrelated to the `tags` parameter, which tags the observability trace (#71)
+
+## [2.5.0] - 2026-08-29
+
+### Added
+
+- Record the inference gateway's `x-litellm-response-cost` on observed generations as `cost_details`, so the observability platform reports the cost the gateway calculated instead of inferring one from its own per-project model pricing. The gateway is the only component that knows which deployment actually served a request - the same model group can be served by internal capacity or by any of several third-party providers at materially different rates - so a cost inferred downstream duplicates the price table doing the billing and drifts from it silently. Applies to the observed chat, image and audio-transcription handlers. The input and output components are recorded when the gateway sends them; routes whose cost comes from the upstream provider rather than the gateway's own calculation report only a total. A deployment the gateway has no price for sends no cost header at all, and those generations are left without a cost rather than recorded as free, so an unpriced model is never mistaken for a free one (#84)
+
+### Changed
+
+- The minimum `openai` dependency is now 0.79, raised from 0.58. The gateway reports its cost in an HTTP response header, and `last_response` - the only route to a response's headers from a typed model - was added to the OpenAI SDK in 0.79. On an older SDK the cost is silently never recorded rather than failing loudly, so an application holding an older lock would upgrade `nitro_intelligence` and see no cost at all (#84)
+
+### Fixed
+
+- `Reporter#create_dataset_item` raises `Reporter::DatasetItemError` when the write is rejected, instead of returning the failed response as if it had worked. A rejected write - bad credentials, a malformed item, a dataset that does not exist - was indistinguishable from a successful one, so a caller building a dataset could run an experiment against items that were never stored (#78)
+
+## [2.4.0] - 2026-08-28
+
+### Added
+
+- `Assistants#thread_state` and `Assistants#thread_messages`: read a thread's state, or just its messages, as Assistants reports them. Consumers displaying an existing conversation no longer have to repeat the request, authentication, parsing and error handling the SDK already does. Both raise the new `Assistants::ThreadStateError` when the state cannot be fetched; the error raised by the existing review flows is unchanged (#36)
 
 ### Changed
 
@@ -83,7 +102,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.3.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.5.0-nitro_intelligence...HEAD
+[2.5.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.4.0-nitro_intelligence...v2.5.0-nitro_intelligence
+[2.4.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.3.0-nitro_intelligence...v2.4.0-nitro_intelligence
 [2.3.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.2.0-nitro_intelligence...v2.3.0-nitro_intelligence
 [2.2.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.1.0-nitro_intelligence...v2.2.0-nitro_intelligence
 [2.1.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.0.0-nitro_intelligence...v2.1.0-nitro_intelligence
