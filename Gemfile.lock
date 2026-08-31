@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    nitro_intelligence (2.4.0)
+    nitro_intelligence (2.5.0)
       activesupport (~> 7.1)
       langfuse-rb (= 0.7.0)
       mini_magick (~> 4.10)
