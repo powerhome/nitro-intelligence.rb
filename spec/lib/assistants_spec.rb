@@ -719,10 +719,89 @@ RSpec.describe NitroIntelligence::Assistants do
         }
       end
 
-      it "returns nil" do
+      before do
+        stub_request(:get, thread_state_url)
+          .to_return(
+            status: 200,
+            body: { "interrupts" => [{ "value" => { "review_actions" => ["approve"] } }] }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "returns nil when the thread state has no task errors" do
         result = assistants.await_run(thread_id:, assistant_id:, messages:, context:)
 
         expect(result).to be_nil
+      end
+
+      it "checks the thread state for task errors" do
+        assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+
+        expect(WebMock).to have_requested(:get, thread_state_url)
+      end
+    end
+
+    context "when the run response includes a task error" do
+      let(:run_response_body) do
+        {
+          "messages" => nil,
+          "tasks" => [
+            {
+              "name" => "model",
+              "error" => "KeyError: missing variables {'first_name', 'scheduling_link'}",
+            },
+          ],
+        }
+      end
+
+      it "raises RunError with the task name and upstream error" do
+        expect do
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(
+          NitroIntelligence::Assistants::RunError,
+          %(Task "model" failed: KeyError: missing variables {'first_name', 'scheduling_link'})
+        )
+      end
+
+      it "does not fetch thread state after finding the error in the run response" do
+        expect do
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(NitroIntelligence::Assistants::RunError)
+
+        expect(WebMock).not_to have_requested(:get, thread_state_url)
+      end
+    end
+
+    context "when the task error is only available in thread state" do
+      let(:run_response_body) do
+        {
+          "messages" => nil,
+        }
+      end
+
+      before do
+        stub_request(:get, thread_state_url)
+          .to_return(
+            status: 200,
+            body: {
+              "tasks" => [
+                {
+                  "name" => "model",
+                  "error" => "KeyError: missing variables {'first_name', 'scheduling_link'}",
+                },
+              ],
+            }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "raises RunError with the task name and upstream error" do
+        expect do
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(
+          NitroIntelligence::Assistants::RunError,
+          %(Task "model" failed: KeyError: missing variables {'first_name', 'scheduling_link'})
+        )
       end
     end
 

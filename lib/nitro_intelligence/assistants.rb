@@ -201,7 +201,24 @@ module NitroIntelligence
       raise RunError, run_response.body if run_response.code.to_i != 200
 
       run = JSON.parse(run_response.body)
-      Array(run["messages"]).last&.dig("content")
+      raise_run_errors!(run)
+
+      content = Array(run["messages"]).last&.dig("content")
+      return content unless content.nil?
+
+      raise_run_errors!(get_thread_state(thread_id:, error: RunError))
+      nil
+    end
+
+    def raise_run_errors!(run)
+      errors = Array(run["tasks"]).filter_map do |task|
+        next if task["error"].blank?
+
+        task_name = task["name"].presence || "unknown"
+        %(Task #{task_name.inspect} failed: #{task['error']})
+      end
+
+      raise RunError, errors.join("\n") if errors.any?
     end
 
     def resume_run(thread_id:, assistant_id:, resume:, context:)

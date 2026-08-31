@@ -57,6 +57,12 @@ content = assistants.await_run(
 "I'm doing well, thank you!"
 ```
 
+### Run errors
+
+Raises `RunError` when Assistants rejects the run request or reports an error from a task that executed the agent graph. A successful HTTP status therefore does not hide failures such as a prompt receiving incomplete variables.
+
+When a successful response has no assistant message content, `#await_run` checks the thread state for task errors before returning `nil`. This preserves `nil` for a run that intentionally pauses without text, such as one interrupted for human review.
+
 ### Thread initialization
 
 `#await_run` treats the last entry in `messages` as the message to run, and everything before it as the conversation the agent should already know about. Getting that history in front of the agent takes three requests, because Assistants accepts an `initial_state` on thread creation but never applies it:

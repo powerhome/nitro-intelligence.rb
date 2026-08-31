@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `Assistants#await_run` raises `Assistants::RunError` when an agent task fails inside an HTTP 200 response, instead of silently returning `nil`. When a successful response has no message content, it checks thread state for task errors while preserving `nil` for legitimate interruptions (#89)
+
 ## [2.5.0] - 2026-08-29
 
 ### Added
