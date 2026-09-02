@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Send `x-litellm-tags` on observed requests, carrying `cerebro_observability_project_id` and, when a managed prompt was resolved, `cerebro_prompt_name` and `cerebro_prompt_version`, so gateway spend can be aggregated per feature. Set automatically with no caller-facing parameter: it serves whoever operates the gateway, not the feature teams calling this library. Nothing is sent on the unobserved path, and this is unrelated to the `tags` parameter, which tags the observability trace (#71)
+
 ## [2.5.0] - 2026-08-29
 
 ### Added

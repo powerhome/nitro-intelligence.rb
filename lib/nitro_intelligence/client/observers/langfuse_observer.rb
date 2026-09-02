@@ -10,22 +10,26 @@ module NitroIntelligence
 
         MAX_STATUS_MESSAGE_LENGTH = 2000
 
+        # Tag names sent to the inference gateway. Prefixed keys keep them legible
+        # alongside the tags the gateway adds itself, and let one feature's requests
+        # be picked out of gateway logs without knowing what else is tagged.
+        OBSERVABILITY_PROJECT_ID_TAG = "cerebro_observability_project_id".freeze
+        PROMPT_NAME_TAG = "cerebro_prompt_name".freeze
+        PROMPT_VERSION_TAG = "cerebro_prompt_version".freeze
+
         attr_reader :project_client
 
         def initialize(project_client:)
           @project_client = project_client
         end
 
-        def observe(operation_name, type:, parameters:, trace_name:, prompt: nil, input: nil) # rubocop:disable Metrics/AbcSize
+        def observe(operation_name, type:, parameters:, trace_name:, prompt: nil, input: nil)
           metadata = parameters[:metadata]
           seed = parameters[:trace_seed]
           trace_id = NitroIntelligence::Trace.create_id(seed:) if seed.present?
 
-          if prompt
-            metadata[:prompt_name] = prompt.name
-            metadata[:prompt_version] = prompt.version
-          end
-
+          record_prompt(metadata, prompt)
+          parameters[:gateway_tags] = gateway_tags(prompt)
           metadata = metadata.transform_values(&:to_s)
 
           Langfuse.propagate_attributes(**propagated_attributes(parameters, metadata)) do
@@ -50,6 +54,30 @@ module NitroIntelligence
         end
 
       private
+
+        # Written into the metadata hash in place, rather than into the stringified
+        # copy that goes to the observability platform, so that the handlers pick it
+        # up too and the gateway's spend logs name the prompt as well.
+        def record_prompt(metadata, prompt)
+          return unless prompt
+
+          metadata[:prompt_name] = prompt.name
+          metadata[:prompt_version] = prompt.version
+        end
+
+        # A prompt is identified by name and version - the observability platform
+        # mints no id of its own for one - and they are separate tags so that a
+        # feature can be followed across gateway logs without pinning it to the
+        # version that happened to be live. The project id is what distinguishes one
+        # feature's requests from another's, and is not recorded in the observation's
+        # metadata: every observation in a project would carry the same value, and
+        # only the gateway, whose logs span projects, has anything to do with it.
+        def gateway_tags(prompt)
+          tags = ["#{OBSERVABILITY_PROJECT_ID_TAG}:#{@project_client.project.id}"]
+          return tags unless prompt
+
+          tags + ["#{PROMPT_NAME_TAG}:#{prompt.name}", "#{PROMPT_VERSION_TAG}:#{prompt.version}"]
+        end
 
         # Applied once the response is in hand, so the observation reflects what came
         # back rather than what was asked for. Each attribute is set only when the
