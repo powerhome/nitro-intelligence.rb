@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Assistants#tool_calls_under_review`: the tool calls the thread's interrupt is holding, in the order the platform wants decisions for them, each carrying the `allowed_decisions` a reviewer may take on it. A tool the assistant is not configured to interrupt on runs without review, so one AI message can mix calls under review with calls that are only waiting to be executed; `#tool_calls_pending_review` reports both, and only the calls this reports may be reviewed. A review interface reading it no longer has to fetch the thread state and interpret the interrupt itself to know which decisions to offer (#91)
+- `Assistants#review_tool_calls` accepts the `reject` and `respond` actions alongside `approve` and `edit`, and takes an optional `context`, sent with the resumed run as `#await_run` sends its own. `reject` skips the call and tells the model why; `respond` skips it and returns the reviewer's `message` to the model as the tool's result. `edit` arguments are merged over the ones the model asked for, so a reviewer correcting one of them cannot drop the rest by omitting them (#91)
+
+### Fixed
+
+- `Assistants#review_tool_calls` speaks the review protocol Assistants actually implements, so an interrupt can be resumed at all. It validated the reviewer's action against `interrupts[0].value.review_actions` and resumed with `{reviewer_id, reviewed_at, tool_calls}`, neither of which exists on the platform: every assistant runs LangChain's `HumanInTheLoopMiddleware`, which publishes `action_requests` and `review_configs` and resumes with `decisions`. The old key made the permitted actions an empty array, so every review failed validation before a request was sent, and the payload would have been rejected by the server had it got that far. Actions are now validated against the interrupt's `review_configs[].allowed_decisions`, and the resume sends one decision per action request, in the order the middleware matches them. Action requests carry no tool call id, so each is matched back onto the tool calls of the thread's last AI message to recover the id reviews are keyed by (#91)
+
+### Changed
+
+- `ToolCallReviewValidator#validate!` takes `tool_calls_under_review` -- the tool calls the interrupt is holding, as `Assistants#tool_calls_under_review` reports them -- in place of `thread_state` and `pending_tool_calls`. It reads the permitted actions off those rather than off the thread state, so the interrupt is interpreted in one place (#91)
+
+### Deprecated
+
+- `Assistants#review_tool_calls`'s `reviewer_id` and `reviewed_at` arguments. Both are still accepted, warn through `NitroIntelligence.deprecator` and are removed in 3.0. The resume payload the platform accepts is a list of decisions with nowhere to carry them, and Assistants records neither, so an application that needs to know who reviewed a tool call has to keep that itself rather than sending it and assuming it was stored. `reviewer_id` is no longer a required argument (#91)
+
 ## [2.5.0] - 2026-08-29
 
 ### Added

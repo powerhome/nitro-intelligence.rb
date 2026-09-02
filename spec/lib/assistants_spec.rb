@@ -769,11 +769,97 @@ RSpec.describe NitroIntelligence::Assistants do
     end
   end
 
+  describe "#tool_calls_under_review" do
+    let(:thread_id) { "thread-456" }
+    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    let(:messages) do
+      [
+        {
+          "type" => "human",
+          "id" => "communication-1",
+          "content" => "Please look up my account",
+        },
+        {
+          "type" => "ai",
+          "id" => "ai-message-1",
+          "content" => "",
+          "tool_calls" => [
+            { "id" => "tool_call_id_1", "name" => "lookup_account", "args" => {} },
+            { "id" => "tool_call_id_2", "name" => "send_invoice", "args" => { "amount" => 100 } },
+          ],
+        },
+      ]
+    end
+    let(:interrupts) do
+      [
+        {
+          "value" => {
+            "action_requests" => [
+              { "name" => "send_invoice", "args" => { "amount" => 100 } },
+            ],
+            "review_configs" => [
+              { "action_name" => "send_invoice", "allowed_decisions" => %w[approve reject] },
+            ],
+          },
+        },
+      ]
+    end
+
+    before do
+      stub_request(:get, state_url)
+        .to_return(
+          status: 200,
+          body: { "values" => { "messages" => messages }, "interrupts" => interrupts }.to_json,
+          headers: { "Content-Type" => "application/json" }
+        )
+    end
+
+    it "reports only the tool calls the interrupt is holding, with the decisions it allows" do
+      expect(assistants.tool_calls_under_review(thread_id:)).to eq(
+        [
+          {
+            "previous_message_id" => "communication-1",
+            "id" => "tool_call_id_2",
+            "name" => "send_invoice",
+            "args" => { "amount" => 100 },
+            "allowed_decisions" => %w[approve reject],
+          },
+        ]
+      )
+    end
+
+    context "when the thread is not waiting on a review" do
+      let(:interrupts) { [] }
+
+      it "returns an empty array" do
+        expect(assistants.tool_calls_under_review(thread_id:)).to eq([])
+      end
+    end
+
+    context "when the thread state cannot be fetched" do
+      before do
+        stub_request(:get, state_url)
+          .to_return(
+            status: 500,
+            body: { error: "Internal Server Error" }.to_json,
+            headers: { "Content-Type" => "application/json" }
+          )
+      end
+
+      it "raises ThreadResumptionError" do
+        expect do
+          assistants.tool_calls_under_review(thread_id:)
+        end.to raise_error(
+          NitroIntelligence::Assistants::ThreadResumptionError,
+          '{"error":"Internal Server Error"}'
+        )
+      end
+    end
+  end
+
   describe "#review_tool_calls" do
     let(:thread_id) { "thread-456" }
     let(:assistant_id) { "assistant-789" }
-    let(:reviewer_id) { "reviewer-123" }
-    let(:reviewed_at) { "2026-03-27T12:34:56Z" }
     let(:thread_url) { "#{base_url}/threads/#{thread_id}" }
     let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
     let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
@@ -787,7 +873,6 @@ RSpec.describe NitroIntelligence::Assistants do
           "action" => "edit",
           "args" => {
             "arg_1" => "new value",
-            "arg_2" => "original value",
           },
         },
       }
@@ -821,12 +906,30 @@ RSpec.describe NitroIntelligence::Assistants do
         },
       ]
     end
-    let(:interrupt_context) do
+    let(:allowed_decisions) { %w[approve edit reject respond] }
+    let(:interrupt_value) do
       {
-        "tool_calls" => %w[tool_call_id_1 tool_call_id_2],
+        "action_requests" => [
+          {
+            "name" => "lookup_account",
+            "args" => {},
+            "description" => "Tool execution requires approval",
+          },
+          {
+            "name" => "lookup_orders",
+            "args" => {
+              "arg_1" => "original value",
+              "arg_2" => "original value",
+            },
+            "description" => "Tool execution requires approval",
+          },
+        ],
+        "review_configs" => [
+          { "action_name" => "lookup_account", "allowed_decisions" => allowed_decisions },
+          { "action_name" => "lookup_orders", "allowed_decisions" => allowed_decisions },
+        ],
       }
     end
-    let(:review_actions) { %w[approve edit] }
     let(:thread) do
       {
         "thread_id" => thread_id,
@@ -839,29 +942,33 @@ RSpec.describe NitroIntelligence::Assistants do
           "messages" => messages,
         },
         "interrupts" => [
-          {
-            "value" => {
-              "context" => interrupt_context,
-              "review_actions" => review_actions,
-            },
-          },
+          { "value" => interrupt_value },
         ],
       }
     end
-    let(:resume_payload) do
-      {
-        reviewer_id:,
-        reviewed_at:,
-        tool_calls:,
-      }
+    let(:decisions) do
+      [
+        { "type" => "approve" },
+        {
+          "type" => "edit",
+          "edited_action" => {
+            "name" => "lookup_orders",
+            "args" => {
+              "arg_1" => "new value",
+              "arg_2" => "original value",
+            },
+          },
+        },
+      ]
     end
+    let(:context) { {} }
     let(:resume_request_body) do
       {
         assistant_id:,
         command: {
-          resume: resume_payload,
+          resume: { decisions: },
         },
-        context: interrupt_context,
+        context:,
       }
     end
     let(:run_response_body) do
@@ -897,68 +1004,85 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     it "fetches the thread and thread state before resuming reviewed tool calls" do
-      assistants.review_tool_calls(
-        thread_id:,
-        assistant_id:,
-        reviewer_id:,
-        reviewed_at:,
-        tool_calls:
-      )
+      assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
 
       expect(WebMock).to have_requested(:get, thread_url)
-      expect(WebMock).to have_requested(:get, state_url).twice
+      expect(WebMock).to have_requested(:get, state_url)
     end
 
-    it "passes the reviewed tool calls and interrupt context to wait-for-run" do
-      assistants.review_tool_calls(
-        thread_id:,
-        assistant_id:,
-        reviewer_id:,
-        reviewed_at:,
-        tool_calls:
-      )
+    it "resumes with one decision per action request, in the interrupt's order" do
+      assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
 
       expect(WebMock).to have_requested(:post, run_url)
         .with(body: resume_request_body.to_json)
     end
 
     it "returns nil" do
-      result = assistants.review_tool_calls(
-        thread_id:,
-        assistant_id:,
-        reviewer_id:,
-        reviewed_at:,
-        tool_calls:
-      )
+      result = assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
 
       expect(result).to be_nil
     end
 
-    context "when reviewed_at is not provided" do
-      let(:resume_request_body) do
+    context "when a reviewer rejects and responds instead" do
+      let(:tool_calls) do
         {
-          assistant_id:,
-          command: {
-            resume: {
-              reviewer_id:,
-              reviewed_at: "2026-03-27T15:00:00+00:00",
-              tool_calls:,
-            },
-          },
-          context: interrupt_context,
+          "tool_call_id_1" => { "action" => "reject", "message" => "Wrong account" },
+          "tool_call_id_2" => { "action" => "respond", "message" => "There are no open orders" },
         }
       end
-
-      before do
-        allow(DateTime).to receive(:current).and_return(DateTime.iso8601("2026-03-27T15:00:00Z"))
+      let(:decisions) do
+        [
+          { "type" => "reject", "message" => "Wrong account" },
+          { "type" => "respond", "message" => "There are no open orders" },
+        ]
       end
 
-      it "defaults reviewed_at to DateTime.current.iso8601" do
+      it "sends both messages with their decisions" do
+        assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
+
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: resume_request_body.to_json)
+      end
+    end
+
+    context "when the caller supplies a context" do
+      let(:context) { { "prompt_variables" => { "customer_name" => "Casey" } } }
+
+      it "sends it with the resumed run" do
+        assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:, context:)
+
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: resume_request_body.to_json)
+      end
+    end
+
+    context "when reviewer attribution is supplied" do
+      around do |example|
+        original_behavior = NitroIntelligence.deprecator.behavior
+        NitroIntelligence.deprecator.behavior = :silence
+        example.run
+        NitroIntelligence.deprecator.behavior = original_behavior
+      end
+
+      it "warns that it is deprecated" do
+        expect(NitroIntelligence.deprecator).to receive(:warn).with(/`reviewer_id` and `reviewed_at` are deprecated/)
+
         assistants.review_tool_calls(
           thread_id:,
           assistant_id:,
-          reviewer_id:,
-          tool_calls:
+          tool_calls:,
+          reviewer_id: "reviewer-123",
+          reviewed_at: "2026-03-27T12:34:56Z"
+        )
+      end
+
+      it "resumes with the decisions alone, since Assistants records neither" do
+        assistants.review_tool_calls(
+          thread_id:,
+          assistant_id:,
+          tool_calls:,
+          reviewer_id: "reviewer-123",
+          reviewed_at: "2026-03-27T12:34:56Z"
         )
 
         expect(WebMock).to have_requested(:post, run_url)
@@ -978,25 +1102,13 @@ RSpec.describe NitroIntelligence::Assistants do
 
       it "raises ThreadResumptionError" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError, "{}")
       end
 
       it "does not attempt to resume the thread" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
 
         expect(WebMock).not_to have_requested(:get, state_url)
@@ -1009,13 +1121,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
       it "raises ThreadResumptionError" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(
           NitroIntelligence::Assistants::ThreadResumptionError,
           "Thread #{thread_id} is not in the interrupted state"
@@ -1024,13 +1130,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
       it "does not attempt to resume the thread" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
 
         expect(WebMock).not_to have_requested(:get, state_url)
@@ -1038,7 +1138,28 @@ RSpec.describe NitroIntelligence::Assistants do
       end
     end
 
-    context "when the review includes a tool call that is not pending review" do
+    context "when the interrupt is holding no tool calls" do
+      let(:interrupt_value) { { "action_requests" => [], "review_configs" => [] } }
+
+      it "raises ThreadResumptionError" do
+        expect do
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
+        end.to raise_error(
+          NitroIntelligence::Assistants::ThreadResumptionError,
+          "Thread #{thread_id} has no tool calls awaiting review"
+        )
+      end
+
+      it "does not attempt to resume the thread" do
+        expect do
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
+        end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
+
+        expect(WebMock).not_to have_requested(:post, run_url)
+      end
+    end
+
+    context "when the review includes a tool call that is not under review" do
       let(:tool_calls) do
         super().merge(
           "tool_call_id_3" => {
@@ -1049,13 +1170,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
       it "raises ThreadResumptionError" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(
           NitroIntelligence::Assistants::ThreadResumptionError,
           "Unknown tool call ids: tool_call_id_3"
@@ -1064,31 +1179,19 @@ RSpec.describe NitroIntelligence::Assistants do
 
       it "does not attempt to resume the thread" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
 
         expect(WebMock).not_to have_requested(:post, run_url)
       end
     end
 
-    context "when a review action is not allowed by the interrupt" do
-      let(:review_actions) { ["approve"] }
+    context "when a review action is not among the interrupt's allowed decisions" do
+      let(:allowed_decisions) { ["approve"] }
 
       it "raises ThreadResumptionError" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(
           NitroIntelligence::Assistants::ThreadResumptionError,
           "Invalid review action `edit` for tool call tool_call_id_2"
@@ -1097,13 +1200,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
       it "does not attempt to resume the thread" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
 
         expect(WebMock).not_to have_requested(:post, run_url)
@@ -1124,13 +1221,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
       it "raises ThreadResumptionError" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(
           NitroIntelligence::Assistants::ThreadResumptionError,
           "Invalid edited args for tool call tool_call_id_2: arg_3"
@@ -1139,13 +1230,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
       it "does not attempt to resume the thread" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
 
         expect(WebMock).not_to have_requested(:post, run_url)
@@ -1165,13 +1250,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
       it "raises ThreadResumptionError" do
         expect do
-          assistants.review_tool_calls(
-            thread_id:,
-            assistant_id:,
-            reviewer_id:,
-            reviewed_at:,
-            tool_calls:
-          )
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
         end.to raise_error(
           NitroIntelligence::Assistants::ThreadResumptionError,
           '{"error":"Internal Server Error"}'

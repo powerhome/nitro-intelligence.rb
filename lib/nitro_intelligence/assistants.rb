@@ -1,6 +1,8 @@
 require "json"
 require "net/http"
 require "uri"
+require "nitro_intelligence/deprecation"
+require "nitro_intelligence/tool_call_review_interrupt"
 require "nitro_intelligence/tool_call_review_validator"
 
 module NitroIntelligence
@@ -69,30 +71,61 @@ module NitroIntelligence
       end
     end
 
-    def review_tool_calls(thread_id:, assistant_id:, reviewer_id:, tool_calls:, reviewed_at: DateTime.current.iso8601)
-      resume = { reviewer_id:, reviewed_at:, tool_calls: }.with_indifferent_access
+    # The tool calls the thread's interrupt is holding, in the order the platform wants decisions
+    # for them, each with the `allowed_decisions` a reviewer may take on it. Empty when the thread
+    # is not waiting on a review.
+    #
+    # A tool the assistant is not configured to interrupt on runs without review, so an AI message
+    # can mix calls under review with calls that are only waiting to be executed. This reports the
+    # former; #tool_calls_pending_review reports both.
+    def tool_calls_under_review(thread_id:)
+      ToolCallReviewInterrupt.new(get_thread_state(thread_id:)).tool_calls
+    end
+
+    # Resumes an interrupted thread with one review per tool call the interrupt is holding. Each
+    # review is keyed by tool call id and names an `action` -- `approve`, `edit`, `reject` or
+    # `respond` -- from the decisions the interrupt allows for that tool. `edit` carries `args`,
+    # merged over the arguments the model asked for; `respond` carries the `message` returned to the
+    # model as the tool's result; `reject` may carry a `message` explaining the refusal.
+    #
+    # `reviewer_id` and `reviewed_at` are deprecated and ignored: Assistants records neither, and
+    # the resume payload it accepts has nowhere to carry them.
+    def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {}, reviewer_id: nil, reviewed_at: nil)
+      warn_about_reviewer_attribution(reviewer_id:, reviewed_at:)
+
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)
 
-      thread_state = get_thread_state(thread_id:)
+      interrupt = ToolCallReviewInterrupt.new(get_thread_state(thread_id:))
+      tool_calls_under_review = interrupt.tool_calls
 
-      @tool_call_review_validator.validate!(
-        thread_state:,
-        tool_calls: resume[:tool_calls],
-        pending_tool_calls: tool_calls_pending_review(thread_id:)
-      )
+      if tool_calls_under_review.empty?
+        raise ThreadResumptionError, "Thread #{thread_id} has no tool calls awaiting review"
+      end
+
+      @tool_call_review_validator.validate!(tool_calls:, tool_calls_under_review:)
 
       resume_run(
         thread_id:,
         assistant_id:,
-        resume:,
-        context: interrupt_context(thread_state)
+        resume: { decisions: interrupt.decisions(tool_calls) },
+        context:
       )
 
       nil
     end
 
   private
+
+    def warn_about_reviewer_attribution(reviewer_id:, reviewed_at:)
+      return if reviewer_id.nil? && reviewed_at.nil?
+
+      NitroIntelligence.deprecator.warn(
+        "`reviewer_id` and `reviewed_at` are deprecated and are no longer sent. Assistants does not " \
+        "record who reviewed a tool call, so an application that needs the attribution has to keep it " \
+        "itself."
+      )
+    end
 
     # Assistants accepts `initial_state` on thread creation but never applies it, so a brand new thread is
     # seeded through the thread state endpoint instead. A thread that already exists is left untouched:
@@ -223,10 +256,6 @@ module NitroIntelligence
 
     def interrupted?(thread)
       thread["status"] == "interrupted"
-    end
-
-    def interrupt_context(thread_state)
-      thread_state.dig("interrupts", 0, "value", "context") || {}
     end
 
     def messages_in(thread_state)
