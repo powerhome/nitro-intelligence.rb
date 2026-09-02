@@ -183,11 +183,54 @@ tool_calls = assistants.tool_calls_pending_review(
 ]
 ```
 
+## `#tool_calls_under_review`
+
+Returns the tool calls the thread's interrupt is holding, in the order the platform wants decisions for them, each with the `allowed_decisions` a reviewer may take on it. Empty when the thread is not waiting on a review.
+
+A tool the assistant is not configured to interrupt on runs without review, so one AI message can mix calls under review with calls that are only waiting to be executed. This reports the former; [`#tool_calls_pending_review`](#tool_calls_pending_review) reports both. Only the calls reported here may be passed to [`#review_tool_calls`](#review_tool_calls), and every one of them has to be.
+
+### Usage example
+
+```ruby
+assistants = NitroIntelligence.assistants
+
+tool_calls = assistants.tool_calls_under_review(
+  thread_id: "thread-456"
+)
+```
+
+### Response example
+
+```json
+[
+  {
+    "previous_message_id": "communication-1",
+    "id": "tool_call_id_2",
+    "name": "send_invoice",
+    "args": {
+      "amount": 100
+    },
+    "allowed_decisions": ["approve", "reject"]
+  }
+]
+```
+
 ## `#review_tool_calls`
 
-Resumes an interrupted thread after a human has reviewed the pending tool calls.
+Resumes an interrupted thread after a human has reviewed the tool calls it is holding.
 
-This method fetches the thread to confirm its `status` is still `interrupted`, loads the current thread state, validates the reviewed tool calls against the pending interrupt state, and resumes the run with the reviewer decision payload plus the interrupt context captured by Assistants.
+This method fetches the thread to confirm its `status` is still `interrupted`, loads the current thread state, validates the reviews against the interrupt, and resumes the run with one decision per tool call awaiting review.
+
+Reviews are keyed by tool call id, as returned by [`#tool_calls_under_review`](#tool_calls_under_review). Each names an `action`, which must be one the interrupt allows for that tool:
+
+| `action` | What it does | Fields |
+| --- | --- | --- |
+| `approve` | Runs the call as the model asked | — |
+| `edit` | Runs the call with the reviewer's arguments | `args`, merged over the arguments the model asked for |
+| `reject` | Skips the call and tells the model why | `message`, optional |
+| `respond` | Skips the call and returns the message to the model as the tool's result | `message`, required |
+
+Which actions are allowed for a tool is configured on the assistant's prompt, in Cerebro, and published on the interrupt. A review naming an action the interrupt does not allow raises `Assistants::ThreadResumptionError` before anything is sent, as does a review that omits one of the tool calls under review, edits an argument the call does not have, or leaves out a message `respond` needs.
 
 ### Usage example
 
@@ -197,7 +240,6 @@ assistants = NitroIntelligence.assistants
 assistants.review_tool_calls(
   thread_id: "thread-456",
   assistant_id: "assistant-789",
-  reviewer_id: "reviewer-123",
   tool_calls: {
     "tool_call_id_1" => {
       "action" => "approve"
@@ -205,15 +247,20 @@ assistants.review_tool_calls(
     "tool_call_id_2" => {
       "action" => "edit",
       "args" => {
-        "arg_1" => "new value",
-        "arg_2" => "original value"
+        "arg_1" => "new value"
       }
+    },
+    "tool_call_id_3" => {
+      "action" => "reject",
+      "message" => "That is the wrong account"
     }
   }
 )
 ```
 
-`reviewed_at` is optional. When omitted, the SDK defaults it to `DateTime.current.iso8601`.
+`context` is optional and is sent with the resumed run, exactly as it is for `#await_run`. Pass the `prompt_variables` the assistant's prompt needs if the resumed run has to render it again.
+
+`reviewer_id` and `reviewed_at` are deprecated and are no longer sent. Assistants records neither, so an application that needs to know who reviewed a tool call has to keep that itself. Both are still accepted and warn through `NitroIntelligence.deprecator`; they are removed in 3.0.
 
 ### Response
 
