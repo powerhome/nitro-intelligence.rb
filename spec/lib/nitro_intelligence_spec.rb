@@ -18,7 +18,7 @@ RSpec.describe NitroIntelligence do
 
       it "returns a registry addressable by name" do
         expect(described_class.assistants).to be_a(NitroIntelligence::AssistantRegistry)
-        expect(described_class.assistants.names).to eq(["candidate-concierge"])
+        expect(described_class.assistants.keys).to eq(["candidate-concierge"])
       end
     end
 

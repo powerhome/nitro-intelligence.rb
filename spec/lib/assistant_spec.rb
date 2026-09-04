@@ -2,9 +2,9 @@ require "spec_helper"
 require "nitro_intelligence/assistant"
 
 RSpec.describe NitroIntelligence::Assistant do
-  subject(:assistant) { described_class.new(name, **attributes) }
+  subject(:assistant) { described_class.new(key, **attributes) }
 
-  let(:name) { "candidate-concierge" }
+  let(:key) { "candidate-concierge" }
 
   let(:attributes) do
     {
@@ -15,7 +15,7 @@ RSpec.describe NitroIntelligence::Assistant do
   end
 
   it "exposes what the host supplied" do
-    expect(assistant.name).to eq("candidate-concierge")
+    expect(assistant.key).to eq("candidate-concierge")
     expect(assistant.assistant_id).to eq("id-cc")
     expect(assistant.base_url).to eq("https://nip.example.com")
   end
@@ -40,12 +40,12 @@ RSpec.describe NitroIntelligence::Assistant do
     end
 
     it "names only what is missing" do
-      expect { described_class.new(name, **attributes.except(:assistant_id)) }
+      expect { described_class.new(key, **attributes.except(:assistant_id)) }
         .to raise_error(described_class::ConfigurationError, /is missing assistant_id\z/)
     end
 
     it "treats a blank value as missing" do
-      expect { described_class.new(name, **attributes, api_key: "  ") }
+      expect { described_class.new(key, **attributes, api_key: "  ") }
         .to raise_error(described_class::ConfigurationError, /is missing api_key/)
     end
   end
@@ -58,12 +58,12 @@ RSpec.describe NitroIntelligence::Assistant do
     end
 
     # A host sharing one structure with its deployment carries a human-readable label of its
-    # own. As a keyword it would silently win over the name the assistant is looked up by.
+    # own. As a keyword it would silently win over the key the assistant is looked up by.
     context "when an entry carries a name of its own" do
       let(:attributes) { super().merge(name: "Candidate Concierge") }
 
-      it "keeps the name it was constructed with" do
-        expect(assistant.name).to eq("candidate-concierge")
+      it "keeps the key it was constructed with" do
+        expect(assistant.key).to eq("candidate-concierge")
       end
     end
   end

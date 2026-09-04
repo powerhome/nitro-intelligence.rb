@@ -86,7 +86,7 @@ end
 | `inference_base_url`     | `String`      | `""`                  | Base URL for the LLM inference service                                                                                                                                                                     |
 | `observability_base_url` | `String`      | `""`                  | Base URL for the Langfuse observability service                                                                                                                                                            |
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
-| `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by name. `base_url` (String) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by name, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new` — see [Assistants](#assistants) |
+| `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new` — see [Assistants](#assistants) |
 | `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
 
 ## Basic Usage
@@ -503,7 +503,7 @@ For the full guide, see [ASSISTANTS.md](ASSISTANTS.md). For the service this SDK
 
 ## Assistants
 
-An assistant is addressed by name:
+An assistant is addressed by the key it is configured under:
 
 ```ruby
 assistant = NitroIntelligence.assistants["candidate-concierge"]
@@ -519,7 +519,7 @@ directly with `assistant.client` if you need it.
 ### Configuration
 
 Connection settings shared by every assistant sit at the top level; `definitions` holds one
-entry per assistant, keyed by the name you look it up with:
+entry per assistant, keyed by what you look it up with:
 
 ```ruby
 config.assistants_config = {
@@ -538,7 +538,8 @@ config.assistants_config = {
 An entry may carry keys this gem has no use for — a graph id, or the Cerebro project an
 assistant reports to — and they are ignored, so one structure can serve both a deployment and
 the application reading it. That includes a `name` of its own: an entry's `name` is a
-human-readable label, and the key it is filed under stays the name it is looked up by.
+human-readable label for the assistant's record, distinct from the key it is filed under.
+`Assistant#key` returns the latter.
 
 ### Credentials
 
@@ -557,11 +558,11 @@ Where a host gets them is its own business — an environment variable its deplo
 secrets store, a literal for local work. This gem reads no environment and assumes no naming
 convention, so nothing here is tied to one deployment's wiring.
 
-A name that resolves without them raises `Assistant::ConfigurationError`, naming every field
-it is missing at once so a host resolving them from elsewhere can see which lookup failed.
+A key that resolves without them raises `Assistant::ConfigurationError`, naming every field it
+is missing at once so a host resolving them from elsewhere can see which lookup failed.
 
 ### Without `definitions`
 
 `assistants_config` lacking `definitions` is read as keyword arguments for a single
 `Assistants` client, and `NitroIntelligence.assistants` returns that client rather than a
-registry. This is the shape that predates named lookup; a host still on it is left alone.
+registry. This is the shape that predates lookup by key; a host still on it is left alone.

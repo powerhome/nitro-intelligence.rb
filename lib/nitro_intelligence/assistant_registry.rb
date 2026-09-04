@@ -6,7 +6,8 @@ module NitroIntelligence
   #   NitroIntelligence.assistants["candidate-concierge"].await_run(...)
   #
   # Built from `assistants_config`: connection settings shared by every assistant sit at the
-  # top level, and each entry under `definitions` overrides them where it needs to.
+  # top level, and each entry under `definitions` overrides them where it needs to. The key an
+  # entry is filed under is what it is looked up by, distinct from any `name` it carries.
   #
   #   {
   #     "base_url" => "https://nip-assistants.example.com",
@@ -26,20 +27,20 @@ module NitroIntelligence
       @assistants = {}
     end
 
-    def [](name)
-      fetch(name)
+    def [](key)
+      fetch(key)
     end
 
-    def fetch(name)
-      key = name.to_s
+    def fetch(key)
+      key = key.to_s
       @assistants[key] ||= build(key)
     end
 
-    def key?(name)
-      definitions.key?(name.to_s)
+    def key?(key)
+      definitions.key?(key.to_s)
     end
 
-    def names
+    def keys
       definitions.keys
     end
 
@@ -49,17 +50,17 @@ module NitroIntelligence
       @config[DEFINITIONS_KEY] || {}
     end
 
-    def build(name)
-      definition = definitions[name]
+    def build(key)
+      definition = definitions[key]
 
       unless definition
         raise UnknownAssistantError,
-              "No assistant configured for #{name.inspect}. " \
-              "Configured: #{names.sort.join(', ').presence || '(none)'}"
+              "No assistant configured for #{key.inspect}. " \
+              "Configured: #{keys.sort.join(', ').presence || '(none)'}"
       end
 
       attributes = @config.slice(*SHARED_KEYS).merge(definition.to_h.deep_stringify_keys)
-      Assistant.new(name, **attributes.symbolize_keys)
+      Assistant.new(key, **attributes.symbolize_keys)
     end
   end
 end

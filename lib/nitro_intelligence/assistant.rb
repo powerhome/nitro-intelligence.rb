@@ -11,17 +11,20 @@ module NitroIntelligence
     DEFAULT_USER_ID = "default-user".freeze
     REQUIRED = %w[base_url api_key assistant_id].freeze
 
-    attr_reader :name, :assistant_id, :base_url, :user_id
+    # The key an assistant is filed and looked up under. Not its name: an entry usually carries
+    # a `name` of its own, a human-readable label for the assistant's record, and the two are
+    # different things.
+    attr_reader :key
 
-    # The name is positional so that splatting an entry cannot overwrite it. A host sharing one
-    # structure with its deployment may well carry a `name` of its own -- a human-readable label
-    # for the assistant's record -- and as a keyword that would silently win over the name the
-    # assistant was looked up by.
+    attr_reader :assistant_id, :base_url, :user_id
+
+    # The key is positional so that splatting an entry cannot overwrite it, whatever the entry
+    # happens to carry.
     #
     # Extra keys are accepted and ignored for the same reason: an entry carries fields the
     # application has no use for, such as the graph or the observability project it reports to.
-    def initialize(name, base_url: nil, api_key: nil, assistant_id: nil, user_id: nil, **_kwargs)
-      @name = name.to_s
+    def initialize(key, base_url: nil, api_key: nil, assistant_id: nil, user_id: nil, **_kwargs)
+      @key = key.to_s
       @base_url = base_url.presence
       @api_key = api_key.presence
       @assistant_id = assistant_id.presence
@@ -55,7 +58,7 @@ module NitroIntelligence
       missing = REQUIRED.select { |field| values[field].blank? }
       return if missing.empty?
 
-      raise ConfigurationError, "assistant #{@name.inspect} is missing #{missing.join(', ')}"
+      raise ConfigurationError, "assistant #{@key.inspect} is missing #{missing.join(', ')}"
     end
   end
 end

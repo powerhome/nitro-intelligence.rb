@@ -26,14 +26,14 @@ RSpec.describe NitroIntelligence::AssistantRegistry do
     it "resolves an assistant by name" do
       assistant = registry["candidate-concierge"]
 
-      expect(assistant.name).to eq("candidate-concierge")
+      expect(assistant.key).to eq("candidate-concierge")
       expect(assistant.assistant_id).to eq("id-cc")
     end
 
     # The fixture entry carries a `name` of its own, as a host sharing one structure with its
-    # deployment would. The key it is looked up by has to win.
+    # deployment would. The key it is filed under has to win.
     it "is not renamed by a name on the entry" do
-      expect(registry["candidate-concierge"].name).to eq("candidate-concierge")
+      expect(registry["candidate-concierge"].key).to eq("candidate-concierge")
     end
 
     it "applies the shared connection settings" do
@@ -66,9 +66,9 @@ RSpec.describe NitroIntelligence::AssistantRegistry do
     end
   end
 
-  describe "#names and #key?" do
+  describe "#keys and #key?" do
     it "lists the configured assistants" do
-      expect(registry.names).to contain_exactly("candidate-concierge", "home-studio")
+      expect(registry.keys).to contain_exactly("candidate-concierge", "home-studio")
     end
 
     it "reports whether an assistant is configured" do
@@ -81,7 +81,7 @@ RSpec.describe NitroIntelligence::AssistantRegistry do
     let(:config) { {} }
 
     it "has no assistants" do
-      expect(registry.names).to be_empty
+      expect(registry.keys).to be_empty
     end
 
     it "still explains an unknown lookup" do
