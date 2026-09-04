@@ -39,17 +39,29 @@ module NitroIntelligence
 
     # The two calls that identify an assistant take it from here rather than from the caller.
     # Everything else is thread-scoped and delegates untouched.
-    def await_run(thread_id:, messages:, **)
-      client.await_run(thread_id:, assistant_id:, messages:, **)
+    def await_run(thread_id:, messages:, **kwargs)
+      reject_assistant_id!(kwargs)
+      client.await_run(thread_id:, assistant_id:, messages:, **kwargs)
     end
 
-    def review_tool_calls(thread_id:, reviewer_id:, tool_calls:, **)
-      client.review_tool_calls(thread_id:, assistant_id:, reviewer_id:, tool_calls:, **)
+    def review_tool_calls(thread_id:, reviewer_id:, tool_calls:, **kwargs)
+      reject_assistant_id!(kwargs)
+      client.review_tool_calls(thread_id:, assistant_id:, reviewer_id:, tool_calls:, **kwargs)
     end
 
     delegate :thread_state, :thread_messages, :tool_calls_pending_review, to: :client
 
   private
+
+    # An assistant supplies its own id, so a caller has no business passing one. It would land
+    # in the trailing splat, which Ruby applies last, and quietly replace the configured id --
+    # routing the call to a different assistant with nothing to show for it. Refuse instead.
+    def reject_assistant_id!(kwargs)
+      return unless kwargs.key?(:assistant_id)
+
+      raise ArgumentError,
+            "assistant #{@key.inspect} supplies its own assistant_id; remove it from the call"
+    end
 
     # Reported together and named, since a host resolving these from somewhere else needs to
     # know which one it failed to supply.

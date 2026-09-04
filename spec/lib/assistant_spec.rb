@@ -97,6 +97,34 @@ RSpec.describe NitroIntelligence::Assistant do
       assistant.review_tool_calls(thread_id: "t1", reviewer_id: "r1", tool_calls: [])
     end
 
+    it "refuses an assistant id from the caller on a run" do
+      expect(client).not_to receive(:await_run)
+
+      expect do
+        assistant.await_run(thread_id: "t1", messages: ["hi"], assistant_id: "somebody-else")
+      end.to raise_error(ArgumentError, /"candidate-concierge" supplies its own assistant_id/)
+    end
+
+    it "refuses an assistant id from the caller on a tool call review" do
+      expect(client).not_to receive(:review_tool_calls)
+
+      expect do
+        assistant.review_tool_calls(
+          thread_id: "t1", reviewer_id: "r1", tool_calls: [], assistant_id: "somebody-else"
+        )
+      end.to raise_error(ArgumentError, /"candidate-concierge" supplies its own assistant_id/)
+    end
+
+    it "still forwards extra keywords on a tool call review" do
+      expect(client).to receive(:review_tool_calls)
+        .with(thread_id: "t1", assistant_id: "id-cc", reviewer_id: "r1", tool_calls: [],
+              reviewed_at: "2026-01-01T00:00:00Z")
+
+      assistant.review_tool_calls(
+        thread_id: "t1", reviewer_id: "r1", tool_calls: [], reviewed_at: "2026-01-01T00:00:00Z"
+      )
+    end
+
     it "passes thread-scoped calls straight through" do
       expect(client).to receive(:thread_state).with(thread_id: "t1")
 

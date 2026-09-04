@@ -513,8 +513,10 @@ assistant.thread_state(thread_id: thread.id)
 ```
 
 `await_run` and `review_tool_calls` supply the assistant's own id, so a caller never passes
-it. Everything else is thread-scoped and delegates to the client untouched. Reach the client
-directly with `assistant.client` if you need it.
+it -- passing `assistant_id:` to either raises `ArgumentError` rather than quietly sending the
+call to a different assistant, which is what a migrated caller carrying its old argument would
+otherwise do. Everything else is thread-scoped and delegates to the client untouched. Reach
+the client directly with `assistant.client` if you need it.
 
 ### Configuration
 
