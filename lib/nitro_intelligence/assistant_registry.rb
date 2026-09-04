@@ -59,7 +59,7 @@ module NitroIntelligence
       end
 
       attributes = @config.slice(*SHARED_KEYS).merge(definition.to_h.deep_stringify_keys)
-      Assistant.new(name:, **attributes.symbolize_keys)
+      Assistant.new(name, **attributes.symbolize_keys)
     end
   end
 end

@@ -11,6 +11,7 @@ RSpec.describe NitroIntelligence::AssistantRegistry do
       "definitions" => {
         "candidate-concierge" => {
           "graph_id" => "react-agent", "cerebro_project_slug" => "cc",
+          "name" => "Candidate Concierge",
           "api_key" => "key-cc", "assistant_id" => "id-cc"
         },
         "home-studio" => {
@@ -27,6 +28,12 @@ RSpec.describe NitroIntelligence::AssistantRegistry do
 
       expect(assistant.name).to eq("candidate-concierge")
       expect(assistant.assistant_id).to eq("id-cc")
+    end
+
+    # The fixture entry carries a `name` of its own, as a host sharing one structure with its
+    # deployment would. The key it is looked up by has to win.
+    it "is not renamed by a name on the entry" do
+      expect(registry["candidate-concierge"].name).to eq("candidate-concierge")
     end
 
     it "applies the shared connection settings" do

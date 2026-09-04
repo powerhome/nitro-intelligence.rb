@@ -13,9 +13,14 @@ module NitroIntelligence
 
     attr_reader :name, :assistant_id, :base_url, :user_id
 
-    # Extra keys are accepted and ignored: an entry carries fields the application has no use
-    # for, such as the graph or the observability project it reports to.
-    def initialize(name:, base_url: nil, api_key: nil, assistant_id: nil, user_id: nil, **_kwargs)
+    # The name is positional so that splatting an entry cannot overwrite it. A host sharing one
+    # structure with its deployment may well carry a `name` of its own -- a human-readable label
+    # for the assistant's record -- and as a keyword that would silently win over the name the
+    # assistant was looked up by.
+    #
+    # Extra keys are accepted and ignored for the same reason: an entry carries fields the
+    # application has no use for, such as the graph or the observability project it reports to.
+    def initialize(name, base_url: nil, api_key: nil, assistant_id: nil, user_id: nil, **_kwargs)
       @name = name.to_s
       @base_url = base_url.presence
       @api_key = api_key.presence

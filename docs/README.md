@@ -535,9 +535,10 @@ config.assistants_config = {
 }
 ```
 
-An entry may carry keys this gem has no use for — the Cerebro project an assistant reports
-to, say — and they are ignored, so one structure can serve both a deployment and the
-application reading it.
+An entry may carry keys this gem has no use for — a graph id, or the Cerebro project an
+assistant reports to — and they are ignored, so one structure can serve both a deployment and
+the application reading it. That includes a `name` of its own: an entry's `name` is a
+human-readable label, and the key it is filed under stays the name it is looked up by.
 
 ### Credentials
 

@@ -2,11 +2,12 @@ require "spec_helper"
 require "nitro_intelligence/assistant"
 
 RSpec.describe NitroIntelligence::Assistant do
-  subject(:assistant) { described_class.new(**attributes) }
+  subject(:assistant) { described_class.new(name, **attributes) }
+
+  let(:name) { "candidate-concierge" }
 
   let(:attributes) do
     {
-      name: "candidate-concierge",
       base_url: "https://nip.example.com",
       api_key: "key-cc",
       assistant_id: "id-cc",
@@ -33,18 +34,18 @@ RSpec.describe NitroIntelligence::Assistant do
 
   describe "validation" do
     it "names every missing credential at once" do
-      expect { described_class.new(name: "candidate-concierge") }
+      expect { described_class.new("candidate-concierge") }
         .to raise_error(described_class::ConfigurationError,
                         /"candidate-concierge" is missing base_url, api_key, assistant_id/)
     end
 
     it "names only what is missing" do
-      expect { described_class.new(**attributes.except(:assistant_id)) }
+      expect { described_class.new(name, **attributes.except(:assistant_id)) }
         .to raise_error(described_class::ConfigurationError, /is missing assistant_id\z/)
     end
 
     it "treats a blank value as missing" do
-      expect { described_class.new(**attributes, api_key: "  ") }
+      expect { described_class.new(name, **attributes, api_key: "  ") }
         .to raise_error(described_class::ConfigurationError, /is missing api_key/)
     end
   end
@@ -54,6 +55,16 @@ RSpec.describe NitroIntelligence::Assistant do
 
     it "ignores fields the application has no use for" do
       expect(assistant.assistant_id).to eq("id-cc")
+    end
+
+    # A host sharing one structure with its deployment carries a human-readable label of its
+    # own. As a keyword it would silently win over the name the assistant is looked up by.
+    context "when an entry carries a name of its own" do
+      let(:attributes) { super().merge(name: "Candidate Concierge") }
+
+      it "keeps the name it was constructed with" do
+        expect(assistant.name).to eq("candidate-concierge")
+      end
     end
   end
 
