@@ -32,7 +32,13 @@ NitroIntelligence.configure do |config|
   ]
 
   # Nitro Intelligence Assistants settings (optional)
-  config.assistants_config = {}                  # Hash of Assistants keyword arguments
+  config.assistants_config = {                   # See "Assistants" below
+    "base_url" => "https://nip-assistants.example.com",
+    "user_id" => "my-app",
+    "definitions" => {
+      "candidate-concierge" => {},
+    }
+  }
 
   # Model configuration
   config.model_config = {
@@ -80,7 +86,7 @@ end
 | `inference_base_url`     | `String`      | `""`                  | Base URL for the LLM inference service                                                                                                                                                                     |
 | `observability_base_url` | `String`      | `""`                  | Base URL for the Langfuse observability service                                                                                                                                                            |
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
-| `assistants_config`      | `Hash`        | `{}`                  | Credentials for `Assistants.new`. Expected keys: `base_url` (String) — HTTP base URL of Nitro Intelligence Assistants; `api_key` (String) — bearer token; `user_id` (String, default: `"default-user"`) — caller identity |
+| `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by name. `base_url` (String) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by name, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new` — see [Assistants](#assistants) |
 | `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
 
 ## Basic Usage
@@ -494,3 +500,67 @@ client.chat(
 `NitroIntelligence::Assistants` is Nitro Intelligence's lightweight SDK for working with hosted agent threads, runs, and human review flows. It is mainly used to initialize conversation threads, trigger agent runs, inspect agent tool calls pending human approval, and resume interrupted threads after human reviews.
 
 For the full guide, see [ASSISTANTS.md](ASSISTANTS.md). For the service this SDK talks to, see the [Nitro Intelligence Assistants documentation](https://portal.powerapp.cloud/docs/default/system/nip-assistants).
+
+## Assistants
+
+An assistant is addressed by name:
+
+```ruby
+assistant = NitroIntelligence.assistants["candidate-concierge"]
+
+assistant.await_run(thread_id: thread.id, messages: messages)
+assistant.thread_state(thread_id: thread.id)
+```
+
+`await_run` and `review_tool_calls` supply the assistant's own id, so a caller never passes
+it. Everything else is thread-scoped and delegates to the client untouched. Reach the client
+directly with `assistant.client` if you need it.
+
+### Configuration
+
+Connection settings shared by every assistant sit at the top level; `definitions` holds one
+entry per assistant, keyed by the name you look it up with:
+
+```ruby
+config.assistants_config = {
+  "base_url" => "https://nip-assistants.example.com",
+  "user_id" => "my-app",
+  "definitions" => {
+    "candidate-concierge" => {},
+    "home-studio" => {
+      # Overrides the shared value for this assistant only.
+      "base_url" => "https://pr306.nip-assistants.example.com"
+    }
+  }
+}
+```
+
+An entry may carry keys this gem has no use for — the Cerebro project an assistant reports
+to, say — and they are ignored, so one structure can serve both a deployment and the
+application reading it.
+
+### Credentials
+
+Each entry supplies its own `api_key` and `assistant_id`:
+
+```ruby
+"definitions" => {
+  "candidate-concierge" => {
+    "api_key" => "...",
+    "assistant_id" => "..."
+  }
+}
+```
+
+Where a host gets them is its own business — an environment variable its deployment mounts, a
+secrets store, a literal for local work. This gem reads no environment and assumes no naming
+convention, so nothing here is tied to one deployment's wiring.
+
+A name that resolves without them raises `Assistant::ConfigurationError`, naming every field
+it is missing at once so a host resolving them from elsewhere can see which lookup failed.
+
+### Without `definitions`
+
+`assistants_config` lacking `definitions` is read as keyword arguments for a single
+`Assistants` client, and `NitroIntelligence.assistants` returns that client rather than a
+registry. This is the shape that predates named lookup; a host still on it is left alone.

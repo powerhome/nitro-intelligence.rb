@@ -7,6 +7,7 @@ require "openai"
 
 require "nitro_intelligence/version"
 require "nitro_intelligence/agent_server"
+require "nitro_intelligence/assistant_registry"
 require "nitro_intelligence/assistants"
 require "nitro_intelligence/client/base"
 require "nitro_intelligence/client/client"
@@ -23,8 +24,15 @@ module NitroIntelligence
   class << self
     delegate :configure, :config, :logger, :environment, to: :configuration
 
+    # A registry addressable by name when `assistants_config` carries `definitions`, and the
+    # single pre-registry client otherwise. The two shapes are mutually exclusive, so the
+    # configuration decides which one a host gets: one that has not reshaped its config keeps
+    # the client it already had.
     def assistants
-      Assistants.new(**assistants_config.symbolize_keys)
+      current = assistants_config.to_h.deep_stringify_keys
+      return AssistantRegistry.new(current) if current.key?(AssistantRegistry::DEFINITIONS_KEY)
+
+      Assistants.new(**current.symbolize_keys)
     end
 
     # Deprecated: use `NitroIntelligence.assistants`.
