@@ -18,11 +18,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `Assistant#review_tool_calls` no longer requires `reviewer_id`, matching the client it delegates to, and `Assistant` delegates `tool_calls_under_review` alongside the other thread-scoped calls. An assistant that kept `reviewer_id` required would have made every caller pass a deprecated argument to reach the method at all (#91)
 - `ToolCallReviewValidator#validate!` takes `tool_calls_under_review` -- the tool calls the interrupt is holding, as `Assistants#tool_calls_under_review` reports them -- in place of `thread_state` and `pending_tool_calls`. It reads the permitted actions off those rather than off the thread state, so the interrupt is interpreted in one place (#91)
 
 ### Deprecated
 
 - `Assistants#review_tool_calls`'s `reviewer_id` and `reviewed_at` arguments. Both are still accepted, warn through `NitroIntelligence.deprecator` and are removed in 3.0. The resume payload the platform accepts is a list of decisions with nowhere to carry them, and Assistants records neither, so an application that needs to know who reviewed a tool call has to keep that itself rather than sending it and assuming it was stored. `reviewer_id` is no longer a required argument (#91)
+## [2.6.0] - 2026-09-04
+
+### Added
+
+- Assistants are addressable by name. When `assistants_config` carries a `definitions` hash, `NitroIntelligence.assistants` returns an `AssistantRegistry`, and `NitroIntelligence.assistants["candidate-concierge"]` resolves one `Assistant`: a client built for that assistant's deployment, plus the `assistant_id` that `await_run` and `review_tool_calls` supply on the caller's behalf. The thread-scoped calls (`thread_state`, `thread_messages`, `tool_calls_pending_review`) delegate untouched, and `assistant.client` reaches the underlying client. A host talking to several assistants previously had to build and hold a client per assistant itself and thread an assistant id through every call. Connection settings shared by every assistant sit at the top level of the configuration and each entry overrides them where it needs to, so a single assistant can be pointed at a review deployment without restating the rest. The key an entry is filed under is what it is looked up by, distinct from any `name` the entry carries for display. An entry may carry keys this gem has no use for - a graph id, an observability project - and they are ignored, so a deployment and the application reading it can share one structure. Credentials are plain attributes on the entry: this gem reads no environment and assumes no naming convention, because how a deployment mounts the Secret `nip-operator` writes is each consumer's choice and resolving it here would encode one consumer's wiring for all of them. A name that resolves without `base_url`, `api_key` or `assistant_id` raises `Assistant::ConfigurationError` naming every missing field at once; an unconfigured name raises `AssistantRegistry::UnknownAssistantError` listing the names that are configured (#94)
+
+### Changed
+
+- `NitroIntelligence.assistants` returns an `AssistantRegistry` only when `assistants_config` carries `definitions`. Configuration without it is read exactly as before - as keyword arguments for a single `Assistants` client, which is what `NitroIntelligence.assistants` still returns - so a host that has not reshaped its configuration is unaffected and needs no coordinated release (#94)
 
 ## [2.5.0] - 2026-08-29
 
@@ -115,7 +125,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.5.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...HEAD
+[2.6.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.5.0-nitro_intelligence...v2.6.0-nitro_intelligence
 [2.5.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.4.0-nitro_intelligence...v2.5.0-nitro_intelligence
 [2.4.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.3.0-nitro_intelligence...v2.4.0-nitro_intelligence
 [2.3.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.2.0-nitro_intelligence...v2.3.0-nitro_intelligence
