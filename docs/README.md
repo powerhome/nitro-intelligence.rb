@@ -86,7 +86,7 @@ end
 | `inference_base_url`     | `String`      | `"https://inference.powerhome.ai"` | Base URL for the LLM inference service. Defaults to the shared inference gateway, so only a host talking to a different one needs to set it                                                                 |
 | `observability_base_url` | `String`      | `""`                  | Base URL for the Langfuse observability service                                                                                                                                                            |
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
-| `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new` — see [Assistants](#assistants) |
+| `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String, default: `"https://assistants.powerhome.ai"`) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new` — see [Assistants](#assistants) |
 | `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
 
 ## Basic Usage
@@ -525,6 +525,7 @@ entry per assistant, keyed by what you look it up with:
 
 ```ruby
 config.assistants_config = {
+  # Optional. Defaults to the shared Assistants deployment.
   "base_url" => "https://nip-assistants.example.com",
   "user_id" => "my-app",
   "definitions" => {
@@ -562,6 +563,9 @@ convention, so nothing here is tied to one deployment's wiring.
 
 A key that resolves without them raises `Assistant::ConfigurationError`, naming every field it
 is missing at once so a host resolving them from elsewhere can see which lookup failed.
+`base_url` is not among them: an entry that says nothing about where to reach its assistant
+gets `https://assistants.powerhome.ai`, so only a host talking to a different deployment — a
+review environment, a local server — sets it.
 
 ### Without `definitions`
 
