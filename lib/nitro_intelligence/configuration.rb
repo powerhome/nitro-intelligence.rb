@@ -12,9 +12,9 @@ module NitroIntelligence
     config_accessor :environment, default: "test"
     config_accessor :assistants_config, default: {}
     config_accessor :inference_api_key, default: ""
-    config_accessor :inference_base_url, default: "https://nip-assistants.powerapp.cloud"
+    config_accessor :inference_base_url, default: "https://assistants.powerhome.ai"
     config_accessor :model_config, default: {}
-    config_accessor :observability_base_url, default: ""
+    config_accessor :observability_base_url, default: "https://cerebro.powerhome.ai"
     config_accessor :observability_projects, default: []
     config_accessor :observability_user_id, default: ""
 
