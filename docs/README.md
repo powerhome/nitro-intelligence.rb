@@ -21,7 +21,7 @@ NitroIntelligence.configure do |config|
   config.inference_base_url = "https://..."      # Base URL for the inference service (optional; defaults to the inference gateway)
 
   # Observability (Langfuse) settings
-  config.observability_base_url = "https://..."  # Base URL for the observability service (optional; defaults to Cerebro)
+  config.observability_base_url = "https://..."  # Base URL for the observability service
   config.observability_projects = [              # Array of project credential hashes
     {
       "slug"       => "my-feature-project",
@@ -84,7 +84,7 @@ end
 | `cache_provider`         | cache store   | `NullCache`           | ActiveSupport-compatible cache store                                                                                                                                                                       |
 | `inference_api_key`      | `String`      | `""`                  | API key for the LLM inference service                                                                                                                                                                      |
 | `inference_base_url`     | `String`      | `"https://inference.powerhome.ai"` | Base URL for the LLM inference service. Defaults to the shared inference gateway, so only a host talking to a different one needs to set it                                                                 |
-| `observability_base_url` | `String`      | `"https://cerebro.powerhome.ai"` | Base URL for the Langfuse observability service. Defaults to Cerebro, so only a host talking to a different one needs to set it                                                                             |
+| `observability_base_url` | `String`      | `""`                  | Base URL for the Langfuse observability service                                                                                                                                                            |
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
 | `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new` — see [Assistants](#assistants) |
 | `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
