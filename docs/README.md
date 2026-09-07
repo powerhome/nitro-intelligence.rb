@@ -18,7 +18,7 @@ NitroIntelligence.configure do |config|
 
   # Inference (LLM) settings
   config.inference_api_key  = "..."              # API key for the inference service
-  config.inference_base_url = "https://..."      # Base URL for the inference service
+  config.inference_base_url = "https://..."      # Base URL for the inference service (optional; defaults to the shared gateway)
 
   # Observability (Langfuse) settings
   config.observability_base_url = "https://..."  # Base URL for the observability service
@@ -83,7 +83,7 @@ end
 | `environment`            | `String`      | `"test"`              | Runtime environment name                                                                                                                                                                                   |
 | `cache_provider`         | cache store   | `NullCache`           | ActiveSupport-compatible cache store                                                                                                                                                                       |
 | `inference_api_key`      | `String`      | `""`                  | API key for the LLM inference service                                                                                                                                                                      |
-| `inference_base_url`     | `String`      | `""`                  | Base URL for the LLM inference service                                                                                                                                                                     |
+| `inference_base_url`     | `String`      | `"https://nip-assistants.powerapp.cloud"` | Base URL for the LLM inference service. Defaults to the shared gateway, so only a host talking to a different deployment needs to set it                                                                    |
 | `observability_base_url` | `String`      | `""`                  | Base URL for the Langfuse observability service                                                                                                                                                            |
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
 | `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new` — see [Assistants](#assistants) |

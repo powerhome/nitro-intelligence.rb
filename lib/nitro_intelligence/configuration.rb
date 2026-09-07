@@ -12,7 +12,7 @@ module NitroIntelligence
     config_accessor :environment, default: "test"
     config_accessor :assistants_config, default: {}
     config_accessor :inference_api_key, default: ""
-    config_accessor :inference_base_url, default: ""
+    config_accessor :inference_base_url, default: "https://nip-assistants.powerapp.cloud"
     config_accessor :model_config, default: {}
     config_accessor :observability_base_url, default: ""
     config_accessor :observability_projects, default: []
