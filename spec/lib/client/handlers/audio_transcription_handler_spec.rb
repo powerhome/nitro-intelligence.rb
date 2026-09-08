@@ -1,4 +1,6 @@
 require "spec_helper"
+require "webmock/rspec"
+
 require "nitro_intelligence/client/handlers/audio_transcription_handler"
 
 RSpec.describe NitroIntelligence::Client::Handlers::AudioTranscriptionHandler do
@@ -29,6 +31,37 @@ RSpec.describe NitroIntelligence::Client::Handlers::AudioTranscriptionHandler do
 
       response = handler.create(message: "transcribe this", audio_file:, parameters: { temperature: 0.5, trace_name: "test" })
       expect(response).to eq("fake_transcription")
+    end
+  end
+
+  # See the note in chat_handler_spec: the cost path is covered against a real
+  # OpenAI::Client once per kind of response the SDK returns.
+  describe "the cost of a real transcription response" do
+    subject(:handler) { described_class.new(client: real_client) }
+
+    let(:real_client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example") }
+
+    before do
+      stub_request(:post, "https://gateway.example/audio/transcriptions").to_return(
+        status: 200,
+        body: { text: "transcribed text" }.to_json,
+        headers: {
+          "Content-Type" => "application/json",
+          "x-litellm-response-cost" => "5.85e-06",
+          "x-litellm-response-cost-input" => "1.1e-06",
+          "x-litellm-response-cost-output" => "4.75e-06",
+        }
+      )
+    end
+
+    it "reaches the gateway's cost headers through the returned transcription" do
+      audio_transcription = handler.create(
+        audio_file: OpenAI::FilePart.new(StringIO.new("audio_bytes"), filename: "audio.mp3"),
+        message: "transcribe this"
+      )
+
+      expect(audio_transcription.text).to eq("transcribed text")
+      expect(handler.cost_details(audio_transcription)).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
     end
   end
 end

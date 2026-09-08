@@ -105,12 +105,10 @@ RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
     end
   end
 
-  # Speech is served by an endpoint returning a bare StringIO rather than a typed
-  # model, and the cost header is reachable through it only on the openai versions
-  # the gemspec requires. Every other cost example in the suite stubs
-  # `last_response` on a double, which would pass just as well against a client
-  # that never sets it - so this one drives a real OpenAI::Client against a stubbed
-  # response, and fails if that floor ever slips.
+  # See the note in chat_handler_spec: the cost path is covered against a real
+  # OpenAI::Client once per kind of response the SDK returns. This is the binary
+  # case, and the only one whose metadata depends on the openai floor the gemspec
+  # sets, so it is the example that fails if that floor ever slips.
   describe "the cost of a real speech response" do
     subject(:handler) { described_class.new(client: real_client) }
 
