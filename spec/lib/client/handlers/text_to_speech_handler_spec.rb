@@ -1,4 +1,6 @@
 require "spec_helper"
+require "webmock/rspec"
+
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
 RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
@@ -100,6 +102,40 @@ RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
       expect do
         handler.create(message: "hi", parameters: { response_format: "flac" })
       end.to raise_error(ArgumentError, /Unsupported response_format: 'flac'/)
+    end
+  end
+
+  # Speech is the one modality served by an endpoint that returns a bare StringIO
+  # rather than a typed model, and until openai 0.86 the client dropped the HTTP
+  # metadata of those responses on the floor (openai/openai-ruby#561). Every other
+  # cost example in the suite stubs `last_response` on a double, which would keep
+  # passing on a version where the real client never sets it - so this one drives a
+  # real OpenAI::Client against a stubbed response instead, and fails if the openai
+  # floor in the gemspec ever slips back below 0.86.
+  describe "the cost of a real speech response" do
+    subject(:handler) { described_class.new(client: real_client) }
+
+    let(:real_client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example") }
+
+    before do
+      stub_request(:post, "https://gateway.example/audio/speech").to_return(
+        status: 200,
+        body: "fake_audio_bytes",
+        headers: {
+          "Content-Type" => "application/octet-stream",
+          "x-litellm-response-cost" => "5.85e-06",
+          "x-litellm-response-cost-input" => "1.1e-06",
+          "x-litellm-response-cost-output" => "4.75e-06",
+        }
+      )
+    end
+
+    it "reaches the gateway's cost headers through the returned StringIO" do
+      tts = handler.create(message: "hello world")
+
+      expect(tts).to be_a(StringIO)
+      expect(tts.string).to eq("fake_audio_bytes")
+      expect(handler.cost_details(tts)).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
     end
   end
 end

@@ -79,11 +79,14 @@ module NitroIntelligence
               output = handle_text_to_speech_upload(tempfile, trace_id)
             end
 
-            # We only get StringIO object as a response, so there are no usage details
-            # and no resolved model to record. The requested model and the input are
-            # already on the observation from before the request ran.
+            # The response is a bare StringIO, so there are no usage details and no
+            # resolved model to record. The requested model and the input are already
+            # on the observation from before the request ran. The HTTP metadata the
+            # gateway reports cost in does reach us, since openai 0.86 attaches it to
+            # binary responses too - see openai/openai-ruby#561.
             trace_attributes = {
               output:,
+              cost_details: @base_handler.cost_details(tts),
             }
 
             [tts, trace_attributes]
