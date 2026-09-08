@@ -1,4 +1,6 @@
 require "spec_helper"
+require "webmock/rspec"
+
 require "nitro_intelligence/client/handlers/chat_handler"
 
 RSpec.describe NitroIntelligence::Client::Handlers::ChatHandler do
@@ -72,6 +74,44 @@ RSpec.describe NitroIntelligence::Client::Handlers::ChatHandler do
       end
 
       handler.perform_request(parameters:)
+    end
+  end
+
+  # Asserting that a stubbed `last_response` reaches `cost_details` only proves the
+  # stub works; it would pass just as well against a client that never sets it. So
+  # the cost path is covered against a real OpenAI::Client and a stubbed response,
+  # once per kind of response the SDK returns - a typed model here, a binary
+  # StringIO in the text-to-speech spec.
+  describe "the cost of a real chat response" do
+    subject(:handler) { described_class.new(client: real_client) }
+
+    let(:real_client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example") }
+
+    before do
+      stub_request(:post, "https://gateway.example/chat/completions").to_return(
+        status: 200,
+        body: {
+          id: "chatcmpl-1",
+          object: "chat.completion",
+          created: 1,
+          model: "default-text-model",
+          choices: [{ index: 0, message: { role: "assistant", content: "hi" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+        }.to_json,
+        headers: {
+          "Content-Type" => "application/json",
+          "x-litellm-response-cost" => "5.85e-06",
+          "x-litellm-response-cost-input" => "1.1e-06",
+          "x-litellm-response-cost-output" => "4.75e-06",
+        }
+      )
+    end
+
+    it "reaches the gateway's cost headers through the returned completion" do
+      chat_completion = handler.create(message: "hello world")
+
+      expect(chat_completion.choices.first.message.content).to eq("hi")
+      expect(handler.cost_details(chat_completion)).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
     end
   end
 end
