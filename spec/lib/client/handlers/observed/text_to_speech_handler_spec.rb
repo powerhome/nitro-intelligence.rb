@@ -68,8 +68,6 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
     end
 
     it "carries the cost the gateway reported into the trace attributes" do
-      # Since openai 0.86 the StringIO a binary endpoint returns carries the HTTP
-      # metadata of the response it was built from, same as a typed model.
       priced_response = StringIO.new("fake_audio_bytes")
       allow(priced_response).to receive(:last_response).and_return(
         double("LastResponse", headers: {

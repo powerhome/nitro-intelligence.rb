@@ -17,9 +17,9 @@ Gem::Specification.new do |s|
   s.add_dependency "activesupport", "~> 7.1"
   s.add_dependency "langfuse-rb", "0.7.0"
   s.add_dependency "mini_magick", "~> 4.10"
-  # `last_response`, which carries the HTTP metadata the gateway reports cost in,
-  # was added in 0.79, and extended to the binary `StringIO` responses text-to-speech
-  # returns in 0.86. On anything older the cost is silently never recorded.
+  # 0.86 is the earliest version exposing `last_response` - the HTTP metadata the
+  # gateway reports cost in - on every response, the binary ones text-to-speech
+  # returns included. On anything older the cost is silently never recorded.
   s.add_dependency "openai", "~> 0.86"
   s.metadata["rubygems_mfa_required"] = "true"
 end
