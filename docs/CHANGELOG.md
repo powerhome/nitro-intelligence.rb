@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Send `x-litellm-tags` on observed requests, carrying `cerebro_observability_project_id` and, when a managed prompt was resolved, `cerebro_prompt_name` and `cerebro_prompt_version`, so gateway spend can be aggregated per feature. Set automatically with no caller-facing parameter: it serves whoever operates the gateway, not the feature teams calling this library. Nothing is sent on the unobserved path, and this is unrelated to the `tags` parameter, which tags the observability trace (#71)
 
+### Changed
+
+- The base URLs of the three services this gem talks to default to their shared deployments: `inference_base_url` to `https://inference.powerhome.ai`, `observability_base_url` to `https://cerebro.powerhome.ai`, and an `assistants_config` entry's `base_url` to `https://assistants.powerhome.ai`. Every consumer set all three identically at boot, and one that forgot got a client built against an empty base URL - a request to a relative path, failing wherever the underlying SDK happened to notice - rather than a clear failure or the deployment it meant. A host reaching a different deployment still says so and is unaffected. The observability default is ungated: a host's development and staging environments report to Cerebro production too, since there is no one-to-one mapping between an application's environment and a Cerebro instance (#98)
+- `base_url` is no longer required anywhere in `assistants_config`. `Assistant::ConfigurationError` no longer names it among an entry's missing fields, and `Assistants.new` no longer raises `"base_url is required"`, so both the registry shape and the single-client shape that predates it reach the shared deployment when the configuration names none. That is the point of the change, but it does mean a `base_url` that is absent or misspelled surfaces when a request is made rather than when the client is built (#98)
+
 ## [2.6.0] - 2026-09-04
 
 ### Added

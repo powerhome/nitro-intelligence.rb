@@ -52,6 +52,17 @@ RSpec.describe NitroIntelligence::AssistantRegistry do
       expect(registry["home-studio"].user_id).to eq("nitro-web")
     end
 
+    # A configuration generated from YAML or JSON writes an unset optional field as null, and
+    # that is not an override: it has to leave the shared host in place rather than fall past
+    # it to the default deployment.
+    context "when a definition carries a blank shared setting" do
+      let(:config) { super().deep_merge("definitions" => { "home-studio" => { "base_url" => nil } }) }
+
+      it "falls back to the shared setting" do
+        expect(registry["home-studio"].base_url).to eq("https://nip.example.com")
+      end
+    end
+
     it "memoizes the resolved assistant" do
       expect(registry["candidate-concierge"]).to equal(registry["candidate-concierge"])
     end

@@ -1,3 +1,5 @@
+require "nitro_intelligence/assistants"
+
 module NitroIntelligence
   # One assistant resolved by name: the client for its deployment, plus the id every run has to
   # carry.
@@ -8,8 +10,10 @@ module NitroIntelligence
   class Assistant
     class ConfigurationError < StandardError; end
 
-    DEFAULT_USER_ID = "default-user".freeze
-    REQUIRED = %w[base_url api_key assistant_id].freeze
+    DEFAULT_USER_ID = Assistants::DEFAULT_USER_ID
+
+    # `base_url` is not among them: the client defaults it, so it cannot be missing.
+    REQUIRED = %w[api_key assistant_id].freeze
 
     # The key an assistant is filed and looked up under. Not its name: an entry usually carries
     # a `name` of its own, a human-readable label for the assistant's record, and the two are
@@ -25,7 +29,7 @@ module NitroIntelligence
     # application has no use for, such as the graph or the observability project it reports to.
     def initialize(key, base_url: nil, api_key: nil, assistant_id: nil, user_id: nil, **_kwargs)
       @key = key.to_s
-      @base_url = base_url.presence
+      @base_url = base_url.presence || Assistants::DEFAULT_BASE_URL
       @api_key = api_key.presence
       @assistant_id = assistant_id.presence
       @user_id = user_id.presence || DEFAULT_USER_ID
@@ -66,7 +70,7 @@ module NitroIntelligence
     # Reported together and named, since a host resolving these from somewhere else needs to
     # know which one it failed to supply.
     def validate!
-      values = { "base_url" => @base_url, "api_key" => @api_key, "assistant_id" => @assistant_id }
+      values = { "api_key" => @api_key, "assistant_id" => @assistant_id }
       missing = REQUIRED.select { |field| values[field].blank? }
       return if missing.empty?
 
