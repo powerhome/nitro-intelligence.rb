@@ -24,6 +24,23 @@ RSpec.describe NitroIntelligence::Assistant do
     expect(assistant.user_id).to eq(described_class::DEFAULT_USER_ID)
   end
 
+  context "when no base url is supplied" do
+    let(:attributes) { super().except(:base_url) }
+
+    it "defaults to the shared Assistants deployment" do
+      expect(assistant.base_url).to eq(NitroIntelligence::Assistants::DEFAULT_BASE_URL)
+      expect(assistant.client.base_url).to eq(NitroIntelligence::Assistants::DEFAULT_BASE_URL)
+    end
+  end
+
+  context "when a blank base url is supplied" do
+    let(:attributes) { super().merge(base_url: "  ") }
+
+    it "is treated as absent rather than as a validation failure" do
+      expect(assistant.base_url).to eq(NitroIntelligence::Assistants::DEFAULT_BASE_URL)
+    end
+  end
+
   context "when a user id is supplied" do
     let(:attributes) { super().merge(user_id: "nitro-web") }
 
@@ -36,7 +53,7 @@ RSpec.describe NitroIntelligence::Assistant do
     it "names every missing credential at once" do
       expect { described_class.new("candidate-concierge") }
         .to raise_error(described_class::ConfigurationError,
-                        /"candidate-concierge" is missing base_url, api_key, assistant_id/)
+                        /"candidate-concierge" is missing api_key, assistant_id/)
     end
 
     it "names only what is missing" do
