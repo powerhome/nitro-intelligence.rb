@@ -54,6 +54,16 @@ RSpec.describe NitroIntelligence do
         expect(described_class.assistants.user_id).to eq("default-user")
       end
     end
+
+    context "without base_url in config" do
+      before do
+        NitroIntelligence.configuration.assistants_config = { "api_key" => api_key }
+      end
+
+      it "uses the shared Assistants deployment" do
+        expect(described_class.assistants.base_url).to eq(NitroIntelligence::Assistants::DEFAULT_BASE_URL)
+      end
+    end
   end
 
   describe "deprecated agent server names" do
@@ -185,16 +195,13 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     context "with missing base_url" do
-      it "raises ConfigurationError when base_url is nil" do
-        expect do
-          described_class.new(base_url: nil, api_key:, user_id:)
-        end.to raise_error(NitroIntelligence::Assistants::ConfigurationError, "base_url is required")
+      it "defaults to the shared Assistants deployment when base_url is absent" do
+        expect(described_class.new(api_key:, user_id:).base_url).to eq(described_class::DEFAULT_BASE_URL)
       end
 
-      it "raises ConfigurationError when base_url is empty" do
-        expect do
-          described_class.new(base_url: "", api_key:, user_id:)
-        end.to raise_error(NitroIntelligence::Assistants::ConfigurationError, "base_url is required")
+      it "defaults when base_url is empty" do
+        expect(described_class.new(base_url: "", api_key:, user_id:).base_url)
+          .to eq(described_class::DEFAULT_BASE_URL)
       end
     end
 

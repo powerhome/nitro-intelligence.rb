@@ -16,14 +16,20 @@ module NitroIntelligence
     # Assistants answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
     THREAD_CONFLICT_CODE = 409
 
+    # Every assistant this gem is built for is served by the same deployment, so a client told
+    # nothing about where to reach one gets that deployment. A host talking to a different one
+    # -- a review environment, a local server -- still says so.
+    DEFAULT_BASE_URL = "https://assistants.powerhome.ai".freeze
+
+    DEFAULT_USER_ID = "default-user".freeze
+
     attr_reader :base_url, :user_id
 
-    def initialize(base_url:, api_key:, user_id: "default-user")
-      raise ConfigurationError, "base_url is required" if base_url.blank?
+    def initialize(api_key:, base_url: nil, user_id: DEFAULT_USER_ID)
       raise ConfigurationError, "api_key is required" if api_key.blank?
       raise ConfigurationError, "user_id is required" if user_id.blank?
 
-      @base_url = base_url
+      @base_url = base_url.presence || DEFAULT_BASE_URL
       @api_key = api_key
       @user_id = user_id
       @tool_call_review_validator = ToolCallReviewValidator.new
