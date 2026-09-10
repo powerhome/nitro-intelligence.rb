@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-09-10
+
 ### Changed
 
 - The base URLs of the three services this gem talks to default to their shared deployments: `inference_base_url` to `https://inference.powerhome.ai`, `observability_base_url` to `https://cerebro.powerhome.ai`, and an `assistants_config` entry's `base_url` to `https://assistants.powerhome.ai`. Every consumer set all three identically at boot, and one that forgot got a client built against an empty base URL - a request to a relative path, failing wherever the underlying SDK happened to notice - rather than a clear failure or the deployment it meant. A host reaching a different deployment still says so and is unaffected. The observability default is ungated: a host's development and staging environments report to Cerebro production too, since there is no one-to-one mapping between an application's environment and a Cerebro instance (#98)
@@ -113,7 +115,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.7.0-nitro_intelligence...HEAD
+[2.7.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...v2.7.0-nitro_intelligence
 [2.6.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.5.0-nitro_intelligence...v2.6.0-nitro_intelligence
 [2.5.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.4.0-nitro_intelligence...v2.5.0-nitro_intelligence
 [2.4.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.3.0-nitro_intelligence...v2.4.0-nitro_intelligence
