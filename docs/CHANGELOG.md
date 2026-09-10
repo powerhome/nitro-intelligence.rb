@@ -14,8 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The base URLs of the three services this gem talks to default to their shared deployments: `inference_base_url` to `https://inference.powerhome.ai`, `observability_base_url` to `https://cerebro.powerhome.ai`, and an `assistants_config` entry's `base_url` to `https://assistants.powerhome.ai`. Every consumer set all three identically at boot, and one that forgot got a client built against an empty base URL - a request to a relative path, failing wherever the underlying SDK happened to notice - rather than a clear failure or the deployment it meant. A host reaching a different deployment still says so and is unaffected. The observability default is ungated: a host's development and staging environments report to Cerebro production too, since there is no one-to-one mapping between an application's environment and a Cerebro instance (#98)
-- `base_url` is no longer required anywhere in `assistants_config`. `Assistant::ConfigurationError` no longer names it among an entry's missing fields, and `Assistants.new` no longer raises `"base_url is required"`, so both the registry shape and the single-client shape that predates it reach the shared deployment when the configuration names none. That is the point of the change, but it does mean a `base_url` that is absent or misspelled surfaces when a request is made rather than when the client is built (#98)
 - `Assistant#review_tool_calls` no longer requires `reviewer_id`, matching the client it delegates to, and `Assistant` delegates `tool_calls_under_review` alongside the other thread-scoped calls. An assistant that kept `reviewer_id` required would have made every caller pass a deprecated argument to reach the method at all (#91)
 - `ToolCallReviewValidator#validate!` takes `tool_calls_under_review` -- the tool calls the interrupt is holding, as `Assistants#tool_calls_under_review` reports them -- in place of `thread_state` and `pending_tool_calls`. It reads the permitted actions off those rather than off the thread state, so the interrupt is interpreted in one place (#91)
 
@@ -26,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `Assistants#review_tool_calls` speaks the review protocol Assistants actually implements, so an interrupt can be resumed at all. It validated the reviewer's action against `interrupts[0].value.review_actions` and resumed with `{reviewer_id, reviewed_at, tool_calls}`, neither of which exists on the platform: every assistant runs LangChain's `HumanInTheLoopMiddleware`, which publishes `action_requests` and `review_configs` and resumes with `decisions`. The old key made the permitted actions an empty array, so every review failed validation before a request was sent, and the payload would have been rejected by the server had it got that far. Actions are now validated against the interrupt's `review_configs[].allowed_decisions`, and the resume sends one decision per action request, in the order the middleware matches them. Action requests carry no tool call id, so each is matched back onto the tool calls of the thread's last AI message to recover the id reviews are keyed by (#91)
+
+## [2.7.0] - 2026-09-10
+
+### Changed
+
+- The base URLs of the three services this gem talks to default to their shared deployments: `inference_base_url` to `https://inference.powerhome.ai`, `observability_base_url` to `https://cerebro.powerhome.ai`, and an `assistants_config` entry's `base_url` to `https://assistants.powerhome.ai`. Every consumer set all three identically at boot, and one that forgot got a client built against an empty base URL - a request to a relative path, failing wherever the underlying SDK happened to notice - rather than a clear failure or the deployment it meant. A host reaching a different deployment still says so and is unaffected. The observability default is ungated: a host's development and staging environments report to Cerebro production too, since there is no one-to-one mapping between an application's environment and a Cerebro instance (#98)
+- `base_url` is no longer required anywhere in `assistants_config`. `Assistant::ConfigurationError` no longer names it among an entry's missing fields, and `Assistants.new` no longer raises `"base_url is required"`, so both the registry shape and the single-client shape that predates it reach the shared deployment when the configuration names none. That is the point of the change, but it does mean a `base_url` that is absent or misspelled surfaces when a request is made rather than when the client is built (#98)
 
 ## [2.6.0] - 2026-09-04
 
@@ -128,7 +133,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.7.0-nitro_intelligence...HEAD
+[2.7.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...v2.7.0-nitro_intelligence
 [2.6.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.5.0-nitro_intelligence...v2.6.0-nitro_intelligence
 [2.5.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.4.0-nitro_intelligence...v2.5.0-nitro_intelligence
 [2.4.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.3.0-nitro_intelligence...v2.4.0-nitro_intelligence
