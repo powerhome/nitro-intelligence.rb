@@ -28,8 +28,8 @@ RSpec.describe NitroIntelligence::Assistant do
     let(:attributes) { super().except(:base_url) }
 
     it "defaults to the shared Assistants deployment" do
-      expect(assistant.base_url).to eq(described_class::DEFAULT_BASE_URL)
-      expect(assistant.client.base_url).to eq(described_class::DEFAULT_BASE_URL)
+      expect(assistant.base_url).to eq(NitroIntelligence::Assistants::DEFAULT_BASE_URL)
+      expect(assistant.client.base_url).to eq(NitroIntelligence::Assistants::DEFAULT_BASE_URL)
     end
   end
 
@@ -37,7 +37,7 @@ RSpec.describe NitroIntelligence::Assistant do
     let(:attributes) { super().merge(base_url: "  ") }
 
     it "is treated as absent rather than as a validation failure" do
-      expect(assistant.base_url).to eq(described_class::DEFAULT_BASE_URL)
+      expect(assistant.base_url).to eq(NitroIntelligence::Assistants::DEFAULT_BASE_URL)
     end
   end
 

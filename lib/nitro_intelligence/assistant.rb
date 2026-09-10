@@ -1,3 +1,5 @@
+require "nitro_intelligence/assistants"
+
 module NitroIntelligence
   # One assistant resolved by name: the client for its deployment, plus the id every run has to
   # carry.
@@ -8,14 +10,9 @@ module NitroIntelligence
   class Assistant
     class ConfigurationError < StandardError; end
 
-    DEFAULT_USER_ID = "default-user".freeze
+    DEFAULT_USER_ID = Assistants::DEFAULT_USER_ID
 
-    # Every assistant this gem is built for is served by the same deployment, so an entry that
-    # says nothing about where to reach one gets that deployment. A host pointing an assistant
-    # at a review deployment still says so on the entry, or once at the top level.
-    DEFAULT_BASE_URL = "https://assistants.powerhome.ai".freeze
-
-    # `base_url` is not among them: it has a default, so it cannot be missing.
+    # `base_url` is not among them: the client defaults it, so it cannot be missing.
     REQUIRED = %w[api_key assistant_id].freeze
 
     # The key an assistant is filed and looked up under. Not its name: an entry usually carries
@@ -32,7 +29,7 @@ module NitroIntelligence
     # application has no use for, such as the graph or the observability project it reports to.
     def initialize(key, base_url: nil, api_key: nil, assistant_id: nil, user_id: nil, **_kwargs)
       @key = key.to_s
-      @base_url = base_url.presence || DEFAULT_BASE_URL
+      @base_url = base_url.presence || Assistants::DEFAULT_BASE_URL
       @api_key = api_key.presence
       @assistant_id = assistant_id.presence
       @user_id = user_id.presence || DEFAULT_USER_ID
