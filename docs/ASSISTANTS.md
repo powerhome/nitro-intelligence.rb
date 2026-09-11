@@ -57,6 +57,17 @@ content = assistants.await_run(
 "I'm doing well, thank you!"
 ```
 
+### Run errors
+
+Raises `RunError` when Assistants rejects the run request, and when the run itself fails. The message carries the failure Assistants reported:
+
+```
+Error: KeyError: missing variables {'first_name'}
+IncompleteRun: Wait ended before the run completed (status: running)
+```
+
+Returns `nil` when a run pauses without producing text. That is an interruption awaiting human review, not a failure.
+
 ### Thread initialization
 
 `#await_run` treats the last entry in `messages` as the message to run, and everything before it as the conversation the agent should already know about. Getting that history in front of the agent takes three requests, because Assistants accepts an `initial_state` on thread creation but never applies it:
@@ -218,3 +229,5 @@ assistants.review_tool_calls(
 ### Response
 
 Returns `nil` when the thread is resumed successfully.
+
+Raises `ThreadResumptionError` when the resumed run fails.
