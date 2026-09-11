@@ -207,7 +207,17 @@ module NitroIntelligence
       raise RunError, run_response.body if run_response.code.to_i != 200
 
       run = JSON.parse(run_response.body)
+      raise_run_error!(run, RunError)
+
       Array(run["messages"]).last&.dig("content")
+    end
+
+    def raise_run_error!(run, error)
+      failure = run["__error__"]
+      return if failure.blank?
+
+      detail = failure.is_a?(Hash) ? [failure["error"], failure["message"]].compact.join(": ") : failure.to_s
+      raise error, detail
     end
 
     def resume_run(thread_id:, assistant_id:, resume:, context:)
@@ -224,7 +234,10 @@ module NitroIntelligence
 
       raise ThreadResumptionError, run_response.body if run_response.code.to_i != 200
 
-      JSON.parse(run_response.body)
+      run = JSON.parse(run_response.body)
+      raise_run_error!(run, ThreadResumptionError)
+
+      run
     end
 
     def interrupted?(thread)
