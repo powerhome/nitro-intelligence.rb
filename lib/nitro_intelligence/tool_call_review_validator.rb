@@ -1,6 +1,12 @@
 require "active_support/core_ext/hash/indifferent_access"
 
 module NitroIntelligence
+  # The reviews a caller submitted, checked against the tool calls the interrupt is holding, before
+  # anything is sent. Raises `Assistants::ThreadResumptionError` on the first problem it finds.
+  #
+  # Internal to `Assistants#review_tool_calls`, which builds the only instance there is. What
+  # `#validate!` takes follows what that method needs and has changed with it before, so it carries
+  # no promise to anything calling it directly.
   class ToolCallReviewValidator
     def validate!(tool_calls:, tool_calls_under_review:)
       tool_calls = normalize_tool_calls(tool_calls)
