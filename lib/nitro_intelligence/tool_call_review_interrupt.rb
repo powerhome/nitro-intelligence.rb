@@ -60,10 +60,16 @@ module NitroIntelligence
       unmatched.delete_at(index)
     end
 
+    # An action this does not recognise is refused rather than read as an approval. #review_tool_calls
+    # validates before it gets here, so this fires for a caller building a resume payload itself --
+    # or for a decision the platform gains and this does not, where running the tool for a reviewer
+    # who asked for something else is the one outcome human review exists to prevent.
     def decision_for(tool_call, review)
       review = (review || {}).with_indifferent_access
 
       case review[:action].to_s
+      when "approve"
+        { "type" => "approve" }
       when "edit"
         { "type" => "edit", "edited_action" => edited_action(tool_call, review) }
       when "reject"
@@ -71,7 +77,8 @@ module NitroIntelligence
       when "respond"
         { "type" => "respond", "message" => review[:message] }
       else
-        { "type" => "approve" }
+        raise Assistants::ThreadResumptionError,
+              "Tool call #{tool_call['id']} has no review naming `approve`, `edit`, `reject` or `respond`"
       end
     end
 

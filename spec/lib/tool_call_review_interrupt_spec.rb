@@ -192,6 +192,27 @@ RSpec.describe NitroIntelligence::ToolCallReviewInterrupt do
       expect(decisions.last).to eq("type" => "respond", "message" => "There are no open orders")
     end
 
+    it "refuses an action it does not recognise, rather than approving the call" do
+      expect do
+        interrupt.decisions(
+          "tool_call_id_1" => { "action" => "escalate" },
+          "tool_call_id_2" => { "action" => "approve" }
+        )
+      end.to raise_error(
+        NitroIntelligence::Assistants::ThreadResumptionError,
+        "Tool call tool_call_id_1 has no review naming `approve`, `edit`, `reject` or `respond`"
+      )
+    end
+
+    it "refuses a tool call the reviews say nothing about" do
+      expect do
+        interrupt.decisions("tool_call_id_1" => { "action" => "approve" })
+      end.to raise_error(
+        NitroIntelligence::Assistants::ThreadResumptionError,
+        "Tool call tool_call_id_2 has no review naming `approve`, `edit`, `reject` or `respond`"
+      )
+    end
+
     it "merges edited args over the arguments the model asked for" do
       decisions = interrupt.decisions(
         "tool_call_id_1" => { "action" => "approve" },
