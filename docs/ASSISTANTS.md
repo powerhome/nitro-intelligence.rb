@@ -140,7 +140,9 @@ messages = assistants.thread_messages(thread_id: "thread-456")
 
 ## `#tool_calls_pending_review`
 
-Returns all tool calls in a thread that are still waiting for human review.
+Returns every tool call in a thread that has no result yet, across every AI message that made one.
+
+That is not the same as the set a reviewer may decide on. A tool the assistant is not configured to interrupt on is auto-approved and runs as soon as the thread resumes, so one AI message can mix calls the interrupt is holding with calls that are only waiting to be executed — and both are reported here. A review interface driven from this list offers decisions on calls the interrupt does not hold, and [`#review_tool_calls`](#review_tool_calls) then refuses the whole submission; [`#tool_calls_under_review`](#tool_calls_under_review) reports exactly what may be reviewed.
 
 Each pending tool call has a reference to its `previous_message_id`, which points at the message immediately before the tool-call attempt, which lets clients rebuild the conversation context up until that tool call, allowing reviewers to better judge the sequence of events.
 
@@ -189,6 +191,8 @@ Returns the tool calls the thread's interrupt is holding, in the order the platf
 
 A tool the assistant is not configured to interrupt on runs without review, so one AI message can mix calls under review with calls that are only waiting to be executed. This reports the former; [`#tool_calls_pending_review`](#tool_calls_pending_review) reports both. Only the calls reported here may be passed to [`#review_tool_calls`](#review_tool_calls), and every one of them has to be.
 
+Raises `ThreadResumptionError` when the thread state cannot be fetched, as [`#tool_calls_pending_review`](#tool_calls_pending_review) does, and when the interrupt holds an action for which the thread carries no matching tool call.
+
 ### Usage example
 
 ```ruby
@@ -229,6 +233,8 @@ Reviews are keyed by tool call id, as returned by [`#tool_calls_under_review`](#
 | `edit` | Runs the call with the reviewer's arguments | `args`, merged over the arguments the model asked for |
 | `reject` | Skips the call and tells the model why | `message`, optional |
 | `respond` | Skips the call and returns the message to the model as the tool's result | `message`, required |
+
+An `edit` merges by top-level argument name: each argument the reviewer supplies replaces the model's value for it outright — a nested object is not merged into — and every argument left out keeps the value the model sent.
 
 Which actions are allowed for a tool is configured on the assistant's prompt, in Cerebro, and published on the interrupt. A review naming an action the interrupt does not allow raises `Assistants::ThreadResumptionError` before anything is sent, as does a review that omits one of the tool calls under review, edits an argument the call does not have, or leaves out a message `respond` needs.
 
