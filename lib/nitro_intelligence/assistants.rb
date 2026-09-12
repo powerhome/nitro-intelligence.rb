@@ -121,6 +121,11 @@ module NitroIntelligence
       nil
     end
 
+    # ContactCenter::VirtualConfirmationAgent::Client in nitro-web subclasses this to speak the
+    # VCA's own review protocol, and its override reaches `get_thread`, `interrupted?`,
+    # `get_thread_state` and `resume_run` below. Renaming any of the four breaks that override --
+    # loudly, in nitro-web's suite at bump time rather than in anything here. The subclass goes when
+    # the VCA moves onto this platform, and this note with it.
   private
 
     def warn_about_reviewer_attribution(reviewer_id:, reviewed_at:)
