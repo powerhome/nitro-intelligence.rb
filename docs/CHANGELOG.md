@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Observed text-to-speech generations carry the inference gateway's cost as `cost_details`, alongside the chat, image and audio-transcription handlers that already did. Speech was the one modality left out: its endpoint returns a bare `StringIO` rather than a typed model, and the OpenAI SDK attached response metadata only to typed models, so the header the gateway reports cost in never reached us. Fixed upstream in openai/openai-ruby#561 and released in 0.86. Usage details are still absent for speech - token counts come from a response body that a binary endpoint does not have - so these generations carry a cost without a usage breakdown (#99)
+
+### Changed
+
+- The minimum `openai` dependency is now 0.86, raised from 0.79. 0.86 is the first release that exposes `last_response` on the binary responses text-to-speech returns, and on anything older the speech cost is silently never recorded rather than failing loudly (#99)
+
 ### Removed
 
 - `NitroIntelligence::AgentServer`, `NitroIntelligence.agent_server` and the `agent_server_config` setting, deprecated in 2.4.0 for removal in 3.0. A host still on the old names must move to `NitroIntelligence::Assistants`, `NitroIntelligence.assistants` and `assistants_config` before upgrading: the constant now raises `NameError`, the method `NoMethodError`, and `agent_server_config` is neither readable nor writable. A host that set `agent_server_config` and never set `assistants_config` is left with no configuration at all: `assistants_config` defaults to `{}`, and `Assistants.new` takes `api_key` as a required keyword, so the first `NitroIntelligence.assistants` call raises `ArgumentError: missing keyword: :api_key` before a client is built or a request sent. The failure is immediate rather than deferred, but it names the missing keyword rather than the setting that was removed, so migrate before upgrading rather than after the first exception (#102)
