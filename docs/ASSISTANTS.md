@@ -266,7 +266,7 @@ assistants.review_tool_calls(
 
 `context` is optional and is sent with the resumed run, exactly as it is for `#await_run`. Pass the `prompt_variables` the assistant's prompt needs if the resumed run has to render it again.
 
-There is no reviewer argument. Assistants records nothing about who reviewed a tool call, and the resume payload it accepts has nowhere to carry it, so an application that needs the attribution has to keep it itself. The `reviewer_id` and `reviewed_at` arguments this method took before it spoke the platform's protocol are gone, and a call still passing them raises `ArgumentError`.
+There is no reviewer argument. Assistants records nothing about who reviewed a tool call, and the resume payload it accepts has nowhere to carry it, so an application that needs the attribution has to keep it itself.
 
 ### Response
 
