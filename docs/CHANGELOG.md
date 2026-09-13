@@ -10,6 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Send `x-litellm-tags` on observed requests, carrying `cerebro_observability_project_id` and, when a managed prompt was resolved, `cerebro_prompt_name` and `cerebro_prompt_version`, so gateway spend can be aggregated per feature. Set automatically with no caller-facing parameter: it serves whoever operates the gateway, not the feature teams calling this library. Nothing is sent on the unobserved path, and this is unrelated to the `tags` parameter, which tags the observability trace (#71)
+- `Assistants#tool_calls_under_review`: the tool calls the thread's interrupt is holding, in the order the platform wants decisions for them, each carrying the `allowed_decisions` a reviewer may take on it. A tool the assistant is not configured to interrupt on runs without review, so one AI message can mix calls under review with calls that are only waiting to be executed; `#tool_calls_pending_review` reports both, and only the calls this reports may be reviewed. A review interface reading it no longer has to fetch the thread state and interpret the interrupt itself to know which decisions to offer (#91)
+- `Assistants#review_tool_calls` accepts the `reject` and `respond` actions alongside `approve` and `edit`, and takes an optional `context`, sent with the resumed run as `#await_run` sends its own. `reject` skips the call and tells the model why; `respond` skips it and returns the reviewer's `message` to the model as the tool's result. `edit` arguments are merged over the ones the model asked for, so a reviewer correcting one of them cannot drop the rest by omitting them (#91)
+
+### Changed
+
+- The review collaborators follow the protocol under Fixed: `ToolCallReviewValidator#validate!` takes `tool_calls_under_review` in place of `thread_state` and `pending_tool_calls`, reading the permitted actions off the interrupt rather than off the thread state, so the interrupt is interpreted in one place -- the new `ToolCallReviewInterrupt`, which recovers the tool calls an interrupt is holding and builds the decisions that answer them. `Assistant#review_tool_calls` drops `reviewer_id` to match the client it delegates to, and `Assistant` delegates `tool_calls_under_review` alongside the other thread-scoped calls (#91)
+
+### Removed
+
+- `Assistants#review_tool_calls`'s `reviewer_id` and `reviewed_at` arguments, outright rather than through a deprecation: the platform records neither, and the resume payload it accepts has nowhere to carry them. Nothing can be relying on them, since no review could complete at all before this, so there has never been a working call to pass them to; the one consumer that reaches this area, nitro-web's `ContactCenter::VirtualConfirmationAgent::Client`, overrides `#review_tool_calls` entirely. A call still passing either now raises `ArgumentError` (#91)
+
+### Fixed
+
+- `Assistants#review_tool_calls` speaks the review protocol Assistants actually implements, so an interrupt can be resumed at all. It validated the reviewer's action against `interrupts[0].value.review_actions` and resumed with `{reviewer_id, reviewed_at, tool_calls}`, neither of which exists on the platform: every assistant runs LangChain's `HumanInTheLoopMiddleware`, which publishes `action_requests` and `review_configs` and resumes with `decisions`. The old key made the permitted actions an empty array, so every review failed validation before a request was sent, and the payload would have been rejected by the server had it got that far. Actions are now validated against the interrupt's `review_configs[].allowed_decisions`, and the resume sends one decision per action request, in the order the middleware matches them. Action requests carry no tool call id, so each is matched back onto the tool calls of the thread's last AI message to recover the id reviews are keyed by. The resumed run carries the caller's `context` for the same reason: it sent `interrupts[0].value.context`, another key the platform never publishes, so a resume always sent `{}` -- wrong for an assistant whose prompt has to be rendered again with its `prompt_variables` once the tool has run (#91)
+- `Assistants#review_tool_calls` reads the thread state once. It fetched `/threads/{thread_id}/state` directly and then again inside the `#tool_calls_pending_review` call it passed to the validator, so every review cost two reads of the same state -- and the two could disagree, leaving a review validated against one state and resumed against another. The interrupt is now parsed once, from a single read (#91)
+
+## [2.8.0] - 2026-09-13
+
+### Added
+
 - Observed text-to-speech generations carry the inference gateway's cost as `cost_details`, alongside the chat, image and audio-transcription handlers that already did. Speech was the one modality left out: its endpoint returns a bare `StringIO` rather than a typed model, and the OpenAI SDK attached response metadata only to typed models, so the header the gateway reports cost in never reached us. Fixed upstream in openai/openai-ruby#561 and released in 0.86. Usage details are still absent for speech - token counts come from a response body that a binary endpoint does not have - so these generations carry a cost without a usage breakdown (#99)
 
 ### Changed
@@ -128,7 +148,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.7.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.8.0-nitro_intelligence...HEAD
+[2.8.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.7.0-nitro_intelligence...v2.8.0-nitro_intelligence
 [2.7.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...v2.7.0-nitro_intelligence
 [2.6.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.5.0-nitro_intelligence...v2.6.0-nitro_intelligence
 [2.5.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.4.0-nitro_intelligence...v2.5.0-nitro_intelligence
