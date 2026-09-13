@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `NitroIntelligence::AgentServer`, `NitroIntelligence.agent_server` and the `agent_server_config` setting, deprecated in 2.4.0 for removal in 3.0. A host still on the old names must move to `NitroIntelligence::Assistants`, `NitroIntelligence.assistants` and `assistants_config` before upgrading: the constant now raises `NameError`, the method `NoMethodError`, and `agent_server_config` is neither readable nor writable. A host that set `agent_server_config` and never set `assistants_config` is left with no configuration at all: `assistants_config` defaults to `{}`, and `Assistants.new` takes `api_key` as a required keyword, so the first `NitroIntelligence.assistants` call raises `ArgumentError: missing keyword: :api_key` before a client is built or a request sent. The failure is immediate rather than deferred, but it names the missing keyword rather than the setting that was removed, so migrate before upgrading rather than after the first exception (#102)
+- `NitroIntelligence.deprecator`. It existed to carry the three names above and nothing else, and its horizon was 3.0, so it has no remaining subject. A future deprecation introduces its own deprecator against its own horizon (#102)
+
 ## [2.8.0] - 2026-09-13
 
 ### Added
@@ -24,11 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - `Assistants#review_tool_calls`'s `reviewer_id` and `reviewed_at` arguments, outright rather than through a deprecation. The resume payload the platform accepts is a list of decisions with nowhere to carry them and Assistants records neither, so sending them was only ever an assumption that something stored them; an application that needs to know who reviewed a tool call has to keep that itself. Nothing can be relying on them: no host has taken up this gem's review flow, and the flow could not complete a review against Assistants at all (see Fixed), so there has never been a working call to pass them to. The one consumer that reaches this area, nitro-web's `ContactCenter::VirtualConfirmationAgent::Client`, overrides `#review_tool_calls` entirely and never reached these arguments. A call still passing either now raises `ArgumentError` (#91)
-
-### Removed
-
-- `NitroIntelligence::AgentServer`, `NitroIntelligence.agent_server` and the `agent_server_config` setting, deprecated in 2.4.0 for removal in 3.0. A host still on the old names must move to `NitroIntelligence::Assistants`, `NitroIntelligence.assistants` and `assistants_config` before upgrading: the constant now raises `NameError`, the method `NoMethodError`, and `agent_server_config` is neither readable nor writable. A host that set `agent_server_config` and never set `assistants_config` is left with no configuration at all: `assistants_config` defaults to `{}`, and `Assistants.new` takes `api_key` as a required keyword, so the first `NitroIntelligence.assistants` call raises `ArgumentError: missing keyword: :api_key` before a client is built or a request sent. The failure is immediate rather than deferred, but it names the missing keyword rather than the setting that was removed, so migrate before upgrading rather than after the first exception (#102)
-- `NitroIntelligence.deprecator`. It existed to carry the three names above and nothing else, and its horizon was 3.0, so it has no remaining subject. A future deprecation introduces its own deprecator against its own horizon (#102)
 
 ### Fixed
 
