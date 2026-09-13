@@ -1,7 +1,6 @@
 require "json"
 require "net/http"
 require "uri"
-require "nitro_intelligence/deprecation"
 require "nitro_intelligence/tool_call_review_interrupt"
 require "nitro_intelligence/tool_call_review_validator"
 
@@ -94,11 +93,9 @@ module NitroIntelligence
     # merged over the arguments the model asked for; `respond` carries the `message` returned to the
     # model as the tool's result; `reject` may carry a `message` explaining the refusal.
     #
-    # `reviewer_id` and `reviewed_at` are deprecated and ignored: Assistants records neither, and
-    # the resume payload it accepts has nowhere to carry them.
-    def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {}, reviewer_id: nil, reviewed_at: nil)
-      warn_about_reviewer_attribution(reviewer_id:, reviewed_at:)
-
+    # Assistants records nothing about who reviewed a tool call, and the resume payload it accepts
+    # has nowhere to carry it, so there is no reviewer argument to pass.
+    def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {})
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)
 
@@ -127,16 +124,6 @@ module NitroIntelligence
     # loudly, in nitro-web's suite at bump time rather than in anything here. The subclass goes when
     # the VCA moves onto this platform, and this note with it.
   private
-
-    def warn_about_reviewer_attribution(reviewer_id:, reviewed_at:)
-      return if reviewer_id.nil? && reviewed_at.nil?
-
-      NitroIntelligence.deprecator.warn(
-        "`reviewer_id` and `reviewed_at` are deprecated and are no longer sent. Assistants does not " \
-        "record who reviewed a tool call, so an application that needs the attribution has to keep it " \
-        "itself."
-      )
-    end
 
     # Assistants accepts `initial_state` on thread creation but never applies it, so a brand new thread is
     # seeded through the thread state endpoint instead. A thread that already exists is left untouched:

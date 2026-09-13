@@ -1063,40 +1063,6 @@ RSpec.describe NitroIntelligence::Assistants do
       end
     end
 
-    context "when reviewer attribution is supplied" do
-      around do |example|
-        original_behavior = NitroIntelligence.deprecator.behavior
-        NitroIntelligence.deprecator.behavior = :silence
-        example.run
-        NitroIntelligence.deprecator.behavior = original_behavior
-      end
-
-      it "warns that it is deprecated" do
-        expect(NitroIntelligence.deprecator).to receive(:warn).with(/`reviewer_id` and `reviewed_at` are deprecated/)
-
-        assistants.review_tool_calls(
-          thread_id:,
-          assistant_id:,
-          tool_calls:,
-          reviewer_id: "reviewer-123",
-          reviewed_at: "2026-03-27T12:34:56Z"
-        )
-      end
-
-      it "resumes with the decisions alone, since Assistants records neither" do
-        assistants.review_tool_calls(
-          thread_id:,
-          assistant_id:,
-          tool_calls:,
-          reviewer_id: "reviewer-123",
-          reviewed_at: "2026-03-27T12:34:56Z"
-        )
-
-        expect(WebMock).to have_requested(:post, run_url)
-          .with(body: resume_request_body.to_json)
-      end
-    end
-
     context "when the thread does not exist" do
       before do
         stub_request(:get, thread_url)

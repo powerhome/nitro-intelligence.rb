@@ -14,12 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `Assistant#review_tool_calls` no longer requires `reviewer_id`, matching the client it delegates to, and `Assistant` delegates `tool_calls_under_review` alongside the other thread-scoped calls. An assistant that kept `reviewer_id` required would have made every caller pass a deprecated argument to reach the method at all (#91)
+- `Assistant#review_tool_calls` no longer takes `reviewer_id`, matching the client it delegates to, and `Assistant` delegates `tool_calls_under_review` alongside the other thread-scoped calls (#91)
 - `ToolCallReviewValidator#validate!` takes `tool_calls_under_review` -- the tool calls the interrupt is holding, as `Assistants#tool_calls_under_review` reports them -- in place of `thread_state` and `pending_tool_calls`. It reads the permitted actions off those rather than off the thread state, so the interrupt is interpreted in one place: the new `ToolCallReviewInterrupt`, which recovers the tool calls an interrupt is holding and builds the decisions that answer them (#91)
 
-### Deprecated
+### Removed
 
-- `Assistants#review_tool_calls`'s `reviewer_id` and `reviewed_at` arguments. Both are still accepted, warn through `NitroIntelligence.deprecator` and are removed in 3.0. The resume payload the platform accepts is a list of decisions with nowhere to carry them, and Assistants records neither, so an application that needs to know who reviewed a tool call has to keep that itself rather than sending it and assuming it was stored. `reviewer_id` is no longer a required argument (#91)
+- `Assistants#review_tool_calls`'s `reviewer_id` and `reviewed_at` arguments, outright rather than through a deprecation. The resume payload the platform accepts is a list of decisions with nowhere to carry them and Assistants records neither, so sending them was only ever an assumption that something stored them; an application that needs to know who reviewed a tool call has to keep that itself. Nothing can be relying on them: no host has taken up this gem's review flow, and the flow could not complete a review against Assistants at all (see Fixed), so there has never been a working call to pass them to. The one consumer that reaches this area, nitro-web's `ContactCenter::VirtualConfirmationAgent::Client`, overrides `#review_tool_calls` entirely and never reached these arguments. A call still passing either now raises `ArgumentError` (#91)
 
 ### Fixed
 
