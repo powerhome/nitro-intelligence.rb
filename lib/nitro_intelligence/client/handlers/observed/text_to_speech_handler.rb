@@ -79,11 +79,13 @@ module NitroIntelligence
               output = handle_text_to_speech_upload(tempfile, trace_id)
             end
 
-            # We only get StringIO object as a response, so there are no usage details
-            # and no resolved model to record. The requested model and the input are
-            # already on the observation from before the request ran.
+            # Usage details and the resolved model are read off a response body, and
+            # this endpoint's body is audio, so neither is available here. The
+            # requested model and the input are already on the observation from
+            # before the request ran.
             trace_attributes = {
               output:,
+              cost_details: @base_handler.cost_details(tts),
             }
 
             [tts, trace_attributes]

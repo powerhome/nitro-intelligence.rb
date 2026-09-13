@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Observed text-to-speech generations carry the inference gateway's cost as `cost_details`, alongside the chat, image and audio-transcription handlers that already did. Speech was the one modality left out: its endpoint returns a bare `StringIO` rather than a typed model, and the OpenAI SDK attached response metadata only to typed models, so the header the gateway reports cost in never reached us. Fixed upstream in openai/openai-ruby#561 and released in 0.86. Usage details are still absent for speech - token counts come from a response body that a binary endpoint does not have - so these generations carry a cost without a usage breakdown (#99)
+
+### Changed
+
+- The minimum `openai` dependency is now 0.86, raised from 0.79. 0.86 is the first release that exposes `last_response` on the binary responses text-to-speech returns, and on anything older the speech cost is silently never recorded rather than failing loudly (#99)
+
 ### Fixed
 
 - `Assistants#await_run` raises `Assistants::RunError` when a run fails inside an HTTP 200 response, instead of returning `nil` as if the agent had nothing to say. The wait endpoint streams, so its status is committed before the run finishes and the failure is reported in the body as `__error__`; the message from the run is carried into the exception. A run that never finished raises the same way. `#review_tool_calls` raises `ThreadResumptionError` for the same condition on the run it resumes, which it previously discarded entirely. A run that pauses for human review without producing text still returns `nil`

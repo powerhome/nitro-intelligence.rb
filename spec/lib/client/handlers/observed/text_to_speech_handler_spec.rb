@@ -64,7 +64,37 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
       expect(trace_attributes[:output]).to eq("@@@langfuseMedia:type=audio/mp3|id=media-321|source=bytes@@@")
       # The requested model and the input are set on the observation before the
       # request runs, so they are deliberately not repeated here.
-      expect(trace_attributes.keys).to eq([:output])
+      expect(trace_attributes.keys).to eq(%i[output cost_details])
+    end
+
+    it "carries the cost the gateway reported into the trace attributes" do
+      priced_response = StringIO.new("fake_audio_bytes")
+      allow(priced_response).to receive(:last_response).and_return(
+        double("LastResponse", headers: {
+                 "x-litellm-response-cost" => "5.85e-06",
+                 "x-litellm-response-cost-input" => "1.1e-06",
+                 "x-litellm-response-cost-output" => "4.75e-06",
+               })
+      )
+
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_speech).to receive(:create).and_return(priced_response)
+      expect(fake_upload_handler).to receive(:upload)
+
+      _, trace_attributes = handler.create(message: "say hi")
+
+      expect(trace_attributes[:cost_details]).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
+    end
+
+    it "leaves the cost unset when the gateway did not price the request" do
+      # A deployment the gateway has no price for sends no cost header at all.
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_speech).to receive(:create).and_return(fake_tts_response)
+      expect(fake_upload_handler).to receive(:upload)
+
+      _, trace_attributes = handler.create(message: "say hi")
+
+      expect(trace_attributes[:cost_details]).to be_nil
     end
 
     context "with a custom trace_name" do
