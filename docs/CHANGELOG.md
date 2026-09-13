@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `Assistants#await_run` raises `Assistants::RunError` when a run fails inside an HTTP 200 response, instead of returning `nil` as if the agent had nothing to say. The wait endpoint streams, so its status is committed before the run finishes and the failure is reported in the body as `__error__`; the message from the run is carried into the exception. A run that never finished raises the same way. `#review_tool_calls` raises `ThreadResumptionError` for the same condition on the run it resumes, which it previously discarded entirely. A run that pauses for human review without producing text still returns `nil`
+
 ## [2.7.0] - 2026-09-10
 
 ### Changed
