@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The minimum `openai` dependency is now 0.86, raised from 0.79. 0.86 is the first release that exposes `last_response` on the binary responses text-to-speech returns, and on anything older the speech cost is silently never recorded rather than failing loudly (#99)
 
+### Fixed
+
+- `Assistants#await_run` raises `Assistants::RunError` when a run fails inside an HTTP 200 response, instead of returning `nil` as if the agent had nothing to say. The wait endpoint streams, so its status is committed before the run finishes and the failure is reported in the body as `__error__`; the message from the run is carried into the exception. A run that never finished raises the same way. `#review_tool_calls` raises `ThreadResumptionError` for the same condition on the run it resumes, which it previously discarded entirely. A run that pauses for human review without producing text still returns `nil`
+
+## [2.7.0] - 2026-09-10
+
+### Changed
+
+- The base URLs of the three services this gem talks to default to their shared deployments: `inference_base_url` to `https://inference.powerhome.ai`, `observability_base_url` to `https://cerebro.powerhome.ai`, and an `assistants_config` entry's `base_url` to `https://assistants.powerhome.ai`. Every consumer set all three identically at boot, and one that forgot got a client built against an empty base URL - a request to a relative path, failing wherever the underlying SDK happened to notice - rather than a clear failure or the deployment it meant. A host reaching a different deployment still says so and is unaffected. The observability default is ungated: a host's development and staging environments report to Cerebro production too, since there is no one-to-one mapping between an application's environment and a Cerebro instance (#98)
+- `base_url` is no longer required anywhere in `assistants_config`. `Assistant::ConfigurationError` no longer names it among an entry's missing fields, and `Assistants.new` no longer raises `"base_url is required"`, so both the registry shape and the single-client shape that predates it reach the shared deployment when the configuration names none. That is the point of the change, but it does mean a `base_url` that is absent or misspelled surfaces when a request is made rather than when the client is built (#98)
+
 ## [2.6.0] - 2026-09-04
 
 ### Added
@@ -116,7 +127,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.7.0-nitro_intelligence...HEAD
+[2.7.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...v2.7.0-nitro_intelligence
 [2.6.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.5.0-nitro_intelligence...v2.6.0-nitro_intelligence
 [2.5.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.4.0-nitro_intelligence...v2.5.0-nitro_intelligence
 [2.4.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.3.0-nitro_intelligence...v2.4.0-nitro_intelligence

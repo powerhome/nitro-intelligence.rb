@@ -14,14 +14,20 @@ module NitroIntelligence
     # Assistants answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
     THREAD_CONFLICT_CODE = 409
 
+    # Every assistant this gem is built for is served by the same deployment, so a client told
+    # nothing about where to reach one gets that deployment. A host talking to a different one
+    # -- a review environment, a local server -- still says so.
+    DEFAULT_BASE_URL = "https://assistants.powerhome.ai".freeze
+
+    DEFAULT_USER_ID = "default-user".freeze
+
     attr_reader :base_url, :user_id
 
-    def initialize(base_url:, api_key:, user_id: "default-user")
-      raise ConfigurationError, "base_url is required" if base_url.blank?
+    def initialize(api_key:, base_url: nil, user_id: DEFAULT_USER_ID)
       raise ConfigurationError, "api_key is required" if api_key.blank?
       raise ConfigurationError, "user_id is required" if user_id.blank?
 
-      @base_url = base_url
+      @base_url = base_url.presence || DEFAULT_BASE_URL
       @api_key = api_key
       @user_id = user_id
       @tool_call_review_validator = ToolCallReviewValidator.new
@@ -201,7 +207,17 @@ module NitroIntelligence
       raise RunError, run_response.body if run_response.code.to_i != 200
 
       run = JSON.parse(run_response.body)
+      raise_run_error!(run, RunError)
+
       Array(run["messages"]).last&.dig("content")
+    end
+
+    def raise_run_error!(run, error)
+      failure = run["__error__"]
+      return if failure.blank?
+
+      detail = failure.is_a?(Hash) ? [failure["error"], failure["message"]].compact.join(": ") : failure.to_s
+      raise error, detail
     end
 
     def resume_run(thread_id:, assistant_id:, resume:, context:)
@@ -218,7 +234,10 @@ module NitroIntelligence
 
       raise ThreadResumptionError, run_response.body if run_response.code.to_i != 200
 
-      JSON.parse(run_response.body)
+      run = JSON.parse(run_response.body)
+      raise_run_error!(run, ThreadResumptionError)
+
+      run
     end
 
     def interrupted?(thread)

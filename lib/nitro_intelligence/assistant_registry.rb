@@ -59,7 +59,11 @@ module NitroIntelligence
               "Configured: #{keys.sort.join(', ').presence || '(none)'}"
       end
 
-      attributes = @config.slice(*SHARED_KEYS).merge(definition.to_h.deep_stringify_keys)
+      # Blank entry values are dropped rather than merged, so a definition built from a source
+      # that writes an unset field as null falls back to the shared setting instead of shadowing
+      # it with nothing.
+      entry = definition.to_h.deep_stringify_keys.compact_blank
+      attributes = @config.slice(*SHARED_KEYS).merge(entry)
       Assistant.new(key, **attributes.symbolize_keys)
     end
   end
