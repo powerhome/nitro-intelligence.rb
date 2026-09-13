@@ -48,12 +48,13 @@ module NitroIntelligence
       client.await_run(thread_id:, assistant_id:, messages:, **kwargs)
     end
 
-    def review_tool_calls(thread_id:, reviewer_id:, tool_calls:, **kwargs)
+    def review_tool_calls(thread_id:, tool_calls:, **kwargs)
       reject_assistant_id!(kwargs)
-      client.review_tool_calls(thread_id:, assistant_id:, reviewer_id:, tool_calls:, **kwargs)
+      client.review_tool_calls(thread_id:, assistant_id:, tool_calls:, **kwargs)
     end
 
-    delegate :thread_state, :thread_messages, :tool_calls_pending_review, to: :client
+    delegate :thread_state, :thread_messages, :tool_calls_pending_review, :tool_calls_under_review,
+             to: :client
 
   private
 

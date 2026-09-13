@@ -1,6 +1,7 @@
 require "json"
 require "net/http"
 require "uri"
+require "nitro_intelligence/tool_call_review_interrupt"
 require "nitro_intelligence/tool_call_review_validator"
 
 module NitroIntelligence
@@ -75,29 +76,53 @@ module NitroIntelligence
       end
     end
 
-    def review_tool_calls(thread_id:, assistant_id:, reviewer_id:, tool_calls:, reviewed_at: DateTime.current.iso8601)
-      resume = { reviewer_id:, reviewed_at:, tool_calls: }.with_indifferent_access
+    # The tool calls the thread's interrupt is holding, in the order the platform wants decisions
+    # for them, each with the `allowed_decisions` a reviewer may take on it. Empty when the thread
+    # is not waiting on a review.
+    #
+    # A tool the assistant is not configured to interrupt on runs without review, so an AI message
+    # can mix calls under review with calls that are only waiting to be executed. This reports the
+    # former; #tool_calls_pending_review reports both.
+    def tool_calls_under_review(thread_id:)
+      ToolCallReviewInterrupt.new(get_thread_state(thread_id:)).tool_calls
+    end
+
+    # Resumes an interrupted thread with one review per tool call the interrupt is holding. Each
+    # review is keyed by tool call id and names an `action` -- `approve`, `edit`, `reject` or
+    # `respond` -- from the decisions the interrupt allows for that tool. `edit` carries `args`,
+    # merged over the arguments the model asked for; `respond` carries the `message` returned to the
+    # model as the tool's result; `reject` may carry a `message` explaining the refusal.
+    #
+    # Assistants records nothing about who reviewed a tool call, and the resume payload it accepts
+    # has nowhere to carry it, so there is no reviewer argument to pass.
+    def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {})
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)
 
-      thread_state = get_thread_state(thread_id:)
+      interrupt = ToolCallReviewInterrupt.new(get_thread_state(thread_id:))
+      tool_calls_under_review = interrupt.tool_calls
 
-      @tool_call_review_validator.validate!(
-        thread_state:,
-        tool_calls: resume[:tool_calls],
-        pending_tool_calls: tool_calls_pending_review(thread_id:)
-      )
+      if tool_calls_under_review.empty?
+        raise ThreadResumptionError, "Thread #{thread_id} has no tool calls awaiting review"
+      end
+
+      @tool_call_review_validator.validate!(tool_calls:, tool_calls_under_review:)
 
       resume_run(
         thread_id:,
         assistant_id:,
-        resume:,
-        context: interrupt_context(thread_state)
+        resume: { decisions: interrupt.decisions(tool_calls) },
+        context:
       )
 
       nil
     end
 
+    # ContactCenter::VirtualConfirmationAgent::Client in nitro-web subclasses this to speak the
+    # VCA's own review protocol, and its override reaches `get_thread`, `interrupted?`,
+    # `get_thread_state` and `resume_run` below. Renaming any of the four breaks that override --
+    # loudly, in nitro-web's suite at bump time rather than in anything here. The subclass goes when
+    # the VCA moves onto this platform, and this note with it.
   private
 
     # Assistants accepts `initial_state` on thread creation but never applies it, so a brand new thread is
@@ -229,10 +254,6 @@ module NitroIntelligence
 
     def interrupted?(thread)
       thread["status"] == "interrupted"
-    end
-
-    def interrupt_context(thread_state)
-      thread_state.dig("interrupts", 0, "value", "context") || {}
     end
 
     def messages_in(thread_state)
