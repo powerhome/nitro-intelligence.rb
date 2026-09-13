@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `NitroIntelligence::AgentServer`, `NitroIntelligence.agent_server` and the `agent_server_config` setting, deprecated in 2.4.0 for removal in 3.0. A host still on the old names must move to `NitroIntelligence::Assistants`, `NitroIntelligence.assistants` and `assistants_config` before upgrading: the constant now raises `NameError`, the method `NoMethodError`, and `agent_server_config` is neither readable nor writable. A host that set `agent_server_config` and never set `assistants_config` loses the configuration silently rather than loudly - `assistants_config` defaults to `{}`, so `NitroIntelligence.assistants` builds a client against no credentials and fails at the first request - which is what the deprecation warning has been saying since 2.4.0 (#102)
+- `NitroIntelligence.deprecator`. It existed to carry the three names above and nothing else, and its horizon was 3.0, so it has no remaining subject. A future deprecation introduces its own deprecator against its own horizon (#102)
+
 ## [2.7.0] - 2026-09-10
 
 ### Changed
