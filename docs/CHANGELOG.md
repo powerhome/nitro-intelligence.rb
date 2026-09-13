@@ -7,13 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-09-13
+
 ### Added
 
 - Observed text-to-speech generations carry the inference gateway's cost as `cost_details`, alongside the chat, image and audio-transcription handlers that already did. Speech was the one modality left out: its endpoint returns a bare `StringIO` rather than a typed model, and the OpenAI SDK attached response metadata only to typed models, so the header the gateway reports cost in never reached us. Fixed upstream in openai/openai-ruby#561 and released in 0.86. Usage details are still absent for speech - token counts come from a response body that a binary endpoint does not have - so these generations carry a cost without a usage breakdown (#99)
+- `Assistants#tool_calls_under_review`: the tool calls the thread's interrupt is holding, in the order the platform wants decisions for them, each carrying the `allowed_decisions` a reviewer may take on it. A tool the assistant is not configured to interrupt on runs without review, so one AI message can mix calls under review with calls that are only waiting to be executed; `#tool_calls_pending_review` reports both, and only the calls this reports may be reviewed. A review interface reading it no longer has to fetch the thread state and interpret the interrupt itself to know which decisions to offer (#91)
+- `Assistants#review_tool_calls` accepts the `reject` and `respond` actions alongside `approve` and `edit`, and takes an optional `context`, sent with the resumed run as `#await_run` sends its own. The resumed run used to carry `interrupts[0].value.context`, a key the platform never publishes, so it always sent `{}` -- wrong for an assistant whose prompt has to be rendered again with its `prompt_variables` once the tool has run. `reject` skips the call and tells the model why; `respond` skips it and returns the reviewer's `message` to the model as the tool's result. `edit` arguments are merged over the ones the model asked for, so a reviewer correcting one of them cannot drop the rest by omitting them (#91)
 
 ### Changed
 
 - The minimum `openai` dependency is now 0.86, raised from 0.79. 0.86 is the first release that exposes `last_response` on the binary responses text-to-speech returns, and on anything older the speech cost is silently never recorded rather than failing loudly (#99)
+- `Assistant#review_tool_calls` no longer takes `reviewer_id`, matching the client it delegates to, and `Assistant` delegates `tool_calls_under_review` alongside the other thread-scoped calls (#91)
+- `ToolCallReviewValidator#validate!` takes `tool_calls_under_review` -- the tool calls the interrupt is holding, as `Assistants#tool_calls_under_review` reports them -- in place of `thread_state` and `pending_tool_calls`. It reads the permitted actions off those rather than off the thread state, so the interrupt is interpreted in one place: the new `ToolCallReviewInterrupt`, which recovers the tool calls an interrupt is holding and builds the decisions that answer them (#91)
+
+### Removed
+
+- `Assistants#review_tool_calls`'s `reviewer_id` and `reviewed_at` arguments, outright rather than through a deprecation. The resume payload the platform accepts is a list of decisions with nowhere to carry them and Assistants records neither, so sending them was only ever an assumption that something stored them; an application that needs to know who reviewed a tool call has to keep that itself. Nothing can be relying on them: no host has taken up this gem's review flow, and the flow could not complete a review against Assistants at all (see Fixed), so there has never been a working call to pass them to. The one consumer that reaches this area, nitro-web's `ContactCenter::VirtualConfirmationAgent::Client`, overrides `#review_tool_calls` entirely and never reached these arguments. A call still passing either now raises `ArgumentError` (#91)
 
 ### Removed
 
@@ -22,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Assistants#review_tool_calls` speaks the review protocol Assistants actually implements, so an interrupt can be resumed at all. It validated the reviewer's action against `interrupts[0].value.review_actions` and resumed with `{reviewer_id, reviewed_at, tool_calls}`, neither of which exists on the platform: every assistant runs LangChain's `HumanInTheLoopMiddleware`, which publishes `action_requests` and `review_configs` and resumes with `decisions`. The old key made the permitted actions an empty array, so every review failed validation before a request was sent, and the payload would have been rejected by the server had it got that far. Actions are now validated against the interrupt's `review_configs[].allowed_decisions`, and the resume sends one decision per action request, in the order the middleware matches them. Action requests carry no tool call id, so each is matched back onto the tool calls of the thread's last AI message to recover the id reviews are keyed by (#91)
+- `Assistants#review_tool_calls` reads the thread state once. It fetched `/threads/{thread_id}/state` directly and then again inside the `#tool_calls_pending_review` call it passed to the validator, so every review cost two reads of the same state -- and the two could disagree, leaving a review validated against one state and resumed against another. The interrupt is now parsed once, from a single read (#91)
 - `Assistants#await_run` raises `Assistants::RunError` when a run fails inside an HTTP 200 response, instead of returning `nil` as if the agent had nothing to say. The wait endpoint streams, so its status is committed before the run finishes and the failure is reported in the body as `__error__`; the message from the run is carried into the exception. A run that never finished raises the same way. `#review_tool_calls` raises `ThreadResumptionError` for the same condition on the run it resumes, which it previously discarded entirely. A run that pauses for human review without producing text still returns `nil`
 
 ## [2.7.0] - 2026-09-10
@@ -132,7 +144,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.7.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.8.0-nitro_intelligence...HEAD
+[2.8.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.7.0-nitro_intelligence...v2.8.0-nitro_intelligence
 [2.7.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...v2.7.0-nitro_intelligence
 [2.6.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.5.0-nitro_intelligence...v2.6.0-nitro_intelligence
 [2.5.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.4.0-nitro_intelligence...v2.5.0-nitro_intelligence
