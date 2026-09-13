@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-09-13
+
 ### Added
 
 - `Assistants#tool_calls_under_review`: the tool calls the thread's interrupt is holding, in the order the platform wants decisions for them, each carrying the `allowed_decisions` a reviewer may take on it. A tool the assistant is not configured to interrupt on runs without review, so one AI message can mix calls under review with calls that are only waiting to be executed; `#tool_calls_pending_review` reports both, and only the calls this reports may be reviewed. A review interface reading it no longer has to fetch the thread state and interpret the interrupt itself to know which decisions to offer (#91)
@@ -148,7 +150,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.8.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...HEAD
+[3.0.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.8.0-nitro_intelligence...v3.0.0-nitro_intelligence
 [2.8.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.7.0-nitro_intelligence...v2.8.0-nitro_intelligence
 [2.7.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...v2.7.0-nitro_intelligence
 [2.6.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.5.0-nitro_intelligence...v2.6.0-nitro_intelligence
