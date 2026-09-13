@@ -691,6 +691,54 @@ RSpec.describe NitroIntelligence::Assistants do
       end
     end
 
+    context "when the run fails inside a successful response" do
+      let(:run_response_body) do
+        {
+          "__error__" => {
+            "error" => "Error",
+            "message" => "KeyError: missing variables {'first_name'}",
+          },
+        }
+      end
+
+      it "raises RunError with the reported failure" do
+        expect do
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(
+          NitroIntelligence::Assistants::RunError,
+          "Error: KeyError: missing variables {'first_name'}"
+        )
+      end
+    end
+
+    context "when the run did not finish" do
+      let(:run_response_body) do
+        {
+          "__error__" => {
+            "error" => "IncompleteRun",
+            "message" => "Wait ended before the run completed (status: running)",
+          },
+        }
+      end
+
+      it "raises rather than reporting the run as having no answer" do
+        expect do
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.to raise_error(
+          NitroIntelligence::Assistants::RunError,
+          "IncompleteRun: Wait ended before the run completed (status: running)"
+        )
+      end
+    end
+
+    context "when a successful run reports no failure" do
+      it "does not raise" do
+        expect do
+          assistants.await_run(thread_id:, assistant_id:, messages:, context:)
+        end.not_to raise_error
+      end
+    end
+
     context "when run returns multiple messages" do
       let(:multi_message_run_response_body) do
         {
@@ -939,6 +987,32 @@ RSpec.describe NitroIntelligence::Assistants do
       )
 
       expect(result).to be_nil
+    end
+
+    context "when the resumed run fails inside a successful response" do
+      let(:run_response_body) do
+        {
+          "__error__" => {
+            "error" => "Error",
+            "message" => "RuntimeError: tool blew up",
+          },
+        }
+      end
+
+      it "raises ThreadResumptionError rather than reporting the review as applied" do
+        expect do
+          assistants.review_tool_calls(
+            thread_id:,
+            assistant_id:,
+            reviewer_id:,
+            reviewed_at:,
+            tool_calls:
+          )
+        end.to raise_error(
+          NitroIntelligence::Assistants::ThreadResumptionError,
+          "Error: RuntimeError: tool blew up"
+        )
+      end
     end
 
     context "when reviewed_at is not provided" do
