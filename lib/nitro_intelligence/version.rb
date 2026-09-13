@@ -1,3 +1,3 @@
 module NitroIntelligence
-  VERSION = "2.8.0".freeze
+  VERSION = "3.0.0".freeze
 end
