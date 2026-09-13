@@ -1,4 +1,6 @@
 require "spec_helper"
+require "webmock/rspec"
+
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
 RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
@@ -100,6 +102,37 @@ RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
       expect do
         handler.create(message: "hi", parameters: { response_format: "flac" })
       end.to raise_error(ArgumentError, /Unsupported response_format: 'flac'/)
+    end
+  end
+
+  # See the note in chat_handler_spec: the cost path is covered against a real
+  # OpenAI::Client once per kind of response the SDK returns. This is the binary
+  # case, and the only one whose metadata depends on the openai floor the gemspec
+  # sets, so it is the example that fails if that floor ever slips.
+  describe "the cost of a real speech response" do
+    subject(:handler) { described_class.new(client: real_client) }
+
+    let(:real_client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example") }
+
+    before do
+      stub_request(:post, "https://gateway.example/audio/speech").to_return(
+        status: 200,
+        body: "fake_audio_bytes",
+        headers: {
+          "Content-Type" => "application/octet-stream",
+          "x-litellm-response-cost" => "5.85e-06",
+          "x-litellm-response-cost-input" => "1.1e-06",
+          "x-litellm-response-cost-output" => "4.75e-06",
+        }
+      )
+    end
+
+    it "reaches the gateway's cost headers through the returned StringIO" do
+      tts = handler.create(message: "hello world")
+
+      expect(tts).to be_a(StringIO)
+      expect(tts.string).to eq("fake_audio_bytes")
+      expect(handler.cost_details(tts)).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
     end
   end
 end
