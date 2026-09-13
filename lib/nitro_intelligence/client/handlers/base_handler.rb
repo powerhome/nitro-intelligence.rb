@@ -61,10 +61,9 @@ module NitroIntelligence
 
       private
 
-        # `last_response` carries the HTTP metadata of the response a typed model was
-        # built from. The client leaves it unset on nested and locally constructed
-        # models, and on endpoints returning raw or binary payloads, so both the
-        # method and its value are optional.
+        # `last_response` carries the HTTP metadata of the response a model was built
+        # from. The client leaves it unset on nested and locally constructed models,
+        # so both the method and its value are optional.
         def response_headers(response)
           return nil unless response.respond_to?(:last_response)
 
