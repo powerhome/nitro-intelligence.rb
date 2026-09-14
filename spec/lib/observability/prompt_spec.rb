@@ -114,4 +114,26 @@ RSpec.describe NitroIntelligence::Observability::Prompt do
       end
     end
   end
+
+  describe "#interpolate_text" do
+    context "for a text prompt" do
+      it "joins the compiled prompt in front of the caller's text" do
+        expect(text_prompt_instance.interpolate_text(text: "Please summarize this text.",
+                                                     variables: { name: "World", year: 2024 }))
+          .to eq("Hello, World! The year is 2024.\n\nPlease summarize this text.")
+      end
+
+      it "returns the compiled prompt alone when the caller supplies no text" do
+        expect(text_prompt_instance.interpolate_text(text: "", variables: { name: "World", year: 2024 }))
+          .to eq("Hello, World! The year is 2024.")
+      end
+    end
+
+    context "for a chat prompt" do
+      it "has no raw-text rendering to give" do
+        expect(chat_prompt_instance.interpolate_text(text: "Please summarize this text.",
+                                                     variables: { topic: "AI" })).to be_nil
+      end
+    end
+  end
 end

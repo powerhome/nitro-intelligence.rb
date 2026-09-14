@@ -121,6 +121,36 @@ client.chat(parameters: { model: "Qwen/Qwen3.8-27B", max_tokens: 1000, temperatu
 
 For a full list of supported parameters, see the [API reference here](https://developers.openai.com/api/reference/resources/completions/methods/create).
 
+### Text Completions
+
+`#complete` calls the completion endpoint, which takes a single prompt string and returns the text continuing it:
+
+```ruby
+client = NitroIntelligence::Client.new
+completion = client.complete(message: "Why is the sky blue?", parameters: { max_tokens: 200 })
+text = completion.choices.first&.text
+```
+
+Unlike `#chat` this applies no chat template, so the model receives exactly the string that is sent, with no role framing added. Two consequences are worth knowing before reaching for it:
+
+- `max_tokens` defaults to 16, the OpenAI API's own default for this endpoint, where `#chat` has no such cap. A `#complete` call that does not set it returns roughly a sentence.
+- A reasoning model emits its thinking delimiters into the completion text rather than into a separate field, so output can contain literal `<think>...</think>` for the caller to handle.
+
+Prefer `#chat` unless something specifically needs the raw endpoint. Its role structure is what instruction-tuned models are trained against, and some models reject a chat completion carrying no user turn.
+
+#### Using Prompts
+
+A managed prompt can be used here exactly as with `#chat`, by name:
+
+```ruby
+client = NitroIntelligence::Client.new(observability_project_slug: "your-project")
+client.complete(message: "Why is the sky blue?", parameters: { prompt_name: "Assistant", prompt_variables: { foo: "bar" } })
+```
+
+The compiled prompt is joined in front of the caller's message, separated by a blank line, in place of the system message `#chat` would have prepended. Passing no `message` sends the compiled prompt alone, which this endpoint serves fine.
+
+Only text prompts are supported. A chat prompt raises `ObservedCompletionPromptError`: its messages carry roles that only a model's chat template knows how to render, and this endpoint applies none.
+
 ### Audio Transcription
 
 Nitro Intelligence can be used to transcribe audio from a file into text.
