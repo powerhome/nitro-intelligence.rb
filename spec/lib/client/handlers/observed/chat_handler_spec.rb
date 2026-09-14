@@ -120,6 +120,77 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
       end
     end
 
+    describe "the message shape a chat completion needs" do
+      # The model's own chat template is what insists on a user turn, so this is caught
+      # before the request rather than after an unreadable 400 from the gateway.
+      def prompt_double(type:, name: "test-prompt", body: "Preamble")
+        NitroIntelligence::Observability::Prompt.new(name:, type:, prompt: body, version: 1)
+      end
+
+      it "refuses a text prompt with no caller message, naming the chat-prompt alternative" do
+        allow(fake_prompt_store).to receive(:get_prompt).and_return(prompt_double(type: "text"))
+        expect(fake_completions).not_to receive(:create)
+
+        expect { handler.create(parameters: { prompt_name: "test-prompt" }) }
+          .to raise_error(described_class::ObservedChatPromptError, /is a text prompt.*chat prompt in Cerebro/m)
+      end
+
+      it "refuses a chat prompt that carries no user message of its own" do
+        chat_prompt = prompt_double(type: "chat", name: "chat-prompt",
+                                    body: [{ role: "system", content: "Preamble" }])
+        allow(fake_prompt_store).to receive(:get_prompt).and_return(chat_prompt)
+        expect(fake_completions).not_to receive(:create)
+
+        expect { handler.create(parameters: { prompt_name: "chat-prompt" }) }
+          .to raise_error(described_class::ObservedChatPromptError, /contains no user message/)
+      end
+
+      it "accepts a chat prompt that carries its own user message" do
+        chat_prompt = prompt_double(type: "chat", name: "chat-prompt",
+                                    body: [{ role: "system", content: "Preamble" },
+                                           { role: "user", content: "Built in" }])
+        allow(fake_prompt_store).to receive(:get_prompt).and_return(chat_prompt)
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+        expect(fake_completions).to receive(:create).with(
+          hash_including(messages: [{ role: "system", content: "Preamble" },
+                                    { role: "user", content: "Built in" }])
+        ).and_return(fake_completion_response)
+
+        handler.create(parameters: { prompt_name: "chat-prompt" })
+      end
+
+      it "refuses a request with no messages and no prompt" do
+        expect(fake_completions).not_to receive(:create)
+
+        expect { handler.create(parameters: {}) }
+          .to raise_error(described_class::ObservedChatPromptError, /carries no user message/)
+      end
+
+      it "refuses a user message whose content is blank, which a template would accept" do
+        expect(fake_completions).not_to receive(:create)
+
+        expect { handler.create(parameters: { messages: [{ role: "user", content: "  " }] }) }
+          .to raise_error(described_class::ObservedChatPromptError)
+      end
+
+      it "accepts a user message carrying content parts rather than a string" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        expect(fake_completions).to receive(:create).and_return(fake_completion_response)
+
+        handler.create(parameters: {
+                         messages: [{ role: "user", content: [{ type: "text", text: "Hi" }] }],
+                       })
+      end
+
+      it "accepts string keys as readily as symbols" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        expect(fake_completions).to receive(:create).and_return(fake_completion_response)
+
+        handler.create(parameters: { messages: [{ "role" => "user", "content" => "Hi" }] })
+      end
+    end
+
     context "with a prompt fallback name" do
       it "uses the fallback prompt when the selected one cannot be resolved" do
         base_prompt = double("Prompt", name: "base-prompt", config: { temperature: 0.5 })
