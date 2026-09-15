@@ -74,15 +74,24 @@ module NitroIntelligence
             # (OpenAI::Models::Audio::Transcription), so neither is set again here.
             trace_attributes = {
               output: audio_transcription.text,
-              usage_details: {
-                input_tokens: audio_transcription.usage.input_tokens,
-                output_tokens: audio_transcription.usage.output_tokens,
-                total_tokens: audio_transcription.usage.total_tokens,
-              },
+              usage_details: usage_details(audio_transcription.usage),
               cost_details: @base_handler.cost_details(audio_transcription),
             }
 
             [audio_transcription, trace_attributes]
+          end
+
+          def usage_details(usage)
+            case usage
+            when OpenAI::Models::Audio::Transcription::Usage::Tokens
+              {
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+                total_tokens: usage.total_tokens,
+              }
+            when OpenAI::Models::Audio::Transcription::Usage::Duration
+              { input_audio_seconds: usage.seconds.ceil }
+            end
           end
         end
       end
