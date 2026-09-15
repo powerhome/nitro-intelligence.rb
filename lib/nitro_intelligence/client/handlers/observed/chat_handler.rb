@@ -16,7 +16,7 @@ module NitroIntelligence
             @base_handler.validate_and_resolve!(parameters, message)
 
             prompt = handle_prompt(parameters:)
-            validate_message_shape!(parameters:, prompt:)
+            ensure_user_message!(parameters:, prompt:)
 
             trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
 
@@ -45,10 +45,31 @@ module NitroIntelligence
           # never meant to, so blank content is refused rather than forwarded. Content
           # arriving as an array of parts is taken at face value, since a message carrying
           # only an image is a legitimate turn.
-          def validate_message_shape!(parameters:, prompt:)
+          #
+          # The remedy is refusal unless the caller asked for the turn to be supplied for
+          # them, in which case an empty one is appended: every deployment accepts it, and
+          # the model then answers the system instruction alone.
+          def ensure_user_message!(parameters:, prompt:)
             return if parameters[:messages].any? { |message| user_turn?(message) }
 
-            raise ObservedChatPromptError, missing_user_message_error(prompt)
+            unless auto_insert_user_message?(parameters)
+              raise ObservedChatPromptError,
+                    missing_user_message_error(prompt)
+            end
+
+            parameters[:messages] += [{ role: "user", content: "" }]
+          end
+
+          # Adding the turn is off unless asked for, per request or for the whole host. A
+          # request that reaches inference having been altered is worth opting into: the
+          # conversation the model answers is no longer the one the caller wrote, and the
+          # trace records the added turn rather than the omission that caused it, so a
+          # prompt that forgot its variables looks like a prompt that meant to say nothing.
+          def auto_insert_user_message?(parameters)
+            requested = parameters[:auto_insert_user_message]
+            return requested unless requested.nil?
+
+            NitroIntelligence.config.auto_insert_user_message
           end
 
           def user_turn?(message)

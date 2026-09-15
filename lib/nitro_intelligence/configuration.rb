@@ -11,6 +11,7 @@ module NitroIntelligence
     config_accessor :current_revision, default: ""
     config_accessor :environment, default: "test"
     config_accessor :assistants_config, default: {}
+    config_accessor :auto_insert_user_message, default: false
     config_accessor :inference_api_key, default: ""
     config_accessor :inference_base_url, default: "https://inference.powerhome.ai"
     config_accessor :model_config, default: {}

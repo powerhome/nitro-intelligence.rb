@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `auto_insert_user_message`, which appends an empty user message to a `#chat` request that carries none rather than raising the error below. Off by default; set it per request in `parameters` or for the whole host with `NitroIntelligence.config.auto_insert_user_message = true`, a request setting it explicitly winning over the host. The added message is `{ role: "user", content: "" }`, appended last, and every deployment accepts it -- the model then answers the system instruction alone. It is off by default because the conversation reaching the model is then not the one the caller wrote, and the observation records the added turn rather than the omission that prompted it, so a prompt whose variables failed to interpolate reads as a normal successful generation instead of a failure (#109)
+
 ### Changed
 
 - `#chat` refuses a request that carries no user message, raising `Observed::ChatHandler::ObservedChatPromptError` before any inference happens rather than letting the gateway reject it. A chat completion needs a turn for the model to answer -- the model's own chat template is what insists on one, and Qwen's raises `No user query found in messages.` -- so this previously cost a round trip and came back as a `400` whose body the client could not read. The error names the cause it found: a text prompt contributes only a system message and needs a `message:` from the caller, a chat prompt can carry its own user message and should be given one in Cerebro, and a request with neither is told what to pass. A user message with blank content is refused too, which is marginally stricter than templates that accept one, on the grounds that a blank turn is nearly always a caller bug; content arriving as an array of parts is accepted, since a turn carrying only an image is legitimate. Callers wanting a generation driven by an instruction alone should use `#complete`, which applies no chat template (#108)

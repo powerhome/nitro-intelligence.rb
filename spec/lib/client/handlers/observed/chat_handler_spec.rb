@@ -191,6 +191,95 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
       end
     end
 
+    describe "supplying the user message automatically" do
+      let(:text_prompt) do
+        NitroIntelligence::Observability::Prompt.new(
+          name: "test-prompt", type: "text", prompt: "Preamble", version: 1
+        )
+      end
+
+      around do |example|
+        was = NitroIntelligence.config.auto_insert_user_message
+        example.run
+        NitroIntelligence.config.auto_insert_user_message = was
+      end
+
+      it "appends an empty user message when the request asks for it" do
+        allow(fake_prompt_store).to receive(:get_prompt).and_return(text_prompt)
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+        expect(fake_completions).to receive(:create).with(
+          hash_including(messages: [{ role: "system", content: "Preamble" },
+                                    { role: "user", content: "" }])
+        ).and_return(fake_completion_response)
+
+        handler.create(parameters: { prompt_name: "test-prompt", auto_insert_user_message: true })
+      end
+
+      it "appends one when the host has configured it, without the request asking" do
+        NitroIntelligence.config.auto_insert_user_message = true
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+        expect(fake_completions).to receive(:create).with(
+          hash_including(messages: [{ role: "user", content: "" }])
+        ).and_return(fake_completion_response)
+
+        handler.create(parameters: {})
+      end
+
+      it "lets a request opt out of a host that configured it on" do
+        NitroIntelligence.config.auto_insert_user_message = true
+        allow(fake_prompt_store).to receive(:get_prompt).and_return(text_prompt)
+        expect(fake_completions).not_to receive(:create)
+
+        expect { handler.create(parameters: { prompt_name: "test-prompt", auto_insert_user_message: false }) }
+          .to raise_error(described_class::ObservedChatPromptError)
+      end
+
+      it "refuses by default, leaving the messages untouched" do
+        expect(NitroIntelligence.config.auto_insert_user_message).to be false
+        expect(fake_completions).not_to receive(:create)
+
+        expect { handler.create(parameters: {}) }
+          .to raise_error(described_class::ObservedChatPromptError)
+      end
+
+      it "adds nothing when a user message is already present" do
+        NitroIntelligence.config.auto_insert_user_message = true
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+        expect(fake_completions).to receive(:create).with(
+          hash_including(messages: [{ role: "user", content: "hello" }])
+        ).and_return(fake_completion_response)
+
+        handler.create(message: "hello")
+      end
+
+      it "records the added turn on the observation, so the trace matches what was sent" do
+        allow(fake_prompt_store).to receive(:get_prompt).and_return(text_prompt)
+
+        expect(fake_observer).to receive(:observe).with(
+          anything,
+          hash_including(input: [{ role: "system", content: "Preamble" },
+                                 { role: "user", content: "" }])
+        ).and_yield(fake_generation)
+        expect(fake_completions).to receive(:create).and_return(fake_completion_response)
+
+        handler.create(parameters: { prompt_name: "test-prompt", auto_insert_user_message: true })
+      end
+
+      it "keeps the opt-in flag out of the request sent to the gateway" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+        expect(fake_completions).to receive(:create) do |kwargs|
+          expect(kwargs).not_to have_key(:auto_insert_user_message)
+          fake_completion_response
+        end
+
+        handler.create(parameters: { auto_insert_user_message: true })
+      end
+    end
+
     context "with a prompt fallback name" do
       it "uses the fallback prompt when the selected one cannot be resolved" do
         base_prompt = double("Prompt", name: "base-prompt", config: { temperature: 0.5 })

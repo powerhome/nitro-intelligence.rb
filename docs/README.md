@@ -476,6 +476,25 @@ The check requires a message with the `user` role and non-blank content. A messa
 
 If you genuinely want a generation driven by an instruction alone, with no user turn, use `#complete` instead. The completion endpoint applies no chat template and imposes no shape.
 
+#### Supplying the turn automatically
+
+Where a caller would rather the turn were supplied than be refused, the gem can append an empty user message instead of raising. It is off by default, and can be switched on per request or for the whole host:
+
+```ruby
+# per request
+client.chat(parameters: { prompt_name: "Assistant", auto_insert_user_message: true })
+
+# or for every request the host makes
+NitroIntelligence.configure { |config| config.auto_insert_user_message = true }
+```
+
+A request setting it explicitly wins over the host configuration, so a host that turns it on can still be opted out of case by case.
+
+The added message is `{ role: "user", content: "" }`, appended after everything the prompt and caller supplied. Every deployment accepts it, and the model then answers the system instruction on its own.
+
+It is off by default deliberately. The conversation reaching the model is no longer the one the caller wrote, and the trace records the turn that was added rather than the omission that caused it — so a prompt whose variables failed to interpolate looks like a prompt that meant to say nothing, and reads as a normal successful generation. Turn it on where a system-instruction-only generation is the intent, not as a blanket guard against callers forgetting the turn.
+
+
 ### Prompt Variables and Config
 
 Prompts are often created with "variables". These variables can be supplied and compiled into the prompt. For example:
