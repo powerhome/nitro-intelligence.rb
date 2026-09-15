@@ -444,7 +444,28 @@ client.chat(message: "Why is the sky blue?", parameters: { prompt_name: "Assista
 
 #### Chat prompts
 
-A chat prompt in Cerebro holds a list of role-tagged messages rather than a single string, so it can carry its own user turn. Define one when the prompt is the whole conversation and the caller has nothing to add — a fixed extraction or classification instruction, for example, whose variables are filled from `prompt_variables`:
+A chat prompt in Cerebro holds a list of role-tagged messages rather than a single string, so it can carry its own user turn. Define one when the prompt structure should represent a conversation flow vs. a single block of static text, e.g. pre-modeling an interaction you want to continue:
+
+```yaml
+[
+  {
+    "role": "system",
+    "content": "You are a helpful support agent for an online bookstore. Be concise and friendly. Our return window is 30 days."
+  },
+  {
+    "role": "user",
+    "content": "Hi, do you ship to Canada?"
+  },
+  {
+    "role": "assistant",
+    "content": "Yes! We ship to Canada. Delivery usually takes 5–8 business days."
+  },
+  {
+    "role": "user",
+    "content": "{{question}}"
+  }
+]
+```
 
 ```
 system   You extract appointment details and reply with JSON.
