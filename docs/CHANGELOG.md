@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-09-15
+
 ### Fixed
 
 - `#chat` accepted a request carrying no user message and sent it to be inferred, where it could only fail. A chat completion needs a turn for the model to answer -- the model's own chat template is what insists on one, and Qwen's raises `No user query found in messages.` -- so the request cost a round trip and came back as a `400` whose body the client could not read, leaving the caller with `status=400` and nothing pointing at the cause. Such a request is now refused before any inference happens, raising `Observed::ChatHandler::ObservedChatPromptError` with the cause it found: a text prompt contributes only a system message and needs a `message:` from the caller, a chat prompt can carry its own user message and should be given one in Cerebro, and a request with neither is told what to pass. A user message with blank content is refused too, which is marginally stricter than templates that accept one, on the grounds that a blank turn is nearly always a caller bug; content arriving as an array of parts is accepted, since a turn carrying only an image is legitimate. Callers wanting a generation driven by an instruction alone should use `#complete`, which applies no chat template (#108)
@@ -154,7 +156,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.1-nitro_intelligence...HEAD
+[3.0.1]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...v3.0.1-nitro_intelligence
 [3.0.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.8.0-nitro_intelligence...v3.0.0-nitro_intelligence
 [2.8.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.7.0-nitro_intelligence...v2.8.0-nitro_intelligence
 [2.7.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...v2.7.0-nitro_intelligence
