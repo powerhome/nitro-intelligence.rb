@@ -424,6 +424,58 @@ trace_id = NitroIntelligence::Trace.create_id(seed: document_id)
 reporter.score(name: "precision", value: 0.5, trace_id:)
 ```
 
+### Prompts and Message Shape
+
+A chat completion needs a turn for the model to answer. This is not a gem convention: it is the model's own chat template, which is a Jinja file published alongside the weights and executed at serving time. Qwen's raises `No user query found in messages.` when the conversation contains no user message, and the gateway returns that as a `400` whose body most clients cannot read.
+
+What you have to supply depends on the type of the prompt you name, and the two types behave differently.
+
+#### Text prompts
+
+A text prompt is a system preamble. `prompt_name` alone is never enough, because interpolating a text prompt only prepends a system message:
+
+```ruby
+# Raises ObservedChatPromptError -- a system message and nothing to answer
+client.chat(parameters: { prompt_name: "Assistant" })
+
+# Correct -- the prompt supplies the system message, you supply the turn
+client.chat(message: "Why is the sky blue?", parameters: { prompt_name: "Assistant" })
+```
+
+#### Chat prompts
+
+A chat prompt in Cerebro holds a list of role-tagged messages rather than a single string, so it can carry its own user turn. Define one when the prompt is the whole conversation and the caller has nothing to add — a fixed extraction or classification instruction, for example, whose variables are filled from `prompt_variables`:
+
+```
+system   You extract appointment details and reply with JSON.
+user     Extract the appointment from: {{document}}
+```
+
+That prompt is self-sufficient, so no `message:` is needed:
+
+```ruby
+client.chat(parameters: { prompt_name: "Appointment Extractor", prompt_variables: { document: text } })
+```
+
+Any messages you do pass are appended after the prompt's own, so a chat prompt can also serve as a preamble to a live conversation.
+
+A chat prompt containing only a system message has the same problem as a text prompt, and is refused the same way. If you find yourself writing one, either add a user message to it in Cerebro or make it a text prompt and pass the turn from the caller.
+
+#### The error
+
+Requests that cannot be answered are refused before any inference happens, so they cost nothing and produce no trace:
+
+```
+NitroIntelligence::Client::Handlers::Observed::ChatHandler::ObservedChatPromptError:
+  The prompt "Assistant" is a text prompt, so it contributes only a system message and this request
+  carries no turn for the model to answer. Pass a `message:`, or define "Assistant" as a chat prompt
+  in Cerebro so that it carries its own user message.
+```
+
+The check requires a message with the `user` role and non-blank content. A message whose content is an array of parts counts, since a turn carrying only an image is legitimate. Note this is marginally stricter than some chat templates, which accept a user message with empty content — a blank turn is almost always a caller bug, so it is refused here rather than forwarded.
+
+If you genuinely want a generation driven by an instruction alone, with no user turn, use `#complete` instead. The completion endpoint applies no chat template and imposes no shape.
+
 ### Prompt Variables and Config
 
 Prompts are often created with "variables". These variables can be supplied and compiled into the prompt. For example:
