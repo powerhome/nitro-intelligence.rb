@@ -37,6 +37,20 @@ module NitroIntelligence
         end
       end
 
+      # Takes the caller's prompt text and joins the compiled prompt in front of it, the
+      # completion API's counterpart to #interpolate. A completion carries a single string
+      # rather than a message list, so the prompt occupies no role: it is simply what the
+      # model reads first.
+      #
+      # Text prompts only. A chat prompt's messages become a single string only once a
+      # model's chat template has been applied, and that happens at the serving end of a
+      # chat completion and nowhere else.
+      def interpolate_text(text:, variables:)
+        return nil unless @type == "text"
+
+        [compile(**variables), text].select(&:present?).join("\n\n")
+      end
+
       def variables
         messages = @type == "text" ? [@prompt] : @prompt.pluck(:content)
 

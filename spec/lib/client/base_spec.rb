@@ -14,6 +14,14 @@ RSpec.describe NitroIntelligence::Client::Base do
       base_client.chat(message: "hello")
     end
 
+    it "delegates #complete to the CompletionHandler" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::CompletionHandler)
+      allow(NitroIntelligence::Client::Handlers::CompletionHandler).to receive(:new).with(client: fake_openai_client).and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create).with(message: "hello", parameters: {})
+      base_client.complete(message: "hello")
+    end
+
     it "delegates #generate_image to the ImageHandler" do
       mock_handler = instance_double(NitroIntelligence::Client::Handlers::ImageHandler)
       allow(NitroIntelligence::Client::Handlers::ImageHandler).to receive(:new).with(client: fake_openai_client).and_return(mock_handler)

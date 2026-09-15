@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Client#complete`, the completion endpoint's counterpart to `#chat`: a single prompt string in, its continuation out, through the same model validation, gateway routing headers, spend-logs metadata and Langfuse observation as every other handler. Managed prompts work by name as they do for `#chat` -- `Prompt#interpolate_text` joins the compiled prompt in front of the caller's message, in place of the system message `#interpolate` prepends, and a call passing no message sends the compiled prompt alone. Text prompts only: a chat prompt raises `Observed::CompletionHandler::ObservedCompletionPromptError`, because its messages carry roles that only a model's chat template renders and this endpoint applies none. Note that no chat template is applied at all here, so `max_tokens` follows the API's own default of 16 rather than being uncapped as on `#chat`, and a reasoning model's thinking delimiters arrive inside the completion text rather than in a field of their own (#107)
+
 ## [3.0.1] - 2026-09-15
 
 ### Fixed

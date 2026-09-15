@@ -1,5 +1,6 @@
 require "nitro_intelligence/client/handlers/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/chat_handler"
+require "nitro_intelligence/client/handlers/completion_handler"
 require "nitro_intelligence/client/handlers/image_handler"
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
@@ -14,6 +15,12 @@ module NitroIntelligence
 
       def chat(message: "", parameters: {})
         chat_handler.create(message:, parameters:)
+      end
+
+      # The completion endpoint: a single prompt string in, its continuation out. No chat
+      # template is applied, so no role structure is added to what is sent.
+      def complete(message: "", parameters: {})
+        completion_handler.create(message:, parameters:)
       end
 
       # Input images should be byte strings. Returns NitroIntelligence::ImageGeneration
@@ -40,6 +47,10 @@ module NitroIntelligence
 
       def chat_handler
         @chat_handler ||= Handlers::ChatHandler.new(client: @client)
+      end
+
+      def completion_handler
+        @completion_handler ||= Handlers::CompletionHandler.new(client: @client)
       end
 
       def image_handler

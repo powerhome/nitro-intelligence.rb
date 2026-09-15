@@ -18,6 +18,16 @@ RSpec.describe NitroIntelligence::Client::Observed do
       observed_client.chat(message: "hello")
     end
 
+    it "delegates #complete to the Observed::CompletionHandler" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::Observed::CompletionHandler)
+      allow(NitroIntelligence::Client::Handlers::Observed::CompletionHandler)
+        .to receive(:new).with(base_handler: instance_of(NitroIntelligence::Client::Handlers::CompletionHandler), observer: fake_observer)
+        .and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create).with(message: "hello", parameters: {})
+      observed_client.complete(message: "hello")
+    end
+
     it "delegates #generate_image to the Observed::ImageHandler" do
       mock_handler = instance_double(NitroIntelligence::Client::Handlers::Observed::ImageHandler)
       allow(NitroIntelligence::Client::Handlers::Observed::ImageHandler)
