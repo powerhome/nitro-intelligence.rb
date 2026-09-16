@@ -1198,6 +1198,69 @@ RSpec.describe NitroIntelligence::Assistants do
     end
   end
 
+  describe "#stream_run" do
+    let(:thread_id) { "thread-456" }
+    let(:assistant_id) { "assistant-789" }
+    let(:assistant_url) { "#{base_url}/assistants/#{assistant_id}" }
+    let(:thread_init_url) { "#{base_url}/threads" }
+    let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/stream" }
+    let(:messages) { [{ role: "user", content: "Hello" }] }
+
+    before do
+      stub_request(:get, assistant_url).to_return(status: 200, body: { graph_id: "agent" }.to_json)
+      stub_request(:post, thread_init_url).to_return(status: 409)
+    end
+
+    it "yields parsed message events from the streaming endpoint" do
+      body = <<~SSE
+        event: metadata
+        data: {"run_id":"run-1"}
+
+        event: messages
+        data: [{"type":"AIMessageChunk","content":"Hello"}, {"langgraph_node":"agent"}]
+
+        event: end
+        data: null
+
+      SSE
+      stub_request(:post, run_url)
+        .with(
+          headers: { "Accept" => "text/event-stream" },
+          body: {
+            assistant_id:,
+            context: {},
+            input: { messages: },
+            stream_mode: "messages-tuple",
+          }
+        )
+        .to_return(status: 200, body:, headers: { "Content-Type" => "text/event-stream" })
+
+      events = assistants.stream_run(thread_id:, assistant_id:, messages:).to_a
+
+      expect(events).to eq(
+        [
+          { "event" => "metadata", "data" => { "run_id" => "run-1" } },
+          {
+            "event" => "messages",
+            "data" => [
+              { "type" => "AIMessageChunk", "content" => "Hello" },
+              { "langgraph_node" => "agent" },
+            ],
+          },
+          { "event" => "end", "data" => nil },
+        ]
+      )
+    end
+
+    it "raises RunError when the stream endpoint rejects the run" do
+      stub_request(:post, run_url).to_return(status: 500, body: "run failed")
+
+      expect do
+        assistants.stream_run(thread_id:, assistant_id:, messages:).to_a
+      end.to raise_error(NitroIntelligence::Assistants::RunError, "run failed")
+    end
+  end
+
   describe "#thread_state" do
     let(:thread_id) { "thread-456" }
     let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }

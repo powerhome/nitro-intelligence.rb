@@ -1,6 +1,7 @@
 require "json"
 require "net/http"
 require "uri"
+require "nitro_intelligence/server_sent_event_parser"
 require "nitro_intelligence/tool_call_review_interrupt"
 require "nitro_intelligence/tool_call_review_validator"
 
@@ -43,6 +44,21 @@ module NitroIntelligence
 
       initialize_thread_if_needed(thread_id:, assistant_id:, initial_state:)
       trigger_run(thread_id:, assistant_id:, context:, last_message:)
+    end
+
+    # Starts a run and yields each parsed server-sent event as it arrives. Event hashes contain
+    # `event`, optional `id`, and parsed JSON `data` (or the original string for non-JSON data).
+    # Without a block this returns an Enumerator.
+    def stream_run(thread_id:, assistant_id:, messages:, context: {}, &block)
+      return enum_for(__method__, thread_id:, assistant_id:, messages:, context:) unless block
+
+      raise RunError, "messages cannot be empty" if messages.blank?
+
+      initial_state = messages[0..-2]
+      last_message = messages.last
+
+      initialize_thread_if_needed(thread_id:, assistant_id:, initial_state:)
+      trigger_stream(thread_id:, assistant_id:, context:, last_message:, &block)
     end
 
     # The thread's state as Assistants reports it, unformatted. Callers that only want the
@@ -237,6 +253,24 @@ module NitroIntelligence
       Array(run["messages"]).last&.dig("content")
     end
 
+    def trigger_stream(thread_id:, assistant_id:, last_message:, context:, &)
+      parser = ServerSentEventParser.new(&)
+
+      post_stream(
+        path: "/threads/#{thread_id}/runs/stream",
+        body: {
+          assistant_id:,
+          context:,
+          input: {
+            messages: [last_message],
+          },
+          stream_mode: "messages-tuple",
+        }
+      ) { |chunk| parser << chunk }
+
+      parser.finish
+    end
+
     def raise_run_error!(run, error)
       failure = run["__error__"]
       return if failure.blank?
@@ -315,6 +349,26 @@ module NitroIntelligence
       request.body = body.to_json
 
       http.request(request)
+    end
+
+    def post_stream(path:, body:, &block)
+      uri = URI("#{base_url}#{path}")
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == "https"
+
+      request = Net::HTTP::Post.new(uri)
+      request_headers.merge("Accept" => "text/event-stream").each { |key, value| request[key] = value }
+      request.body = body.to_json
+
+      http.request(request) do |response|
+        unless response.code.to_i == 200
+          response_body = +""
+          response.read_body { |chunk| response_body << chunk }
+          raise RunError, response_body
+        end
+
+        response.read_body(&block)
+      end
     end
 
     def request_headers

@@ -107,6 +107,15 @@ RSpec.describe NitroIntelligence::Assistant do
       assistant.await_run(thread_id: "t1", messages: ["hi"], context: { a: 1 })
     end
 
+    it "supplies the assistant id and block to a streaming run" do
+      callback = proc { |event| event }
+
+      expect(client).to receive(:stream_run)
+        .with(thread_id: "t1", assistant_id: "id-cc", messages: ["hi"], context: { a: 1 }, &callback)
+
+      assistant.stream_run(thread_id: "t1", messages: ["hi"], context: { a: 1 }, &callback)
+    end
+
     it "supplies the assistant id to a tool call review" do
       expect(client).to receive(:review_tool_calls)
         .with(thread_id: "t1", assistant_id: "id-cc", tool_calls: [])
