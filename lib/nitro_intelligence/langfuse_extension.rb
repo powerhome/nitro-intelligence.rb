@@ -25,8 +25,8 @@ module NitroIntelligence
       @tracer_provider.shutdown(timeout:)
     end
 
-    def create_score(name:, value:, data_type:, id: nil, trace_id: nil, session_id: nil, observation_id: nil, comment: nil, # rubocop:disable Metrics/ParameterLists
-                     metadata: nil, environment: nil, dataset_run_id: nil, config_id: nil)
+    def create_score(name:, value:, id: nil, trace_id: nil, session_id: nil, observation_id: nil, comment: nil, # rubocop:disable Metrics/ParameterLists
+                     metadata: nil, environment: nil, data_type: :numeric, dataset_run_id: nil, config_id: nil)
       @client.create_score(
         name:,
         value:,
