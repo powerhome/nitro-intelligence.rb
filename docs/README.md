@@ -121,6 +121,47 @@ client.chat(parameters: { model: "Qwen/Qwen3.8-27B", max_tokens: 1000, temperatu
 
 For a full list of supported parameters, see the [API reference here](https://developers.openai.com/api/reference/resources/completions/methods/create).
 
+### Responses
+
+`#respond` calls the responses endpoint, which separates the instruction a model is given from the input it answers rather than folding both into one message list:
+
+```ruby
+client = NitroIntelligence::Client.new
+response = client.respond(
+  message: "Why is the sky blue?",
+  parameters: { instructions: "Answer in one sentence.", max_output_tokens: 800 }
+)
+text = response.output_text
+```
+
+Output arrives as typed items rather than a single message: the reasoning a model did, the message it produced, and any tool it decided to call are siblings of each other. `output_text` is the message alone, so reach for `response.output` when you need the rest.
+
+> This endpoint is newer than the others and is not yet recommended for production use. Two limitations are worth knowing before choosing it over `#chat`: `previous_response_id` does not work through the gateway, so multi-turn conversations have to be assembled by the caller as they are for `#chat`; and reasoning tokens are reported as zero even when the response carries reasoning, so the cost of thinking cannot be separated from the cost of answering.
+
+#### Prompts
+
+Each prompt type has a slot of its own here, so both work and neither is flattened into the other.
+
+A **text** prompt becomes the request's `instructions`, in place of the system message `#chat` would prepend:
+
+```ruby
+client.respond(message: "Why is the sky blue?", parameters: { prompt_name: "Assistant" })
+```
+
+A **chat** prompt opens the `input`, and anything the caller passes is appended after it, so a chat prompt carrying its own user message is self-sufficient:
+
+```ruby
+client.respond(parameters: { prompt_name: "Appointment Extractor", prompt_variables: { document: text } })
+```
+
+A request with nothing for the model to answer is refused before any inference happens, raising `ObservedResponsesPromptError`. Neither of the two ways of having no input is safe to send: omitting it altogether is answered with a `500`, and sending an empty one is answered by the gateway inventing a turn the caller never wrote.
+
+#### What reaches a trace
+
+An observed `#respond` records the message, the reasoning that preceded it, and any tool call, under the names a chat generation gives them, so a trace reads the same whichever endpoint served it. Alongside those it records the settings the generation ran under, the cached share of its input, and the cost the gateway reported.
+
+A generation stopped at its token ceiling is recorded at `WARNING` with the reason, rather than passing as a complete one -- reasoning models routinely spend a whole budget thinking and return an empty message, and that is worth being able to find. A failure the endpoint reports in the body of an otherwise successful response raises, rather than being recorded as a generation whose output happened to be empty.
+
 ### Audio Transcription
 
 Nitro Intelligence can be used to transcribe audio from a file into text.
