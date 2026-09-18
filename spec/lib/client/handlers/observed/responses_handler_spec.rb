@@ -15,7 +15,11 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ResponsesHandler d
 
   let(:handler) { described_class.new(base_handler:, observer: fake_observer) }
 
-  def response_double(reasoning_tokens: 17, headers: nil, reasoning: "because")
+  def tool_call_double(name: "get_weather", arguments: '{"city":"Paris"}', call_id: "call_1")
+    double("FunctionCall", type: :function_call, call_id:, id: "fc_1", name:, arguments:)
+  end
+
+  def response_double(reasoning_tokens: 17, headers: nil, reasoning: "because", tool_calls: [])
     usage = double("Usage", input_tokens: 11, output_tokens: 22, total_tokens: 33,
                             output_tokens_details: double("Details", reasoning_tokens:))
     items = []
@@ -24,6 +28,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ResponsesHandler d
                                        content: [double("Part", text: reasoning)])
     end
     items << double("MessageItem", type: :message, content: [])
+    items.concat(tool_calls)
     attrs = { model: "default-text-model", output_text: "the answer", usage:, output: items }
     attrs[:last_response] = double("LastResponse", headers:) if headers
     double("Response", **attrs)
@@ -78,6 +83,34 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ResponsesHandler d
       _, trace_attributes = handler.create(message: "hello")
 
       expect(trace_attributes[:output]).to eq("the answer")
+    end
+
+    it "records a tool the model decided to call" do
+      # A response that calls a tool carries no message, so recording `output_text` alone
+      # would record it as empty and lose the call entirely.
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_responses).to receive(:create).and_return(
+        response_double(reasoning: nil, tool_calls: [tool_call_double])
+      )
+
+      _, trace_attributes = handler.create(message: "weather in Paris?")
+
+      expect(trace_attributes[:output]).to eq(
+        content: "the answer",
+        tool_calls: [{ id: "call_1", type: "function",
+                       function: { name: "get_weather", arguments: '{"city":"Paris"}' } }]
+      )
+    end
+
+    it "records reasoning and a tool call together" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_responses).to receive(:create).and_return(
+        response_double(reasoning: "which tool?", tool_calls: [tool_call_double])
+      )
+
+      _, trace_attributes = handler.create(message: "weather in Paris?")
+
+      expect(trace_attributes[:output].keys).to eq(%i[content reasoning_content tool_calls])
     end
 
     it "omits the reasoning count when the endpoint reports none" do

@@ -109,15 +109,35 @@ module NitroIntelligence
             [response, trace_attributes]
           end
 
-          # `output_text` is the message alone, and this endpoint returns the reasoning that
-          # preceded it as a sibling item rather than a field of it. Recording only the message
-          # would drop the reasoning from the trace entirely, so both are recorded, under the
-          # names a chat generation gives them.
+          # `output_text` is the message alone. This endpoint returns everything else the model
+          # produced -- the reasoning that preceded the message, and any tool it decided to
+          # call -- as sibling items rather than fields of it, so recording only the message
+          # drops them from the trace. A response that calls a tool has no message at all, and
+          # would otherwise be recorded as empty.
+          #
+          # The parts are recorded under the names a chat generation gives them, so a trace
+          # reads the same whichever endpoint served it.
           def output_of(response)
             reasoning = reasoning_text(response)
-            return response.output_text if reasoning.blank?
+            tool_calls = tool_calls_of(response)
+            return response.output_text if reasoning.blank? && tool_calls.empty?
 
-            { content: response.output_text, reasoning_content: reasoning }
+            output = { content: response.output_text }
+            output[:reasoning_content] = reasoning if reasoning.present?
+            output[:tool_calls] = tool_calls if tool_calls.any?
+            output
+          end
+
+          def tool_calls_of(response)
+            response.output.filter_map do |call|
+              next unless call.type == :function_call
+
+              {
+                id: call.call_id || call.id,
+                type: "function",
+                function: { name: call.name, arguments: call.arguments },
+              }
+            end
           end
 
           def reasoning_text(response)
