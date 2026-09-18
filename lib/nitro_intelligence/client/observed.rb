@@ -1,6 +1,7 @@
 require "nitro_intelligence/client/handlers/observed/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/observed/chat_handler"
 require "nitro_intelligence/client/handlers/observed/image_handler"
+require "nitro_intelligence/client/handlers/observed/responses_handler"
 require "nitro_intelligence/client/handlers/observed/text_to_speech_handler"
 require "nitro_intelligence/observability/prompt_store"
 require "nitro_intelligence/observability/upload_handler"
@@ -27,6 +28,12 @@ module NitroIntelligence
           Handlers::Observed::AudioTranscriptionHandler.new(
             base_handler: Handlers::AudioTranscriptionHandler.new(client: @client), observer: @observer
           )
+      end
+
+      def responses_handler
+        @responses_handler ||= Handlers::Observed::ResponsesHandler.new(
+          base_handler: Handlers::ResponsesHandler.new(client: @client), observer: @observer
+        )
       end
 
       def image_handler
