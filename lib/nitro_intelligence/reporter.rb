@@ -35,12 +35,13 @@ module NitroIntelligence
       response
     end
 
-    def score(trace_id:, name:, value:, id: "#{trace_id}-#{name}")
+    def score(trace_id:, name:, value:, id: "#{trace_id}-#{name}", data_type: :numeric)
       @project_client.observability_client.create_score(
         id:,
         trace_id:,
         name:,
         value:,
+        data_type:,
         environment: NitroIntelligence.environment
       )
     end

@@ -39,32 +39,37 @@ RSpec.describe NitroIntelligence::Reporter do
   end
 
   describe "#score" do
-    it "calls create_score when observability is available" do
-      handler = described_class.new(observability_project_slug: "test-slug")
+    let(:handler) { described_class.new(observability_project_slug: "test-slug") }
 
+    it "calls create_score when observability is available" do
       expect(fake_langfuse_client).to receive(:create_score).with(
         id: "trace-id-test-score",
         trace_id: "trace-id",
         name: "test-score",
         value: 0.9,
-        environment: "test"
+        environment: "test",
+        data_type: :numeric
       )
 
       handler.score(trace_id: "trace-id", name: "test-score", value: 0.9)
     end
 
     it "allows overriding the score id" do
-      handler = described_class.new(observability_project_slug: "test-slug")
-
-      expect(fake_langfuse_client).to receive(:create_score).with(
-        id: "custom-score-id",
-        trace_id: "trace-id",
-        name: "test-score",
-        value: 0.9,
-        environment: "test"
-      )
+      expect(fake_langfuse_client).to receive(:create_score).with(hash_including(id: "custom-score-id"))
 
       handler.score(id: "custom-score-id", trace_id: "trace-id", name: "test-score", value: 0.9)
+    end
+
+    it "defaults data_type to numeric" do
+      expect(fake_langfuse_client).to receive(:create_score).with(hash_including(data_type: :numeric))
+
+      handler.score(id: "custom-score-id", trace_id: "trace-id", name: "test-score", value: 0.9)
+    end
+
+    it "accepts data_type as an argument" do
+      expect(fake_langfuse_client).to receive(:create_score).with(hash_including(data_type: :boolean))
+
+      handler.score(id: "custom-score-id", trace_id: "trace-id", name: "test-score", value: 0.9, data_type: :boolean)
     end
   end
 
