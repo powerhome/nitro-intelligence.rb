@@ -19,9 +19,16 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ResponsesHandler d
     double("FunctionCall", type: :function_call, call_id:, id: "fc_1", name:, arguments:)
   end
 
-  def response_double(reasoning_tokens: 17, headers: nil, reasoning: "because", tool_calls: [])
+  # Keyword defaults describe a completed, reasoning-only response; each example overrides
+  # just the part it is about.
+  def response_double(**opts)
+    opts = { reasoning_tokens: 17, headers: nil, reasoning: "because", tool_calls: [],
+             status: :completed, incomplete_details: nil, error: nil, cached_tokens: nil }.merge(opts)
+    reasoning, tool_calls, headers = opts.values_at(:reasoning, :tool_calls, :headers)
+
     usage = double("Usage", input_tokens: 11, output_tokens: 22, total_tokens: 33,
-                            output_tokens_details: double("Details", reasoning_tokens:))
+                            output_tokens_details: double("Details", reasoning_tokens: opts[:reasoning_tokens]),
+                            input_tokens_details: double("InDetails", cached_tokens: opts[:cached_tokens]))
     items = []
     if reasoning
       items << double("ReasoningItem", type: :reasoning, summary: [],
@@ -29,7 +36,10 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ResponsesHandler d
     end
     items << double("MessageItem", type: :message, content: [])
     items.concat(tool_calls)
-    attrs = { model: "default-text-model", output_text: "the answer", usage:, output: items }
+    attrs = { model: "default-text-model", output_text: "the answer", usage:, output: items,
+              status: opts[:status], incomplete_details: opts[:incomplete_details], error: opts[:error],
+              temperature: 0.3, top_p: 0.9, max_output_tokens: 700,
+              tool_choice: "auto", truncation: "disabled" }
     attrs[:last_response] = double("LastResponse", headers:) if headers
     double("Response", **attrs)
   end
@@ -111,6 +121,58 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ResponsesHandler d
       _, trace_attributes = handler.create(message: "weather in Paris?")
 
       expect(trace_attributes[:output].keys).to eq(%i[content reasoning_content tool_calls])
+    end
+
+    it "records the settings the generation ran under" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_responses).to receive(:create).and_return(response_double)
+
+      _, trace_attributes = handler.create(message: "hello")
+
+      expect(trace_attributes[:model_parameters]).to eq(
+        temperature: 0.3, top_p: 0.9, max_output_tokens: 700, tool_choice: "auto", truncation: "disabled"
+      )
+    end
+
+    it "records the cached share of the input when the endpoint reports one" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_responses).to receive(:create).and_return(response_double(cached_tokens: 8))
+
+      _, trace_attributes = handler.create(message: "hello")
+
+      expect(trace_attributes[:usage_details]).to include(input_cached_tokens: 8)
+    end
+
+    it "reports a generation the endpoint did not finish, without calling it a failure" do
+      # A response truncated at its token ceiling comes back as a success, so without this a
+      # cut-off answer is indistinguishable from a complete one.
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_responses).to receive(:create).and_return(
+        response_double(status: :incomplete, incomplete_details: double("Reason", reason: "max_output_tokens"))
+      )
+
+      _, trace_attributes = handler.create(message: "hello")
+
+      expect(trace_attributes[:status_message]).to eq("incomplete: max_output_tokens")
+    end
+
+    it "says nothing about status when the generation finished" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_responses).to receive(:create).and_return(response_double)
+
+      _, trace_attributes = handler.create(message: "hello")
+
+      expect(trace_attributes).not_to have_key(:status_message)
+    end
+
+    it "raises on a failure the endpoint reported in a successful response" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_responses).to receive(:create).and_return(
+        response_double(status: :failed, error: double("Error", code: "server_error", message: "upstream died"))
+      )
+
+      expect { handler.create(message: "hello") }
+        .to raise_error(described_class::ObservedResponsesError, /server_error - upstream died/)
     end
 
     it "omits the reasoning count when the endpoint reports none" do

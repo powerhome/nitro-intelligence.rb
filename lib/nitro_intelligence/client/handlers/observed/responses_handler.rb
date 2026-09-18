@@ -6,6 +6,7 @@ module NitroIntelligence
       module Observed
         class ResponsesHandler
           class ObservedResponsesPromptError < StandardError; end
+          class ObservedResponsesError < StandardError; end
 
           def initialize(base_handler:, observer:)
             @base_handler = base_handler
@@ -98,15 +99,52 @@ module NitroIntelligence
 
           def workflow(generation:, parameters:)
             response = @base_handler.perform_request(parameters:, correlation_trace_id: generation.trace_id)
+            raise_on_failure(response)
 
             trace_attributes = {
               model: response.model,
+              model_parameters: model_parameters(response),
               output: output_of(response),
               usage_details: usage_details(response.usage),
               cost_details: @base_handler.cost_details(response),
-            }
+              status_message: unfinished_reason(response),
+            }.compact
 
             [response, trace_attributes]
+          end
+
+          # This endpoint reports a failed generation in the body of an otherwise successful
+          # response, so nothing raises on its own. Raising here puts it on the same footing as
+          # every other failure: the observer records it and the caller is not handed a
+          # response whose output is empty for a reason it has no way to see.
+          def raise_on_failure(response)
+            return unless response.status == :failed
+
+            error = response.error
+            raise ObservedResponsesError,
+                  "The response failed: #{[error&.code,
+                                           error&.message].compact.join(' - ').presence || 'no reason given'}"
+          end
+
+          # A generation stopped short of finishing reads as a complete one unless the reason is
+          # recorded, and the commonest reason -- the token ceiling -- truncates the answer
+          # rather than failing the request.
+          def unfinished_reason(response)
+            return nil unless response.status == :incomplete
+
+            "incomplete: #{response.incomplete_details&.reason || 'reason not given'}"
+          end
+
+          # The settings a generation actually ran under, which a prompt config can change
+          # without the caller naming them.
+          def model_parameters(response)
+            {
+              temperature: response.temperature,
+              top_p: response.top_p,
+              max_output_tokens: response.max_output_tokens,
+              tool_choice: response.tool_choice,
+              truncation: response.truncation,
+            }.compact.presence
           end
 
           # `output_text` is the message alone. This endpoint returns everything else the model
@@ -167,6 +205,9 @@ module NitroIntelligence
 
             reasoning_tokens = usage.output_tokens_details&.reasoning_tokens
             details[:reasoning_tokens] = reasoning_tokens if reasoning_tokens
+
+            cached_tokens = usage.input_tokens_details&.cached_tokens
+            details[:input_cached_tokens] = cached_tokens if cached_tokens
 
             details
           end
