@@ -111,13 +111,19 @@ module NitroIntelligence
 
           # Reasoning is counted separately from the output it precedes, and recording it keeps
           # the share of a generation spent thinking visible rather than folded into the output
-          # total. The three totals keep the names the other handlers use so that generations
-          # stay comparable across endpoints.
+          # total.
+          #
+          # The three totals are named as the observability platform names them, rather than as
+          # the endpoint does. The platform translates the endpoint's own names only while every
+          # key is one it recognises; a custom key alongside them turns the whole hash into
+          # opaque counters, which it then sums into a total of its own -- counting the total
+          # twice. Naming them natively keeps the breakdown intact and leaves the reasoning
+          # count free to sit beside it.
           def usage_details(usage)
             details = {
-              prompt_tokens: usage.input_tokens,
-              completion_tokens: usage.output_tokens,
-              total_tokens: usage.total_tokens,
+              input: usage.input_tokens,
+              output: usage.output_tokens,
+              total: usage.total_tokens,
             }
 
             reasoning_tokens = usage.output_tokens_details&.reasoning_tokens

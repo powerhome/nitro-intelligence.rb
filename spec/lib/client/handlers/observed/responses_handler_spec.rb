@@ -50,7 +50,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ResponsesHandler d
       expect(response.output_text).to eq("the answer")
       expect(trace_attributes[:output]).to eq("the answer")
       expect(trace_attributes[:usage_details]).to eq(
-        prompt_tokens: 11, completion_tokens: 22, total_tokens: 33, reasoning_tokens: 17
+        input: 11, output: 22, total: 33, reasoning_tokens: 17
       )
     end
 
