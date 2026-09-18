@@ -101,12 +101,31 @@ module NitroIntelligence
 
             trace_attributes = {
               model: response.model,
-              output: response.output_text,
+              output: output_of(response),
               usage_details: usage_details(response.usage),
               cost_details: @base_handler.cost_details(response),
             }
 
             [response, trace_attributes]
+          end
+
+          # `output_text` is the message alone, and this endpoint returns the reasoning that
+          # preceded it as a sibling item rather than a field of it. Recording only the message
+          # would drop the reasoning from the trace entirely, so both are recorded, under the
+          # names a chat generation gives them.
+          def output_of(response)
+            reasoning = reasoning_text(response)
+            return response.output_text if reasoning.blank?
+
+            { content: response.output_text, reasoning_content: reasoning }
+          end
+
+          def reasoning_text(response)
+            items = response.output.select { |item| item.type == :reasoning }
+            return nil if items.empty?
+
+            items.flat_map { |item| Array(item.content) + Array(item.summary) }
+                 .filter_map(&:text).join("\n").presence
           end
 
           # Reasoning is counted separately from the output it precedes, and recording it keeps

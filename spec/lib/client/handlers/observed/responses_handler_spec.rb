@@ -15,10 +15,16 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ResponsesHandler d
 
   let(:handler) { described_class.new(base_handler:, observer: fake_observer) }
 
-  def response_double(reasoning_tokens: 17, headers: nil)
+  def response_double(reasoning_tokens: 17, headers: nil, reasoning: "because")
     usage = double("Usage", input_tokens: 11, output_tokens: 22, total_tokens: 33,
                             output_tokens_details: double("Details", reasoning_tokens:))
-    attrs = { model: "default-text-model", output_text: "the answer", usage: }
+    items = []
+    if reasoning
+      items << double("ReasoningItem", type: :reasoning, summary: [],
+                                       content: [double("Part", text: reasoning)])
+    end
+    items << double("MessageItem", type: :message, content: [])
+    attrs = { model: "default-text-model", output_text: "the answer", usage:, output: items }
     attrs[:last_response] = double("LastResponse", headers:) if headers
     double("Response", **attrs)
   end
@@ -48,10 +54,30 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ResponsesHandler d
       response, trace_attributes = handler.create(message: "hello")
 
       expect(response.output_text).to eq("the answer")
-      expect(trace_attributes[:output]).to eq("the answer")
+      expect(trace_attributes[:output]).to eq(content: "the answer", reasoning_content: "because")
       expect(trace_attributes[:usage_details]).to eq(
         input: 11, output: 22, total: 33, reasoning_tokens: 17
       )
+    end
+
+    it "records the reasoning the endpoint returned beside the message it preceded" do
+      # `output_text` is the message alone, so recording only that would drop the reasoning
+      # from the trace entirely -- the endpoint returns it as a sibling item, not a field.
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_responses).to receive(:create).and_return(response_double(reasoning: "step one\nstep two"))
+
+      _, trace_attributes = handler.create(message: "hello")
+
+      expect(trace_attributes[:output]).to eq(content: "the answer", reasoning_content: "step one\nstep two")
+    end
+
+    it "records the message alone when the response carried no reasoning" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_responses).to receive(:create).and_return(response_double(reasoning: nil))
+
+      _, trace_attributes = handler.create(message: "hello")
+
+      expect(trace_attributes[:output]).to eq("the answer")
     end
 
     it "omits the reasoning count when the endpoint reports none" do
