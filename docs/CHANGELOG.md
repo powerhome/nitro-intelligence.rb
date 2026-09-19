@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `LangfuseObserver` records two things a handler could not report before: `model_parameters`, the settings a generation ran under, which matter because a prompt config can change them without the caller ever naming them; and a `level` and `status_message` for a response the endpoint answered but did not finish, which defaults to `WARNING` so that a generation cut off at its token ceiling is findable without sitting among the errors. Both are written only when a handler reports them, so handlers adopt them one at a time and every existing observation is unchanged (#123)
+
 ## [3.0.2] - 2026-09-15
 
 ### Fixed

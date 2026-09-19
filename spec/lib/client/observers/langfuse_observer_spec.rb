@@ -12,6 +12,7 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
       update_trace: nil,
       update: nil,
       :model= => nil,
+      :model_parameters= => nil,
       :usage_details= => nil,
       :cost_details= => nil,
       :input= => nil,
@@ -197,6 +198,66 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
             ["result", { model: "gpt-4", input: "input text", output: original_output }]
           end
         end
+      end
+    end
+
+    describe "recording what a handler reported off the response" do
+      before do
+        catalog = double("ModelCatalog")
+        allow(catalog).to receive(:lookup_by_name).and_return(double("ModelConfig", omit_output_fields: nil))
+        allow(NitroIntelligence).to receive(:model_catalog).and_return(catalog)
+      end
+
+      def observe_returning(trace_attributes)
+        allow(fake_observability_client).to receive(:observe).and_yield(fake_generation)
+        observer.observe("op", type: :generation, parameters: { metadata: {} }, trace_name: "t") do |_gen|
+          [:result, trace_attributes]
+        end
+      end
+
+      it "writes the settings a generation ran under" do
+        parameters = { temperature: 0.3, top_p: 0.9 }
+        expect(fake_generation).to receive(:model_parameters=).with(parameters)
+
+        observe_returning(model_parameters: parameters)
+      end
+
+      it "leaves an attribute alone when the handler reported none" do
+        # Absence has to mean absence: a handler that cannot know a value is not asserting one.
+        expect(fake_generation).not_to receive(:model_parameters=)
+
+        observe_returning(model: "a-model")
+      end
+
+      it "records a generation the endpoint answered but did not finish, as a warning" do
+        # Neither a success worth saying nothing about nor a failure the request raised on.
+        expect(fake_generation).to receive(:update).with(
+          level: "WARNING", status_message: "incomplete: max_output_tokens"
+        )
+
+        observe_returning(status_message: "incomplete: max_output_tokens")
+      end
+
+      it "lets a handler choose the level it is recorded at" do
+        expect(fake_generation).to receive(:update).with(
+          level: "DEBUG", status_message: "cancelled"
+        )
+
+        observe_returning(level: "DEBUG", status_message: "cancelled")
+      end
+
+      it "says nothing about status when the handler reported none" do
+        expect(fake_generation).not_to receive(:update)
+
+        observe_returning(model: "a-model")
+      end
+
+      it "truncates a status message too long to record" do
+        expect(fake_generation).to receive(:update) do |attrs|
+          expect(attrs[:status_message].length).to eq(described_class::MAX_STATUS_MESSAGE_LENGTH)
+        end
+
+        observe_returning(status_message: "x" * (described_class::MAX_STATUS_MESSAGE_LENGTH + 100))
       end
     end
 
