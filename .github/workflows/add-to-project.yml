@@ -6,7 +6,7 @@ name: Add issues to the Nitro Intelligence project
 
 on:
   issues:
-    types: [opened, reopened, transferred]
+    types: [opened, reopened]
 
 permissions: {}
 
