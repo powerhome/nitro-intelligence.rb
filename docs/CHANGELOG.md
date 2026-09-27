@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-09-15
+
+### Fixed
+
+- Audio transcriptions now handle models that report usage in seconds.
+
+## [3.0.1] - 2026-09-15
+
+### Fixed
+
+- `#chat` accepted a request carrying no user message and sent it to be inferred, where it could only fail. A chat completion needs a turn for the model to answer -- the model's own chat template is what insists on one, and Qwen's raises `No user query found in messages.` -- so the request cost a round trip and came back as a `400` whose body the client could not read, leaving the caller with `status=400` and nothing pointing at the cause. Such a request is now refused before any inference happens, raising `Observed::ChatHandler::ObservedChatPromptError` with the cause it found: a text prompt contributes only a system message and needs a `message:` from the caller, a chat prompt can carry its own user message and should be given one in Cerebro, and a request with neither is told what to pass. A user message with blank content is refused too, which is marginally stricter than templates that accept one, on the grounds that a blank turn is nearly always a caller bug; content arriving as an array of parts is accepted, since a turn carrying only an image is legitimate. Callers wanting a generation driven by an instruction alone should use `#complete`, which applies no chat template (#108)
+
+## [3.0.0] - 2026-09-13
+
 ### Added
 
 - Send `x-litellm-tags` on observed requests, carrying `cerebro_observability_project_id` and, when a managed prompt was resolved, `cerebro_prompt_name` and `cerebro_prompt_version`, so gateway spend can be aggregated per feature. Set automatically with no caller-facing parameter: it serves whoever operates the gateway, not the feature teams calling this library. Nothing is sent on the unobserved path, and this is unrelated to the `tags` parameter, which tags the observability trace (#71)
@@ -20,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - `Assistants#review_tool_calls`'s `reviewer_id` and `reviewed_at` arguments, outright rather than through a deprecation: the platform records neither, and the resume payload it accepts has nowhere to carry them. Nothing can be relying on them, since no review could complete at all before this, so there has never been a working call to pass them to; the one consumer that reaches this area, nitro-web's `ContactCenter::VirtualConfirmationAgent::Client`, overrides `#review_tool_calls` entirely. A call still passing either now raises `ArgumentError` (#91)
+- `NitroIntelligence::AgentServer`, `NitroIntelligence.agent_server` and the `agent_server_config` setting, deprecated in 2.4.0 for removal in 3.0. A host still on the old names must move to `NitroIntelligence::Assistants`, `NitroIntelligence.assistants` and `assistants_config` before upgrading: the constant now raises `NameError`, the method `NoMethodError`, and `agent_server_config` is neither readable nor writable. A host that set `agent_server_config` and never set `assistants_config` is left with no configuration at all: `assistants_config` defaults to `{}`, and `Assistants.new` takes `api_key` as a required keyword, so the first `NitroIntelligence.assistants` call raises `ArgumentError: missing keyword: :api_key` before a client is built or a request sent. The failure is immediate rather than deferred, but it names the missing keyword rather than the setting that was removed, so migrate before upgrading rather than after the first exception. `NitroIntelligence.deprecator` goes with them: it existed to carry these three names and nothing else, and its horizon was 3.0, so it has no remaining subject. A future deprecation introduces its own deprecator against its own horizon (#102)
 
 ### Fixed
 
@@ -148,7 +163,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.8.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.2-nitro_intelligence...HEAD
+[3.0.2]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...v3.0.2-nitro_intelligence
+[3.0.1]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...v3.0.1-nitro_intelligence
+[3.0.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.8.0-nitro_intelligence...v3.0.0-nitro_intelligence
 [2.8.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.7.0-nitro_intelligence...v2.8.0-nitro_intelligence
 [2.7.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.6.0-nitro_intelligence...v2.7.0-nitro_intelligence
 [2.6.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.5.0-nitro_intelligence...v2.6.0-nitro_intelligence

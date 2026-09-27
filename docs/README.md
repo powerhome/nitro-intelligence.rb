@@ -424,7 +424,62 @@ trace_id = NitroIntelligence::Trace.create_id(seed: document_id)
 reporter.score(name: "precision", value: 0.5, trace_id:)
 ```
 
-### Prompt Variables and Config
+### Prompts
+
+#### Message Shape
+
+A chat completion needs a user message in order for the model to answer. What you have to supply depends on the type of the prompt you name, and the two types behave differently.
+
+##### Text prompts
+
+A text prompt in Cerebro is equivalent to the system prompt. System prompts are used to pre-load initial context into the model needed for following call executions.
+
+Pure text prompts require a user message to be supplied. For example:
+
+```ruby
+#  Wrong - Raises ObservedChatPromptError - A prompt alone, provides a system message alone with nothing to answer
+client.chat(parameters: { prompt_name: "Assistant" })
+
+# Correct - The prompt supplies the system message, you supply the user message
+client.chat(message: "Why is the sky blue?", parameters: { prompt_name: "Assistant" })
+```
+
+##### Chat prompts
+
+A chat prompt in Cerebro holds a list of role-tagged messages rather than a single string, so it can carry its own user turn. Define one when the prompt structure should represent a conversation flow vs. a single block of static text, e.g. pre-modeling an interaction you want to continue:
+
+```yaml
+[
+  {
+    "role": "system",
+    "content": "You are a helpful support agent for an online bookstore. Be concise and friendly. Our return window is 30 days."
+  },
+  {
+    "role": "user",
+    "content": "Hi, do you ship to Canada?"
+  },
+  {
+    "role": "assistant",
+    "content": "Yes! We ship to Canada. Delivery usually takes 5–8 business days."
+  },
+  {
+    "role": "user",
+    "content": "{{question}}"
+  }
+]
+```
+
+That prompt is self-sufficient, so no additional `message:` is needed:
+
+```ruby
+client.chat(parameters: { prompt_name: "Appointment Extractor", prompt_variables: { document: text } })
+```
+
+Any messages you do pass are appended after the prompt's own system message, so a chat prompt can also serve as a preamble to a live conversation.
+
+A chat prompt containing only a system message has the same problem as a text prompt, and is refused in the same way. If you find yourself writing one, either add a user message to it in Cerebro or make it a text prompt and pass the turn from the caller via the `message` keyword.
+
+#### Prompt Variables and Config
 
 Prompts are often created with "variables". These variables can be supplied and compiled into the prompt. For example:
 
