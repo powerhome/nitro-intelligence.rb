@@ -424,6 +424,16 @@ trace_id = NitroIntelligence::Trace.create_id(seed: document_id)
 reporter.score(name: "precision", value: 0.5, trace_id:)
 ```
 
+#### Using different data types for scoring
+
+By default, scores submitted on a trace are numeric, but you can use the `data_type` keyword to change it to `:boolean` or `:categorical`. For example:
+
+```ruby
+reporter.score(name: "precision", value: "Partially Correct", trace_id:, data_type: :categorical)
+```
+
+Numeric data is helpful for scores that happen on a sliding scale, like success rate or percent similarity. Boolean data is helpful to convey something that either passes or fails. Categorical data is helpful for scores that have pre-defined categories, like "Correct", "Partially Correct", and "Incorrect".
+
 ### Prompts
 
 #### Message Shape
