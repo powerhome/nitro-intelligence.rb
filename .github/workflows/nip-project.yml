@@ -1,23 +1,35 @@
-# Keeps this repository's issues and pull requests on the Nitro Intelligence project.
-# Issues and pull requests are added when opened or reopened. A pull request's Status
-# is In progress while it is open as a draft or not yet ready, and In review once it is
-# marked ready for review. The project's own workflows move merged pull requests to Done.
+# Keeps this repository's issues and pull requests on the Nitro Intelligence project, and
+# is the only automation that sets their Status there.
+#
+# - Issues are added when opened, with no Status, so they wait for triage. A reopened issue
+#   goes back to no Status for re-triage. A closed issue is Done.
+# - Pull requests are In progress while open as a draft or not yet ready, In review once
+#   marked ready for review, back to In progress when a review requests changes, and Done
+#   when closed.
+# - Items labelled dependency-dashboard (Renovate's Dependency Dashboard) are left off the
+#   project.
 
 name: Nitro Intelligence project
 
 on:
   issues:
-    types: [opened, reopened]
+    types: [opened, reopened, closed]
   pull_request:
-    types: [opened, reopened, ready_for_review, converted_to_draft]
+    types: [opened, reopened, ready_for_review, converted_to_draft, closed]
+  pull_request_review:
+    types: [submitted]
 
 permissions: {}
 
 jobs:
   project:
     name: Add to project and set status
-    # Dependabot pull requests cannot read Actions secrets.
-    if: github.actor != 'dependabot[bot]'
+    # Dependabot pull requests cannot read Actions secrets; the Dependency Dashboard stays off
+    # the project; only reviews requesting changes move a pull request.
+    if: >-
+      github.actor != 'dependabot[bot]'
+      && !contains(github.event.issue.labels.*.name, 'dependency-dashboard')
+      && (github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -39,25 +51,39 @@ jobs:
           project-url: https://github.com/orgs/powerhome/projects/18
           github-token: ${{ steps.app-token.outputs.token }}
 
-      - name: Set pull request status
-        if: github.event_name == 'pull_request'
+      - name: Set status
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           ITEM_ID: ${{ steps.add.outputs.itemId }}
-          STATUS: ${{ github.event.action == 'ready_for_review' && 'In review' || 'In progress' }}
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
         run: |
           set -euo pipefail
+          case "$EVENT/$ACTION" in
+            issues/opened | issues/reopened) status="" ;;
+            issues/closed | pull_request/closed) status="Done" ;;
+            pull_request/ready_for_review) status="In review" ;;
+            pull_request/* | pull_request_review/submitted) status="In progress" ;;
+            *) echo "No Status change for $EVENT/$ACTION"; exit 0 ;;
+          esac
           project=$(gh api graphql \
             -f query='query { organization(login: "powerhome") { projectV2(number: 18) { id field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } } } } }' \
             --jq '.data.organization.projectV2')
           project_id=$(jq -r '.id' <<<"$project")
           field_id=$(jq -r '.field.id' <<<"$project")
-          option_id=$(jq -r --arg status "$STATUS" '.field.options[] | select(.name == $status) | .id' <<<"$project")
+          if [ -z "$status" ]; then
+            gh api graphql \
+              -f query='mutation($project: ID!, $item: ID!, $field: ID!) { clearProjectV2ItemFieldValue(input: { projectId: $project, itemId: $item, fieldId: $field }) { projectV2Item { id } } }' \
+              -f project="$project_id" -f item="$ITEM_ID" -f field="$field_id" > /dev/null
+            echo "Cleared Status for triage"
+            exit 0
+          fi
+          option_id=$(jq -r --arg status "$status" '.field.options[] | select(.name == $status) | .id' <<<"$project")
           if [ -z "$option_id" ]; then
-            echo "::error::The project's Status field has no \"$STATUS\" option."
+            echo "::error::The project's Status field has no \"$status\" option."
             exit 1
           fi
           gh api graphql \
             -f query='mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) { updateProjectV2ItemFieldValue(input: { projectId: $project, itemId: $item, fieldId: $field, value: { singleSelectOptionId: $option } }) { projectV2Item { id } } }' \
             -f project="$project_id" -f item="$ITEM_ID" -f field="$field_id" -f option="$option_id" > /dev/null
-          echo "Set Status to $STATUS"
+          echo "Set Status to $status"
