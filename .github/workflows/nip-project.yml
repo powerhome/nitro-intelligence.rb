@@ -1,0 +1,63 @@
+# Keeps this repository's issues and pull requests on the Nitro Intelligence project.
+# Issues and pull requests are added when opened or reopened. A pull request's Status
+# is In progress while it is open as a draft or not yet ready, and In review once it is
+# marked ready for review. The project's own workflows move merged pull requests to Done.
+
+name: Nitro Intelligence project
+
+on:
+  issues:
+    types: [opened, reopened]
+  pull_request:
+    types: [opened, reopened, ready_for_review, converted_to_draft]
+
+permissions: {}
+
+jobs:
+  project:
+    name: Add to project and set status
+    # Dependabot pull requests cannot read Actions secrets.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mint project App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.GH_PROJECT_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GH_PROJECT_APP_PRIVATE_KEY }}
+          owner: powerhome
+          permission-issues: read
+          permission-pull-requests: read
+          permission-organization-projects: write
+
+      - name: Add to project
+        id: add
+        uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
+        with:
+          project-url: https://github.com/orgs/powerhome/projects/18
+          github-token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set pull request status
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          ITEM_ID: ${{ steps.add.outputs.itemId }}
+          STATUS: ${{ github.event.action == 'ready_for_review' && 'In review' || 'In progress' }}
+        run: |
+          set -euo pipefail
+          project=$(gh api graphql \
+            -f query='query { organization(login: "powerhome") { projectV2(number: 18) { id field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } } } } }' \
+            --jq '.data.organization.projectV2')
+          project_id=$(jq -r '.id' <<<"$project")
+          field_id=$(jq -r '.field.id' <<<"$project")
+          option_id=$(jq -r --arg status "$STATUS" '.field.options[] | select(.name == $status) | .id' <<<"$project")
+          if [ -z "$option_id" ]; then
+            echo "::error::The project's Status field has no \"$STATUS\" option."
+            exit 1
+          fi
+          gh api graphql \
+            -f query='mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) { updateProjectV2ItemFieldValue(input: { projectId: $project, itemId: $item, fieldId: $field, value: { singleSelectOptionId: $option } }) { projectV2Item { id } } }' \
+            -f project="$project_id" -f item="$ITEM_ID" -f field="$field_id" -f option="$option_id" > /dev/null
+          echo "Set Status to $STATUS"

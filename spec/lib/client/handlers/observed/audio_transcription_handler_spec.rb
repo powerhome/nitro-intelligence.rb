@@ -33,10 +33,11 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
   describe "#create" do
     # FIX: Use a double that responds to `rewind` instead of StringIO
     let(:fake_audio_file) { double("AudioFile", rewind: nil) }
+    let(:token_usage) do
+      OpenAI::Models::Audio::Transcription::Usage::Tokens.new(input_tokens: 10, output_tokens: 20, total_tokens: 30)
+    end
     let(:fake_transcription_response) do
-      double("TranscriptionResponse",
-             text: "transcribed text",
-             usage: double(input_tokens: 10, output_tokens: 20, total_tokens: 30))
+      double("TranscriptionResponse", text: "transcribed text", usage: token_usage)
     end
     let(:fake_generation) { double("Generation", trace_id: "trace-123") }
 
@@ -53,14 +54,42 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
 
       expect(audio_transcription).to eq(fake_transcription_response)
       expect(trace_attributes[:output]).to eq("transcribed text")
-      expect(trace_attributes[:usage_details][:total_tokens]).to eq(30)
+      expect(trace_attributes[:usage_details]).to eq(input_tokens: 10, output_tokens: 20, total_tokens: 30)
+    end
+
+    it "records the audio duration for models billed by duration" do
+      duration_response = double(
+        "TranscriptionResponse",
+        text: "transcribed text",
+        usage: OpenAI::Models::Audio::Transcription::Usage::Duration.new(seconds: 12.2)
+      )
+
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_transcriptions).to receive(:create).and_return(duration_response)
+
+      _, trace_attributes = handler.create(message: "transcribe", audio_file: fake_audio_file)
+
+      # Rounded up: Langfuse drops usage values that are not whole numbers.
+      expect(trace_attributes[:usage_details]).to eq(input_audio_seconds: 13)
+    end
+
+    it "leaves usage unset when the response reports none" do
+      unmetered_response = double("TranscriptionResponse", text: "transcribed text", usage: nil)
+
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_transcriptions).to receive(:create).and_return(unmetered_response)
+
+      _, trace_attributes = handler.create(message: "transcribe", audio_file: fake_audio_file)
+
+      expect(trace_attributes[:output]).to eq("transcribed text")
+      expect(trace_attributes[:usage_details]).to be_nil
     end
 
     it "carries the cost the gateway reported into the trace attributes" do
       priced_response = double(
         "TranscriptionResponse",
         text: "transcribed text",
-        usage: double(input_tokens: 10, output_tokens: 20, total_tokens: 30),
+        usage: token_usage,
         last_response: double("LastResponse", headers: {
                                 "x-litellm-response-cost" => "5.85e-06",
                                 "x-litellm-response-cost-input" => "1.1e-06",
