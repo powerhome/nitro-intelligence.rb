@@ -10,6 +10,10 @@ module NitroIntelligence
 
         MAX_STATUS_MESSAGE_LENGTH = 2000
 
+        # Attributes a handler may report off a response, each written only when it supplied
+        # one. See #record_result for why absence is left as absence.
+        RECORDED_ATTRIBUTES = %i[model model_parameters usage_details cost_details input output].freeze
+
         attr_reader :project_client
 
         def initialize(project_client:)
@@ -63,13 +67,28 @@ module NitroIntelligence
 
           handle_truncation(trace_attributes[:input], trace_attributes[:output], trace_attributes[:model])
 
-          generation.model = trace_attributes[:model] if trace_attributes[:model]
-          generation.usage_details = trace_attributes[:usage_details] if trace_attributes[:usage_details]
-          generation.cost_details = trace_attributes[:cost_details] if trace_attributes[:cost_details]
-          generation.input = trace_attributes[:input] if trace_attributes[:input]
-          generation.output = trace_attributes[:output] if trace_attributes[:output]
+          RECORDED_ATTRIBUTES.each do |name|
+            value = trace_attributes[name]
+            generation.public_send(:"#{name}=", value) if value
+          end
+
+          record_status(generation, trace_attributes)
 
           generation.update_trace(input: trace_attributes[:input], output: trace_attributes[:output])
+        end
+
+        # A response the endpoint answered but did not finish -- a generation cut off at its
+        # token ceiling, say -- is neither a success worth nothing being said about nor a
+        # failure the request raised on. Recording it at WARNING leaves it findable without
+        # putting it among the errors.
+        def record_status(generation, trace_attributes)
+          status_message = trace_attributes[:status_message]
+          return if status_message.blank?
+
+          generation.update(
+            level: trace_attributes[:level] || "WARNING",
+            status_message: status_message.truncate(MAX_STATUS_MESSAGE_LENGTH)
+          )
         end
 
         # Recorded before the request is made so that a request which raises still
