@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `NitroIntelligence::Reporter#score` now accepts a `data_type` keyword argument, allowing for `:numeric` (the default), `:boolean`, and `:categorical` scores to be submitted on traces.
+
 ## [3.0.2] - 2026-09-15
 
 ### Fixed
