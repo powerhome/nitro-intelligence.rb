@@ -4,8 +4,8 @@
 # - Issues are added when opened, with no Status, so they wait for triage. A reopened issue
 #   goes back to no Status for re-triage. A closed issue is Done.
 # - Pull requests are In progress while open as a draft or not yet ready, In review once
-#   marked ready for review, back to In progress when a review requests changes, and Done
-#   when closed.
+#   marked ready for review or when review is requested again, back to In progress when a
+#   review requests changes, and Done when closed.
 # - Items labelled dependency-dashboard (Renovate's Dependency Dashboard) are left off the
 #   project.
 
@@ -15,7 +15,7 @@ on:
   issues:
     types: [opened, reopened, closed]
   pull_request:
-    types: [opened, reopened, ready_for_review, converted_to_draft, closed]
+    types: [opened, reopened, ready_for_review, review_requested, converted_to_draft, closed]
   pull_request_review:
     types: [submitted]
 
@@ -57,12 +57,14 @@ jobs:
           ITEM_ID: ${{ steps.add.outputs.itemId }}
           EVENT: ${{ github.event_name }}
           ACTION: ${{ github.event.action }}
+          DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           set -euo pipefail
           case "$EVENT/$ACTION" in
             issues/opened | issues/reopened) status="" ;;
             issues/closed | pull_request/closed) status="Done" ;;
             pull_request/ready_for_review) status="In review" ;;
+            pull_request/review_requested) [ "$DRAFT" = "true" ] && status="In progress" || status="In review" ;;
             pull_request/* | pull_request_review/submitted) status="In progress" ;;
             *) echo "No Status change for $EVENT/$ACTION"; exit 0 ;;
           esac
@@ -72,6 +74,13 @@ jobs:
           project_id=$(jq -r '.id' <<<"$project")
           field_id=$(jq -r '.field.id' <<<"$project")
           if [ -z "$status" ]; then
+            current=$(gh api graphql \
+              -f query='query($item: ID!) { node(id: $item) { ... on ProjectV2Item { fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId } } } } }' \
+              -f item="$ITEM_ID" --jq '.data.node.fieldValueByName.optionId // empty')
+            if [ -z "$current" ]; then
+              echo "Status already empty for triage"
+              exit 0
+            fi
             gh api graphql \
               -f query='mutation($project: ID!, $item: ID!, $field: ID!) { clearProjectV2ItemFieldValue(input: { projectId: $project, itemId: $item, fieldId: $field }) { projectV2Item { id } } }' \
               -f project="$project_id" -f item="$ITEM_ID" -f field="$field_id" > /dev/null
