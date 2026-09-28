@@ -1,6 +1,7 @@
 require "nitro_intelligence/client/handlers/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/chat_handler"
 require "nitro_intelligence/client/handlers/image_handler"
+require "nitro_intelligence/client/handlers/responses_handler"
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
 module NitroIntelligence
@@ -14,6 +15,11 @@ module NitroIntelligence
 
       def chat(message: "", parameters: {})
         chat_handler.create(message:, parameters:)
+      end
+
+      # The responses endpoint: `instructions` say what to do, `input` is what to answer.
+      def respond(message: "", parameters: {})
+        responses_handler.create(message:, parameters:)
       end
 
       # Input images should be byte strings. Returns NitroIntelligence::ImageGeneration
@@ -44,6 +50,10 @@ module NitroIntelligence
 
       def image_handler
         @image_handler ||= Handlers::ImageHandler.new(client: @client)
+      end
+
+      def responses_handler
+        @responses_handler ||= Handlers::ResponsesHandler.new(client: @client)
       end
 
       def method_missing(method_name, *, &)
