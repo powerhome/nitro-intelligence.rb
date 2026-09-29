@@ -1,13 +1,6 @@
-# Keeps this repository's issues and pull requests on the Nitro Intelligence project, and
-# is the only automation that sets their Status there.
-#
-# - Issues are added when opened, with no Status, so they wait for triage. A reopened issue
-#   goes back to no Status for re-triage. A closed issue is Done.
-# - Pull requests are In progress while open as a draft or not yet ready, In review once
-#   marked ready for review or when review is requested again, back to In progress when a
-#   review requests changes, and Done when closed.
-# - Items labelled dependency-dashboard (Renovate's Dependency Dashboard) are left off the
-#   project.
+# Keeps this repository's issues and pull requests on the Nitro Intelligence project and sets
+# their Status there. The logic lives in the shared workflow; see its docs for the lifecycle.
+# Renovate's Dependency Dashboard stays off the project.
 
 name: Nitro Intelligence project
 
@@ -23,76 +16,11 @@ permissions: {}
 
 jobs:
   project:
-    name: Add to project and set status
-    # Dependabot pull requests cannot read Actions secrets; the Dependency Dashboard stays off
-    # the project; only reviews requesting changes move a pull request.
-    if: >-
-      github.actor != 'dependabot[bot]'
-      && !contains(github.event.issue.labels.*.name, 'dependency-dashboard')
-      && (github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested')
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Mint project App token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ vars.GH_PROJECT_APP_CLIENT_ID }}
-          private-key: ${{ secrets.GH_PROJECT_APP_PRIVATE_KEY }}
-          owner: powerhome
-          permission-issues: read
-          permission-pull-requests: read
-          permission-organization-projects: write
-
-      - name: Add to project
-        id: add
-        uses: actions/add-to-project@5afcf98fcd03f1c2f92c3c83f58ae24323cc57fd # v2.0.0
-        with:
-          project-url: https://github.com/orgs/powerhome/projects/18
-          github-token: ${{ steps.app-token.outputs.token }}
-
-      - name: Set status
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          ITEM_ID: ${{ steps.add.outputs.itemId }}
-          EVENT: ${{ github.event_name }}
-          ACTION: ${{ github.event.action }}
-          DRAFT: ${{ github.event.pull_request.draft }}
-        run: |
-          set -euo pipefail
-          case "$EVENT/$ACTION" in
-            issues/opened | issues/reopened) status="" ;;
-            issues/closed | pull_request/closed) status="Done" ;;
-            pull_request/ready_for_review) status="In review" ;;
-            pull_request/review_requested) [ "$DRAFT" = "true" ] && status="In progress" || status="In review" ;;
-            pull_request/* | pull_request_review/submitted) status="In progress" ;;
-            *) echo "No Status change for $EVENT/$ACTION"; exit 0 ;;
-          esac
-          project=$(gh api graphql \
-            -f query='query { organization(login: "powerhome") { projectV2(number: 18) { id field(name: "Status") { ... on ProjectV2SingleSelectField { id options { id name } } } } } }' \
-            --jq '.data.organization.projectV2')
-          project_id=$(jq -r '.id' <<<"$project")
-          field_id=$(jq -r '.field.id' <<<"$project")
-          if [ -z "$status" ]; then
-            current=$(gh api graphql \
-              -f query='query($item: ID!) { node(id: $item) { ... on ProjectV2Item { fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { optionId } } } } }' \
-              -f item="$ITEM_ID" --jq '.data.node.fieldValueByName.optionId // empty')
-            if [ -z "$current" ]; then
-              echo "Status already empty for triage"
-              exit 0
-            fi
-            gh api graphql \
-              -f query='mutation($project: ID!, $item: ID!, $field: ID!) { clearProjectV2ItemFieldValue(input: { projectId: $project, itemId: $item, fieldId: $field }) { projectV2Item { id } } }' \
-              -f project="$project_id" -f item="$ITEM_ID" -f field="$field_id" > /dev/null
-            echo "Cleared Status for triage"
-            exit 0
-          fi
-          option_id=$(jq -r --arg status "$status" '.field.options[] | select(.name == $status) | .id' <<<"$project")
-          if [ -z "$option_id" ]; then
-            echo "::error::The project's Status field has no \"$status\" option."
-            exit 1
-          fi
-          gh api graphql \
-            -f query='mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) { updateProjectV2ItemFieldValue(input: { projectId: $project, itemId: $item, fieldId: $field, value: { singleSelectOptionId: $option } }) { projectV2Item { id } } }' \
-            -f project="$project_id" -f item="$ITEM_ID" -f field="$field_id" -f option="$option_id" > /dev/null
-          echo "Set Status to $status"
+    uses: powerhome/github-actions-workflows/.github/workflows/project-status.yml@main
+    with:
+      project-owner: powerhome
+      project-number: 18
+      client-id: ${{ vars.GH_PROJECT_APP_CLIENT_ID }}
+      skip-label: dependency-dashboard
+    secrets:
+      private-key: ${{ secrets.GH_PROJECT_APP_PRIVATE_KEY }}
