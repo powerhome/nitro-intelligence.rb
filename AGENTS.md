@@ -24,8 +24,8 @@ User-facing documentation is `docs/README.md` (configuration and usage) and `doc
 ## Development
 
 - `bin/setup` runs `bundle install`. Ruby 3.3 is the minimum and the CI version.
-- `bundle exec rake` runs the RSpec suite, which is what CI runs.
-- `bundle exec rubocop` lints with `rubocop-powerhome`; `.rubocop_todo.yml` holds existing exclusions. CI does not run RuboCop, so run it locally.
+- `bundle exec rake` runs the RSpec suite and then RuboCop, which is what CI runs.
+- `bundle exec rubocop` runs only the linter, with `rubocop-powerhome`; `.rubocop_todo.yml` holds existing exclusions.
 - `bin/console` opens IRB with the gem loaded, and loads a git-ignored `.console_setup.rb` if present (a place for local credentials and `NitroIntelligence.configure`).
 
 ## CI and release
