@@ -1,0 +1,26 @@
+# Keeps this repository's issues and pull requests on the Nitro Intelligence project and sets
+# their Status there. The logic lives in the shared workflow; see its docs for the lifecycle.
+# Renovate's Dependency Dashboard stays off the project.
+
+name: Nitro Intelligence project
+
+on:
+  issues:
+    types: [opened, reopened, closed]
+  pull_request:
+    types: [opened, reopened, ready_for_review, review_requested, converted_to_draft, closed]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions: {}
+
+jobs:
+  project:
+    uses: powerhome/github-actions-workflows/.github/workflows/project-status.yml@940d23d739507ee62162440c59ad64420e34e377 # main
+    with:
+      project-owner: powerhome
+      project-number: 18
+      client-id: ${{ vars.GH_PROJECT_APP_CLIENT_ID }}
+      skip-label: dependency-dashboard
+    secrets:
+      private-key: ${{ secrets.GH_PROJECT_APP_PRIVATE_KEY }}

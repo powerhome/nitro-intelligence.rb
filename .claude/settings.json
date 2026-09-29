@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "../nitro-intelligence",
+      "../../../../nitro-intelligence",
+      "../cortex",
+      "../../../../cortex",
+      "../cerebro",
+      "../../../../cerebro",
+      "../nip-assistants",
+      "../../../../nip-assistants",
+      "../nip-dashboard",
+      "../../../../nip-dashboard",
+      "../nip-operator",
+      "../../../../nip-operator",
+      "../nip-vllm",
+      "../../../../nip-vllm",
+      "../nipdev",
+      "../../../../nipdev"
+    ]
+  }
+}
