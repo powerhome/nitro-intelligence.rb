@@ -1,5 +1,11 @@
 inherit_from: .rubocop_todo.yml
 
+# Add to RuboCop's default excludes (vendor/, .git/, node_modules/) rather than replacing them;
+# CI installs gems into vendor/bundle.
+inherit_mode:
+  merge:
+    - Exclude
+
 require:
   - rubocop-powerhome
 
