@@ -39,3 +39,10 @@ User-facing documentation is `docs/README.md` (configuration and usage) and `doc
 ## Nitro Intelligence Platform
 
 This repository is one part of the Nitro Intelligence Platform (NIP). The parent repository is [`powerhome/nitro-intelligence`](https://github.com/powerhome/nitro-intelligence). The full set of NIP repositories and the upstream projects they build on, and where each kind of change lands, is in [`docs/operations/repositories.md`](https://github.com/powerhome/nitro-intelligence/blob/main/docs/operations/repositories.md) there. When planning or executing work, consider that whole set: check whether a change here depends on, or requires, a change in a sibling repository, and whether the behaviour in question is actually decided upstream (for this repo, chiefly `openai/openai-ruby` and `simplepractice/langfuse-rb` at the pinned version, and the LiteLLM, Langfuse and Aegra/LangGraph APIs of the services it calls). Name cross-repository follow-ups explicitly in the plan or PR.
+
+## Pull requests
+
+- Never open a pull request ready for review. Always open it as a draft (`gh pr create --draft`). A ready PR notifies reviewers and CODEOWNERS immediately, so opening one early takes other people's attention before the PR is ready for it.
+- Mark a PR ready for review only when all of these are done: robot code review has run and every finding has been addressed, either fixed or answered; any deployment or manual testing the change needs has been done and its results recorded on the PR; and the PR's owner has finished their own review.
+- If a PR is opened ready by mistake, put it back to draft with `gh pr ready --undo <number>`.
+- When an agent opens a PR on someone's behalf, that person owns it and decides when it is ready. The agent leaves it in draft and says when it is ready for the owner's review.
