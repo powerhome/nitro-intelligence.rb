@@ -5,7 +5,7 @@ on:
 
 jobs:
   ruby:
-    uses: powerhome/github-actions-workflows/.github/workflows/ruby-gem.yml@940d23d739507ee62162440c59ad64420e34e377 # main
+    uses: powerhome/github-actions-workflows/.github/workflows/ruby-gem.yml@0321ad9ea7c312aff9db1594da2829a4093fce3b # main
     with:
       package: ${{ github.workflow }}
       workdir: .
