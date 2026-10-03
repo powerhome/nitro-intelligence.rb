@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Send `x-litellm-tags` on observed requests, carrying `cerebro_observability_project_id` and, when a managed prompt was resolved, `cerebro_prompt_name` and `cerebro_prompt_version`, so gateway spend can be aggregated per feature. Set automatically with no caller-facing parameter: it serves whoever operates the gateway, not the feature teams calling this library. Nothing is sent on the unobserved path, and this is unrelated to the `tags` parameter, which tags the observability trace (#71)
 - `NitroIntelligence::Reporter#score` now accepts a `data_type` keyword argument, allowing for `:numeric` (the default), `:boolean`, and `:categorical` scores to be submitted on traces. (#119)
 - `LangfuseObserver` records two things a handler could not report before: `model_parameters`, the settings a generation ran under, which matter because a prompt config can change them without the caller ever naming them; and a `level` and `status_message` for a response the endpoint answered but did not finish, which defaults to `WARNING` so that a generation cut off at its token ceiling is findable without sitting among the errors. Both are written only when a handler reports them, so handlers adopt them one at a time and every existing observation is unchanged (#123)
 
