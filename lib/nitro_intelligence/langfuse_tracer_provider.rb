@@ -53,6 +53,7 @@ module NitroIntelligence
       encoded = Base64.strict_encode64(credentials)
       {
         "Authorization" => "Basic #{encoded}",
+        "x-langfuse-ingestion-version" => "4",
       }
     end
   end
