@@ -1,6 +1,8 @@
 {
   "permissions": {
     "additionalDirectories": [
+      "../nitro-intelligence",
+      "../../../../nitro-intelligence",
       "../cortex",
       "../../../../cortex",
       "../cerebro",
@@ -11,8 +13,6 @@
       "../../../../nip-dashboard",
       "../nip-operator",
       "../../../../nip-operator",
-      "../nitro-intelligence",
-      "../../../../nitro-intelligence",
       "../nip-vllm",
       "../../../../nip-vllm",
       "../nipdev",
