@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Seeded observations now export as actual roots under their deterministic trace ID, so Cerebro retains their trace input and output instead of treating each generation as a child of an unexported placeholder. Calls without a seed retain their ambient parent context. (#137)
+
 ### Added
 
 - `NitroIntelligence::Reporter#score` now accepts a `data_type` keyword argument, allowing for `:numeric` (the default), `:boolean`, and `:categorical` scores to be submitted on traces. (#119)

@@ -50,11 +50,15 @@ module NitroIntelligence
       Langfuse.send(:validate_observation_type!, as_type, type_str) unless skip_validation
 
       otel_tracer = @tracer_provider.tracer
-      otel_span = Langfuse.send(:create_otel_span,
-                                name:,
-                                start_time:,
-                                parent_span_context:,
-                                otel_tracer:)
+      otel_span = if trace_id
+                    @tracer_provider.start_root_span(name, trace_id: parent_span_context.trace_id, start_time:)
+                  else
+                    Langfuse.send(:create_otel_span,
+                                  name:,
+                                  start_time:,
+                                  parent_span_context:,
+                                  otel_tracer:)
+                  end
 
       # Serialize attributes
       # Only set attributes if span is still recording (should always be true here, but guard for safety)
