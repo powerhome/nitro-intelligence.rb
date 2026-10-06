@@ -4,6 +4,9 @@
 # The content of this file should eventually make its way upstream. Setting a custom trace ID is
 # already awaiting approval in https://github.com/simplepractice/langfuse-rb/pull/69.
 #
+# Explicit trace IDs create real roots here while the upstream fix awaits approval:
+# https://github.com/simplepractice/langfuse-rb/pull/128.
+#
 
 require "nitro_intelligence/langfuse_tracer_provider"
 
