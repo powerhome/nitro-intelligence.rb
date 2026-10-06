@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-10-06
+
 ### Changed
 
 - Cerebro OpenTelemetry exports now send `x-langfuse-ingestion-version: 4` by default, selecting Langfuse's v4 ingestion path for the migration to `events_only`. Consumers must use v4-compatible observation attributes and roots. (#137)
@@ -176,7 +178,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.2-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.1.0-nitro_intelligence...HEAD
+[3.1.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.2-nitro_intelligence...v3.1.0-nitro_intelligence
 [3.0.2]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...v3.0.2-nitro_intelligence
 [3.0.1]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...v3.0.1-nitro_intelligence
 [3.0.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v2.8.0-nitro_intelligence...v3.0.0-nitro_intelligence
