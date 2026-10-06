@@ -24,6 +24,7 @@ module NitroIntelligence
       # attributes while clearing the ambient span for this explicit root.
       context = OpenTelemetry::Trace.context_with_span(OpenTelemetry::Trace::Span::INVALID)
       context = context.set_value(@trace_id_key, trace_id)
+      # generate_trace_id has no context argument, so expose the seed through Context.current.
       OpenTelemetry::Context.with_current(context) do
         tracer.start_span(name, with_parent: context, start_timestamp: start_time)
       end
