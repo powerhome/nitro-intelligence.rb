@@ -323,7 +323,7 @@ client.chat(
 
 ### Custom Trace IDs
 
-To generate a deterministic trace ID in the observability platform, you can pass `trace_seed` as a parameter. This is useful when you want a stable identifier that is derived from a specific domain value (e.g., document ID). The same `trace_seed` will produce the same trace ID, making it easier to correlate multiple events.
+To generate a deterministic trace ID in the observability platform, you can pass `trace_seed` as a parameter. This is useful when you want a stable identifier that is derived from a specific domain value (e.g., document ID). The same `trace_seed` will produce the same trace ID, making it easier to correlate multiple events. Each seeded call creates a root observation in that trace, including when another observation is active. With Langfuse v4 event reads, trace input and output come from the most recently ingested root observation. Calls without a seed keep their active parent observation.
 
 ```ruby
 document_id = "document-123"
