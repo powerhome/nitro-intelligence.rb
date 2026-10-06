@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Cerebro OpenTelemetry exports now send `x-langfuse-ingestion-version: 4` by default, selecting Langfuse's v4 ingestion path for the migration to `events_only`. Consumers must use v4-compatible observation attributes and roots. (#137)
+- Seeded observations now follow the configured OpenTelemetry root sampler instead of being forced sampled by an unexported placeholder parent. `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG` can therefore reduce or disable seeded-trace export; the default always-on policy continues to export them. (#137)
+
 ### Fixed
 
 - Seeded observations now export as actual roots under their deterministic trace ID, so Cerebro retains their trace input and output instead of treating each generation as a child of an unexported placeholder. Calls without a seed retain their ambient parent context. (#137)
