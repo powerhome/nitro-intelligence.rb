@@ -8,6 +8,8 @@ require "nitro_intelligence/media/image"
 
 module NitroIntelligence
   class ImageGeneration
+    class ImageResponseError < StandardError; end
+
     class Config
       DEFAULT_ASPECT_RATIO = "1:1".freeze
       DEFAULT_RESOLUTION = "1K".freeze
@@ -79,20 +81,33 @@ module NitroIntelligence
       "#{width}x#{height}"
     end
 
-    def parse_file(chat_completion)
-      base64_string = chat_completion.choices.first&.message.to_h.fetch(:images, {})&.first&.dig(:image_url, :url)
-
-      return unless base64_string
-
-      @generated_image = Image.from_base64(base64_string)
-      @generated_image.direction = "output"
+    def parse_file(response)
+      @generated_image = response.respond_to?(:data) ? parse_edit_response(response) : parse_chat_response(response)
+      @generated_image.direction = "output" if @generated_image
       @generated_image
+    end
+
+  private
+
+    def parse_edit_response(response)
+      image = response.data&.first
+      raise ImageResponseError, "Image edit response contains no image." unless image
+
+      return Image.from_base64(image.b64_json) if image.b64_json.present?
+
+      url = image.url
+      raise ImageResponseError, "Image edit response contains neither b64_json nor url." if url.blank?
+
+      url.start_with?("data:") ? Image.from_base64(url) : Image.from_url(url)
+    end
+
+    def parse_chat_response(response)
+      base64_string = response.choices.first&.message.to_h.fetch(:images, {})&.first&.dig(:image_url, :url)
+      Image.from_base64(base64_string) if base64_string
     rescue ArgumentError
       NitroIntelligence.logger.info("Skipping image parse due to invalid base64; likely already parsed.")
       nil
     end
-
-  private
 
     def resolution_side
       { "512" => 512, "0.5K" => 512, "1K" => 1024, "2K" => 2048, "4K" => 4096 }.fetch(config.resolution) do

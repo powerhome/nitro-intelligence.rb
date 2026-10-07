@@ -89,3 +89,51 @@ RSpec.describe NitroIntelligence::Client::Handlers::ImageHandler, "image edits" 
     expect { handler.perform_request(parameters:) }.to raise_error(ArgumentError, /temperature/)
   end
 end
+
+RSpec.describe NitroIntelligence::Client::Handlers::ImageHandler, "edit responses" do
+  include_context "image edit client"
+
+  subject(:handler) { described_class.new(client: real_client) }
+
+  %i[b64_json data_url https_url].each do |format|
+    it "returns the same image bytes for #{format}" do
+      base64 = Base64.strict_encode64(house_bytes)
+      payload = case format
+                when :b64_json then { b64_json: base64 }
+                when :data_url then { url: "data:image/png;base64,#{base64}" }
+                when :https_url then { url: "https://images.example/result.png" }
+                end
+      stub_request(:get, "https://images.example/result.png").to_return(body: house_bytes)
+      stub_request(:post, "https://gateway.example/v1/images/edits").to_return(
+        headers: { "content-type" => "application/json" }, body: { created: 1, data: [payload] }.to_json
+      )
+
+      result = handler.create(message: "Replace the siding", target_image: house_bytes, reference_images: [swatch_bytes])
+
+      expect(result).to be_a(NitroIntelligence::ImageGeneration)
+      expect(result.generated_image.byte_string).to eq(house_bytes)
+      expect(result.generated_image.mime_type).to eq("image/png")
+      expect(result.generated_image.file_extension).to eq("png")
+      expect(result.generated_image.direction).to eq("output")
+    end
+  end
+
+  [[], [{}]].each do |data|
+    it "raises a clear error for an empty image response #{data.inspect}" do
+      stub_request(:post, "https://gateway.example/v1/images/edits").to_return(
+        headers: { "content-type" => "application/json" }, body: { created: 1, data: }.to_json
+      )
+
+      expect { handler.create(message: "Edit", target_image: house_bytes) }
+        .to raise_error(NitroIntelligence::ImageGeneration::ImageResponseError)
+    end
+  end
+
+  it "does not swallow malformed edit image data" do
+    stub_request(:post, "https://gateway.example/v1/images/edits").to_return(
+      headers: { "content-type" => "application/json" }, body: { created: 1, data: [{ b64_json: "invalid base64" }] }.to_json
+    )
+
+    expect { handler.create(message: "Edit", target_image: house_bytes) }.to raise_error(ArgumentError, /base64/)
+  end
+end
