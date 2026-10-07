@@ -26,6 +26,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
     instance_double(
       NitroIntelligence::ImageGeneration,
       messages: [{ role: "user", content: "draw a cat" }],
+      edit?: false,
       config: fake_image_config,
       parse_file: nil,
       files: [fake_generated_file],
@@ -171,5 +172,58 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
         handler.create(message: "draw a cat", parameters: { prompt_name: "test-image-prompt" })
       end
     end
+  end
+end
+
+require_relative "../../../../support/image_edit_context"
+
+RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler, "edit prompts" do
+  include_context "image edit client"
+
+  let(:base_handler) { NitroIntelligence::Client::Handlers::ImageHandler.new(client: real_client) }
+  let(:store) { double("PromptStore", get_prompt: prompt) }
+  let(:project) { double("Project", slug: "home-studio", prompt_store: store) }
+  let(:observer) { double("Observer", project_client: double("ProjectClient", project:)) }
+  let(:handler) { described_class.new(base_handler:, observer:) }
+  let(:prompt) do
+    NitroIntelligence::Observability::Prompt.new(
+      name: "Siding Visualizer", type: "text", prompt: "Use {{color}} siding", version: 2,
+      config: { model: "other-image", size: "2048x1536" }
+    )
+  end
+
+  it "compiles the prompt and applies its model and size before preparing the edit" do
+    expect(observer).to receive(:observe).with(
+      "image-generation",
+      hash_including(prompt:, trace_name: "Siding Visualizer", parameters: hash_including(
+        model: "other-image", size: "2048x1536", prompt: "Use blue siding\n\nKeep the roof"
+      ))
+    )
+
+    handler.create(message: "Keep the roof", target_image: house_bytes, parameters: {
+                     prompt_name: prompt.name, prompt_variables: { color: "blue" }, size: "1024x1024"
+                   })
+  end
+
+  it "allows a Cerebro text prompt without a caller message and respects disabled config" do
+    expect(observer).to receive(:observe).with(
+      "image-generation",
+      hash_including(parameters: hash_including(model: "default-image", size: "1024x1024", prompt: "Use red siding"))
+    )
+
+    handler.create(target_image: house_bytes, parameters: {
+                     prompt_name: prompt.name, prompt_variables: { color: "red" },
+                     prompt_config_disabled: true, size: "1024x1024"
+                   })
+  end
+
+  it "rejects a chat prompt without flattening its roles" do
+    chat_prompt = NitroIntelligence::Observability::Prompt.new(
+      name: "Chat prompt", type: "chat", prompt: [{ role: "system", content: "Edit" }], version: 1
+    )
+    allow(store).to receive(:get_prompt).and_return(chat_prompt)
+
+    expect { handler.create(target_image: house_bytes, parameters: { prompt_name: "Chat prompt" }) }
+      .to raise_error(described_class::ObservedImagePromptError, /text prompt/)
   end
 end

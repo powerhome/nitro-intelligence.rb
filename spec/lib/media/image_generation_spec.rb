@@ -184,3 +184,52 @@ RSpec.describe NitroIntelligence::ImageGeneration do
     end
   end
 end
+
+require_relative "../../support/image_edit_context"
+
+RSpec.describe NitroIntelligence::ImageGeneration, "edit sizing" do
+  include_context "image edit client"
+
+  it "uses an explicit aspect ratio instead of replacing it with the input ratio" do
+    generation = described_class.new(target_image: house_bytes) { |config| config.aspect_ratio = "4:3" }
+
+    expect(generation.config.aspect_ratio).to eq("4:3")
+    expect(generation.requested_size).to eq("1184x880")
+  end
+
+  it "gives explicit size precedence over legacy sizing and model-specific lists" do
+    generation = described_class.new(target_image: house_bytes) do |config|
+      config.size = "2400x1800"
+      config.aspect_ratio = "unused"
+      config.resolution = "unused"
+    end
+
+    expect(generation.requested_size).to eq("2400x1800")
+  end
+
+  it "supports automatic size" do
+    generation = described_class.new(target_image: house_bytes) { |config| config.size = "auto" }
+
+    expect(generation.requested_size).to eq("auto")
+  end
+
+  it "does not require models to declare Gemini-style sizing lists" do
+    generation = described_class.new(target_image: house_bytes) { |config| config.model = "other-image" }
+
+    expect(generation.config.aspect_ratio).to eq("16:8")
+    expect(generation.requested_size).to eq("1456x720")
+  end
+
+  ["0x100", "100x0", "bad", "-1x100", 1024].each do |size|
+    it "rejects invalid size #{size.inspect}" do
+      expect { described_class.new { |config| config.size = size } }.to raise_error(ArgumentError, /Image size/)
+    end
+  end
+
+  it "treats reference-only input as an edit" do
+    generation = described_class.new(reference_images: [swatch_bytes])
+
+    expect(generation).to be_edit
+    expect(generation.input_images.map(&:byte_string)).to eq([swatch_bytes])
+  end
+end

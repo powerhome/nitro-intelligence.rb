@@ -6,18 +6,20 @@ module NitroIntelligence
     module Handlers
       module Observed
         class ImageHandler
+          class ObservedImagePromptError < StandardError; end
+
           def initialize(base_handler:, observer:)
             @base_handler = base_handler
             @observer = observer
           end
 
           def create(message: "", target_image: nil, reference_images: [], parameters: {})
+            prompt = resolve_prompt(parameters:)
             image_generation = build_image_generation(message:, target_image:, reference_images:, parameters:)
 
             @base_handler.validate_and_resolve!(parameters, image_generation)
 
-            # Modifies parameters in place
-            prompt = handle_prompt(parameters:)
+            handle_prompt(parameters:, prompt:, image_generation:) if prompt
             trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
 
             @observer.observe(
@@ -40,6 +42,7 @@ module NitroIntelligence
               config.aspect_ratio = parameters[:aspect_ratio] if parameters.key?(:aspect_ratio)
               config.model = parameters[:model] if parameters.key?(:model)
               config.resolution = parameters[:resolution] if parameters.key?(:resolution)
+              config.size = parameters[:size] if parameters.key?(:size)
             end
           end
 
@@ -58,21 +61,30 @@ module NitroIntelligence
             upload_handler.replace_base64_with_media_references(output)
           end
 
-          def handle_prompt(parameters:)
+          def resolve_prompt(parameters:)
             prompt = NitroIntelligence::Observability::PromptResolver.for(
               store: @observer.project_client.project.prompt_store,
               parameters:
             )
             return nil if prompt.blank?
 
-            parameters[:messages] = prompt.interpolate(
-              messages: parameters[:messages],
-              variables: parameters[:prompt_variables] || {}
-            )
-
             parameters.merge!(prompt.config) unless parameters[:prompt_config_disabled]
 
             prompt
+          end
+
+          def handle_prompt(parameters:, prompt:, image_generation:)
+            variables = parameters[:prompt_variables] || {}
+            unless image_generation.edit?
+              parameters[:messages] = prompt.interpolate(messages: parameters[:messages], variables:)
+              return
+            end
+
+            unless prompt.type == "text"
+              raise ObservedImagePromptError, "Image editing requires a Cerebro text prompt: #{prompt.name}"
+            end
+
+            parameters[:prompt] = [prompt.compile(**variables), parameters[:prompt]].reject(&:blank?).join("\n\n")
           end
 
           def workflow(generation:, image_generation:, parameters:)

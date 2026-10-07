@@ -11,6 +11,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::ImageHandler do
     instance_double(
       NitroIntelligence::ImageGeneration,
       messages: [],
+      edit?: false,
       config: double("Config", model: "custom-model", aspect_ratio: "16:9", resolution: "1024x1024"),
       parse_file: nil
     )
@@ -43,5 +44,48 @@ RSpec.describe NitroIntelligence::Client::Handlers::ImageHandler do
       response = handler.create(message: "draw a cat", parameters: { model: "custom-model" })
       expect(response).to eq(fake_image_generation)
     end
+  end
+end
+
+require_relative "../../../support/image_edit_context"
+
+RSpec.describe NitroIntelligence::Client::Handlers::ImageHandler, "image edits" do
+  include_context "image edit client"
+
+  subject(:handler) { described_class.new(client: real_client) }
+
+  let(:image_generation) do
+    NitroIntelligence::ImageGeneration.new(message: "Replace the siding", target_image: house_bytes, reference_images: [swatch_bytes])
+  end
+
+  it "uploads ordered images with their MIME types and standard edit fields" do
+    request = stub_request(:post, "https://gateway.example/v1/images/edits").with do |req|
+      expect(req.headers["Content-Type"]).to start_with("multipart/form-data; boundary=")
+      expect(req.body).to include('name="prompt"', "Replace the siding", 'name="size"', "1360x768", "default-image")
+      expect(req.body).to include('name="image[]"; filename="image-1.png"', "Content-Type: image/png", house_bytes)
+      expect(req.body).to include('name="image[]"; filename="image-2.jpeg"', "Content-Type: image/jpeg", swatch_bytes)
+      expect(req.body.index(house_bytes)).to be < req.body.index(swatch_bytes)
+      expect(req.body).not_to include("image_config", "aspect_ratio", "resolution", "messages", "sync_mode")
+      true
+    end.to_return(headers: { "content-type" => "application/json" }, body: { created: 1, data: [] }.to_json)
+    parameters = {}
+    handler.validate_and_resolve!(parameters, image_generation)
+
+    expect(handler.perform_request(parameters:)).to be_a(OpenAI::Models::ImagesResponse)
+    expect(request).to have_been_requested.once
+  end
+
+  it "rejects a blank edit prompt before making a request" do
+    parameters = { prompt: " " }
+    handler.validate_and_resolve!(parameters, image_generation)
+
+    expect { handler.perform_request(parameters:) }.to raise_error(ArgumentError, /requires a message/)
+  end
+
+  it "rejects chat-only settings rather than silently dropping them" do
+    parameters = { temperature: 0.5 }
+    handler.validate_and_resolve!(parameters, image_generation)
+
+    expect { handler.perform_request(parameters:) }.to raise_error(ArgumentError, /temperature/)
   end
 end
