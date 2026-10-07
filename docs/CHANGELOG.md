@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Image requests containing a target or reference image now use the multipart image-edit API with `model`, `image`, `prompt`, and `size`. Text-only generation remains on chat completions. Edits compile Cerebro text prompts and caller instructions into one prompt, apply prompt configuration before request construction, and reject chat-style prompts and chat-only request parameters. Vertex and Fal deployments require the upstream edit fixes documented in the README.
+- Image edits accept explicit `size` dimensions or `auto`, with precedence over legacy aspect-ratio and resolution settings. Explicit aspect ratios are preserved, and models without Gemini-style sizing lists are supported.
+
+### Fixed
+
+- Image edit responses normalize base64 JSON, inline data URLs, and hosted HTTPS URLs to the same generated image object. Empty or malformed edit results and failed downloads raise. Hosted downloads do not forward gateway credentials, follow redirects, or exceed 50 MiB.
+- Observed image edits preserve prompt linkage, trace correlation, and media uploads without requiring chat completion fields or token usage. Effective edit parameters and gateway-reported costs are recorded; missing usage and cost remain unknown.
+
 ## [3.1.0] - 2026-10-06
 
 ### Changed

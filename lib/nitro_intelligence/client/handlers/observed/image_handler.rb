@@ -88,28 +88,55 @@ module NitroIntelligence
           end
 
           def workflow(generation:, image_generation:, parameters:)
-            chat_completion = @base_handler.perform_request(parameters:, correlation_trace_id: generation.trace_id)
+            response = @base_handler.perform_request(parameters:, correlation_trace_id: generation.trace_id)
 
             image_generation.trace_id = generation.trace_id
-            image_generation.parse_file(chat_completion)
+            image_generation.parse_file(response)
 
-            input = parameters[:messages]
-            output = chat_completion.choices.first.message.to_h
+            input, output = trace_payloads(response, image_generation, parameters)
             handle_image_generation_uploads(input, output, image_generation)
 
             trace_attributes = {
-              model: chat_completion.model,
+              model: response.respond_to?(:model) ? response.model : nil,
+              model_parameters: image_generation.edit? ? edit_model_parameters(parameters) : nil,
               input:,
               output:,
-              usage_details: {
-                prompt_tokens: chat_completion.usage.prompt_tokens,
-                completion_tokens: chat_completion.usage.completion_tokens,
-                total_tokens: chat_completion.usage.total_tokens,
-              },
-              cost_details: @base_handler.cost_details(chat_completion),
+              usage_details: usage_details(response),
+              cost_details: @base_handler.cost_details(response),
             }
 
-            [chat_completion, trace_attributes]
+            [response, trace_attributes]
+          end
+
+          def trace_payloads(response, image_generation, parameters)
+            return [parameters[:messages], response.choices.first.message.to_h] unless image_generation.edit?
+
+            input = [{ role: "user", content: [
+              { type: "text", text: parameters[:prompt] },
+              *image_generation.input_images.map { |image| image_part(image) },
+            ] }]
+            output = { images: [image_part(image_generation.generated_image)] }
+            [input, output]
+          end
+
+          def image_part(image)
+            { type: "image_url", image_url: { url: "data:#{image.mime_type};base64,#{image.base64}" } }
+          end
+
+          def edit_model_parameters(parameters)
+            fields = Handlers::ImageHandler::ALLOWED_EDIT_PARAMETERS - %i[model prompt image mask request_options]
+            parameters.slice(*fields)
+          end
+
+          def usage_details(response)
+            return unless response.usage
+
+            fields = if response.respond_to?(:data)
+                       %i[input_tokens output_tokens total_tokens]
+                     else
+                       %i[prompt_tokens completion_tokens total_tokens]
+                     end
+            fields.to_h { |field| [field, response.usage.public_send(field)] }.compact.presence
           end
         end
       end
