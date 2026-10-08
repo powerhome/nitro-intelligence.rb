@@ -55,7 +55,7 @@ jobs:
       - name: Review PR
         timeout-minutes: 15
         if: steps.skip_gate.outputs.skip != 'true'
-        uses: powerhome/github-actions-workflows/agentic-pr-review@53154a23c17610f024ae52fa97e1043a693d8f43 # main
+        uses: powerhome/github-actions-workflows/agentic-pr-review@e1dc1a124d15641fd043616d59465cb6d2c90187 # main
         with:
           app-id: ${{ secrets.AGENTIC_REVIEW_GITHUB_APP_ID }}
           private-key: ${{ secrets.AGENTIC_REVIEW_GITHUB_APP_PRIVATE_KEY }}
