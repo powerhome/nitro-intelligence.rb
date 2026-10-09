@@ -10,4 +10,7 @@ jobs:
       package: ${{ github.workflow }}
       workdir: .
       ruby: '["3.3"]'
+      before_build: |
+        sudo apt-get update
+        sudo apt-get install --no-install-recommends -y imagemagick
     secrets: inherit

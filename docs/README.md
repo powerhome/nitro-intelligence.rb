@@ -209,7 +209,7 @@ File.binwrite("my_generated_image.#{result.generated_image.file_extension}", res
 
 #### Image Editing and Uploading Reference Images
 
-To edit an image, provide your source image as a byte string, along with any references you would like to include.
+To edit an image, provide your source image as a byte string, along with any references you would like to include. Requests containing a target image or reference images use `/v1/images/edits`; requests without images continue to use chat completions. The target image is uploaded first, followed by reference images in their supplied order.
 
 ```ruby
 client = NitroIntelligence::Client.new
@@ -218,9 +218,13 @@ siding = File.binread("./siding.png")
 result = client.generate_image(message: "Replace the siding in the image of the house with the new siding I have provided.", target_image: house, reference_images: [siding])
 ```
 
+Edited images have the same `result.generated_image` interface regardless of the provider. The client decodes `b64_json` and base64 data URLs, or downloads an HTTPS image URL without sending gateway credentials. Downloads have a 50 MiB limit, a 10-second connection timeout, and a 60-second read timeout. Redirects are rejected. Empty or malformed edit results and download failures raise instead of returning a successful result without an image. If a response contains multiple images, `generated_image` contains the first one.
+
 #### Using Prompts
 
-See Observability[## Observability] for more details. Basic usage looks like:
+Image edits accept Cerebro **text** prompts. The compiled prompt, including `prompt_variables`, is followed by the optional caller `message` in a single editing `prompt`. A caller message is not required when Cerebro supplies the instructions. There is no separate system role in this request, so compare image quality when migrating existing prompts. Chat-style Cerebro prompts are rejected for edits; text-only generation retains its existing chat prompt handling.
+
+See [Observability](#observability) for prompt labels, versions, fallbacks, and configuration. Basic usage looks like:
 
 ```ruby
 client = NitroIntelligence::Client.new(observability_project_slug: "sample-project-slug")
@@ -231,12 +235,33 @@ result = client.generate_image(target_image: house, reference_images: [siding], 
 
 #### Image Configuration
 
-You can specify parameters such as model to use, aspect ratio and resolution via the `parameters` key:
+For edits, prefer `size` as a positive `"WIDTHxHEIGHT"` string or `"auto"`. For example:
+
+```ruby
+result = client.generate_image(
+  message: "Apply the reference siding while preserving the roof and windows.",
+  target_image: house,
+  reference_images: [siding],
+  parameters: { size: "2048x1536" }
+)
+```
+
+LiteLLM translates `size` into the selected model's supported output settings. Requested dimensions do not guarantee identical output pixels across models. Provider-specific settings such as Fal's `sync_mode` belong in the gateway's LiteLLM configuration; the client does not select settings based on the provider.
+
+The existing `aspect_ratio` and `resolution` options remain available. For edits, they are converted to dimensions with approximately the pixel area of a square at the requested resolution, rounded to multiples of 16. Supported resolution labels are `512`, `0.5K`, `1K`, `2K`, and `4K`, subject to the model catalog's declared limits. Explicit `size` takes precedence over both legacy options. Otherwise, an explicit aspect ratio is preserved; if omitted, the target image's ratio is matched to the model's declared ratios, or preserved when the model declares none. The default resolution remains `1K`. Models using explicit dimensions do not need to declare Gemini-style `aspect_ratios` or `resolutions` lists.
+
+Cerebro prompt configuration overrides caller parameters unless `prompt_config_disabled: true` is set. Its model and sizing settings are applied before preparing the request. Chat-only settings such as `temperature`, `max_tokens`, and `messages` are rejected for edits; remove them from an edit prompt's configuration or disable that configuration. Optional edit controls such as `mask`, `quality`, and `n` depend on the selected LiteLLM adapter and model.
+
+Text-only generation continues to accept `aspect_ratio` and `resolution`:
 
 ```ruby
 client = NitroIntelligence::Client.new
 result = client.generate_image(message: "Create an image of a bear installing a window.", parameters: {aspect_ratio: "4:3", resolution: "512"})
 ```
+
+Observed edits retain their Cerebro prompt link, trace ID, input and output media references, and gateway correlation headers. Effective edit settings are recorded as model parameters. Token usage is recorded only when returned, and cost comes exclusively from the gateway's response headers. Missing usage or cost remains unknown rather than zero.
+
+Before deploying this edit flow with Vertex and Fal, use a gateway build containing the fixes in [LiteLLM #45098](https://github.com/BerriAI/litellm/pull/45098) and [LiteLLM #45141](https://github.com/BerriAI/litellm/pull/45141), or equivalent released changes. The gateway must route image edits to the built-in providers; a custom provider implementing chat completions alone cannot serve this endpoint.
 
 ## Observability
 
