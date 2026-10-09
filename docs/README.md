@@ -86,6 +86,7 @@ end
 | `inference_base_url`     | `String`      | `"https://inference.powerhome.ai"` | Base URL for the LLM inference service. Defaults to the shared inference gateway, so only a host talking to a different one needs to set it                                                                 |
 | `observability_base_url` | `String`      | `"https://cerebro.powerhome.ai"` | Base URL for the Langfuse observability service. Defaults to Cerebro, so only a host talking to a different one needs to set it                                                                             |
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
+| `observability_user_id`  | `String`      | `""`                  | User ID recorded on observed traces when a request passes no `user_id` parameter — see [Users](#users) |
 | `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String, default: `"https://assistants.powerhome.ai"`) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new`, which takes the same two defaults — see [Assistants](#assistants) |
 | `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
 
@@ -336,21 +337,37 @@ client.chat(
 )
 ```
 
-### Grouping Traces: Sessions and Tags
+### Grouping Traces: Users, Sessions and Tags
 
-`session_id` groups related traces in the observability platform, and `tags` label
-them for filtering. Both are optional and are only sent when you set them.
+`user_id` attributes traces to a user of your application, `session_id` groups related traces, and `tags` label them for filtering. All three are optional. `session_id` and `tags` are sent only when you set them.
 
 ```ruby
 client = NitroIntelligence::Client.new(observability_project_slug: "fake-feature-project")
 client.chat(
   message: "why did this deploy fail?",
   parameters: {
+    user_id: current_user.id.to_s,
     session_id: "deploy-9f2c1ab",
     tags: ["deployment-failure-analyzer"],
   }
 )
 ```
+
+#### Users
+
+A trace that carries a `user_id` shows up under that user in Cerebro's [Users](https://langfuse.com/docs/observability/features/users) view, which lists each user with their trace count, token usage and cost, and links through to their traces. The trace list can also be filtered by user.
+
+When a request passes no `user_id`, the `observability_user_id` configuration key is used instead, so a host can attribute all of its traces to one identity (the application itself, say) and override it per request for the traces that belong to a person:
+
+```ruby
+NitroIntelligence.configure do |config|
+  config.observability_user_id = "nitro-web"
+end
+```
+
+Use an identifier that is stable and not itself personal data — a database ID rather than an email address or name — since it is stored on every trace and shown in Cerebro. It must be a String of at most 200 characters; langfuse-rb drops any other value with a warning, so convert numeric IDs with `to_s`.
+
+`user_id` is recorded only in Cerebro. It is not sent to the inference gateway, so to attribute gateway spend to a user as well, also put the identifier in `metadata` (see below).
 
 ### Correlating With Application Logs and the Inference Gateway
 
@@ -369,6 +386,8 @@ Every observed request is correlated across three systems automatically:
 * **Inference gateway → observability platform.** When a request fails, the
   gateway's own request identifier is read from the error response and recorded on
   the observation as `litellm_call_id` metadata.
+* **Application users → observability platform.** Pass `user_id` to see a
+  user's traces, usage and cost together in Cerebro — see [Users](#users).
 * **Application logs → observability platform.** Put whatever your logs are keyed
   by into `metadata` — it lands on the trace *and* in the gateway's spend logs.
 
