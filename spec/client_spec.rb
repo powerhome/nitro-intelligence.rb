@@ -8,7 +8,7 @@ RSpec.describe NitroIntelligence::Client do
       fake_factory = instance_double(NitroIntelligence::Client::Factory)
 
       expect(NitroIntelligence::Client::Factory).to receive(:new)
-        .with(observability_project_slug: "test-slug")
+        .with(observability_project_slug: "test-slug", max_retries: nil, timeout: nil)
         .and_return(fake_factory)
 
       expect(fake_factory).to receive(:build).and_return("fake-built-client")
@@ -22,12 +22,22 @@ RSpec.describe NitroIntelligence::Client do
       fake_factory = instance_double(NitroIntelligence::Client::Factory)
 
       expect(NitroIntelligence::Client::Factory).to receive(:new)
-        .with(observability_project_slug: nil)
+        .with(observability_project_slug: nil, max_retries: nil, timeout: nil)
         .and_return(fake_factory)
 
       expect(fake_factory).to receive(:build)
 
       described_class.new
+    end
+
+    it "passes retry settings to the Factory" do
+      fake_factory = instance_double(NitroIntelligence::Client::Factory, build: nil)
+
+      expect(NitroIntelligence::Client::Factory).to receive(:new)
+        .with(observability_project_slug: nil, max_retries: 3, timeout: 30)
+        .and_return(fake_factory)
+
+      described_class.new(max_retries: 3, timeout: 30)
     end
   end
 end

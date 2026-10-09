@@ -43,4 +43,34 @@ RSpec.describe NitroIntelligence::Client::Factory do
       end
     end
   end
+
+  describe "OpenAI client settings" do
+    it "turns off SDK retries and keeps openai-ruby's timeout by default" do
+      expect(OpenAI::Client).to receive(:new)
+        .with(api_key: "fake-key", base_url: "https://fake.url", max_retries: 0)
+        .and_call_original
+
+      described_class.new(observability_project_slug: nil).build
+    end
+
+    it "uses the configured retries and timeout" do
+      allow(NitroIntelligence.config).to receive(:inference_max_retries).and_return(2)
+      allow(NitroIntelligence.config).to receive(:inference_timeout).and_return(120)
+
+      client = described_class.new(observability_project_slug: nil).build.client
+
+      expect(client.max_retries).to eq(2)
+      expect(client.timeout).to eq(120)
+    end
+
+    it "prefers retries and timeout given to the client over the configuration" do
+      allow(NitroIntelligence.config).to receive(:inference_max_retries).and_return(2)
+      allow(NitroIntelligence.config).to receive(:inference_timeout).and_return(120)
+
+      client = described_class.new(observability_project_slug: nil, max_retries: 0, timeout: 30).build.client
+
+      expect(client.max_retries).to eq(0)
+      expect(client.timeout).to eq(30)
+    end
+  end
 end

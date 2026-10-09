@@ -43,5 +43,25 @@ RSpec.describe NitroIntelligence::Client::Handlers::ImageHandler do
       response = handler.create(message: "draw a cat", parameters: { model: "custom-model" })
       expect(response).to eq(fake_image_generation)
     end
+
+    it "keeps the image config alongside request options the caller passes" do
+      expect(fake_completions).to receive(:create).with(
+        hash_including(
+          request_options: {
+            extra_body: {
+              image_config: { aspect_ratio: "16:9", image_size: "1024x1024" },
+            },
+            max_retries: 0,
+            timeout: 30,
+            extra_headers: { "nip-modality" => "image", "nip-requested-model" => "custom-model" },
+          }
+        )
+      ).and_return("fake_chat_completion")
+
+      handler.create(
+        message: "draw a cat",
+        parameters: { model: "custom-model", request_options: { max_retries: 0, timeout: 30 } }
+      )
+    end
   end
 end

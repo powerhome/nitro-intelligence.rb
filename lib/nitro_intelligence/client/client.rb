@@ -2,8 +2,8 @@ require "nitro_intelligence/client/factory"
 
 module NitroIntelligence
   module Client
-    def self.new(observability_project_slug: nil)
-      Factory.new(observability_project_slug:).build
+    def self.new(observability_project_slug: nil, max_retries: nil, timeout: nil)
+      Factory.new(observability_project_slug:, max_retries:, timeout:).build
     end
 
     def self.validate_model(model)

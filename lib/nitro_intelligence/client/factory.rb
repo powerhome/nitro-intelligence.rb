@@ -6,8 +6,10 @@ require "nitro_intelligence/observability/project"
 module NitroIntelligence
   module Client
     class Factory
-      def initialize(observability_project_slug:)
+      def initialize(observability_project_slug:, max_retries: nil, timeout: nil)
         @observability_project_slug = observability_project_slug
+        @max_retries = max_retries
+        @timeout = timeout
       end
 
       def build
@@ -42,10 +44,15 @@ module NitroIntelligence
         project_client
       end
 
+      # The gateway owns failover between providers, and an upstream 429 it passes
+      # on has already been decided there, so the SDK's own retries default to off
+      # rather than to openai-ruby's two. A nil timeout keeps openai-ruby's default.
       def inference_client
         @inference_client ||= OpenAI::Client.new(
           api_key: NitroIntelligence.config.inference_api_key,
-          base_url: NitroIntelligence.config.inference_base_url
+          base_url: NitroIntelligence.config.inference_base_url,
+          max_retries: @max_retries.nil? ? NitroIntelligence.config.inference_max_retries : @max_retries,
+          **{ timeout: @timeout || NitroIntelligence.config.inference_timeout }.compact
         )
       end
     end

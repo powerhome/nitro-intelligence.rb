@@ -19,6 +19,8 @@ NitroIntelligence.configure do |config|
   # Inference (LLM) settings
   config.inference_api_key  = "..."              # API key for the inference service
   config.inference_base_url = "https://..."      # Base URL for the inference service (optional; defaults to the inference gateway)
+  config.inference_max_retries = 0               # Retries the SDK makes itself (optional; defaults to 0 - see "Retries and Timeouts")
+  config.inference_timeout     = 600             # Request timeout in seconds (optional; defaults to openai-ruby's)
 
   # Observability (Langfuse) settings
   config.observability_base_url = "https://..."  # Base URL for the observability service (optional; defaults to Cerebro)
@@ -84,6 +86,8 @@ end
 | `cache_provider`         | cache store   | `NullCache`           | ActiveSupport-compatible cache store                                                                                                                                                                       |
 | `inference_api_key`      | `String`      | `""`                  | API key for the LLM inference service                                                                                                                                                                      |
 | `inference_base_url`     | `String`      | `"https://inference.powerhome.ai"` | Base URL for the LLM inference service. Defaults to the shared inference gateway, so only a host talking to a different one needs to set it                                                                 |
+| `inference_max_retries`  | `Integer`     | `0`                   | Retries the SDK makes itself after a failed request. Off by default — see [Retries and Timeouts](#retries-and-timeouts) |
+| `inference_timeout`      | `Numeric`     | `nil`                 | Request timeout in seconds. `nil` keeps openai-ruby's default of 600 |
 | `observability_base_url` | `String`      | `"https://cerebro.powerhome.ai"` | Base URL for the Langfuse observability service. Defaults to Cerebro, so only a host talking to a different one needs to set it                                                                             |
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
 | `observability_user_id`  | `String`      | `""`                  | User ID recorded on observed traces when a request passes no `user_id` parameter — see [Users](#users) |
@@ -121,6 +125,21 @@ client.chat(parameters: { model: "Qwen/Qwen3.8-27B", max_tokens: 1000, temperatu
 ```
 
 For a full list of supported parameters, see the [API reference here](https://developers.openai.com/api/reference/resources/completions/methods/create).
+
+#### Retries and Timeouts
+
+The client does not retry failed requests by default. openai-ruby on its own retries a `429`, `408`, `409` or `5xx` twice within about two seconds, but none of those is worth repeating that quickly from here: the inference gateway has already failed over between providers before it answers, and a rate limit or exhausted budget it passes on will not clear within a second. Each retry only adds load, and for billable work such as image generation a retry after a timeout can pay twice. A caller that wants retries decides when, typically in a job with backoff, and can tell a rate limit from an exhausted budget first (see the gateway's [error guidance](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md)).
+
+To retry anyway, or to change the timeout, set them for every client in the configuration (`inference_max_retries`, `inference_timeout`), for one client, or for one request. The narrower setting wins.
+
+```ruby
+# For one client
+client = NitroIntelligence::Client.new(max_retries: 2, timeout: 30)
+
+# For one request, with any method
+client.chat(message: "Why is the sky blue?", parameters: { request_options: { max_retries: 2, timeout: 30 } })
+client.generate_image(message: "A bear installing a window", parameters: { request_options: { timeout: 120 } })
+```
 
 ### Audio Transcription
 
