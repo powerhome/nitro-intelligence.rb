@@ -199,7 +199,7 @@ GEM
       unicode-emoji (~> 4.3)
     unicode-emoji (4.3.0)
     uri (1.1.1)
-    webmock (3.26.4)
+    webmock (3.27.0)
       addressable (>= 2.8.0)
       crack (>= 0.3.2)
       hashdiff (>= 0.4.0, < 2.0.0)
@@ -230,7 +230,7 @@ DEPENDENCIES
   nitro_intelligence!
   rspec (= 3.13.2)
   rubocop-powerhome (= 0.7.0)
-  webmock (= 3.26.4)
+  webmock (= 3.27.0)
 
 BUNDLED WITH
    2.7.2
