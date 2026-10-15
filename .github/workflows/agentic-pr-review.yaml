@@ -3,13 +3,13 @@ name: Agentic PR Review
 # Runs automatically on:
 #  - PR opened (including drafts)
 #  - PR marked ready for review (draft -> ready)
-#  - `agentic-review` label (re-)applied for a manual rerun
+#  - New commits pushed (reviews only the commits since the last review)
 #  - PR comment containing @nitro-pr-review
 #
 # Never runs when the PR carries the `agentic-review-opt-out` label.
 on:
   pull_request:
-    types: [opened, ready_for_review, labeled]
+    types: [opened, ready_for_review, labeled, synchronize]
   issue_comment:
     types: [created]
 
@@ -24,6 +24,8 @@ concurrency:
 jobs:
   agentic-review:
     name: PR Review
+    # This repo is private, so anyone who can leave a PR comment already has repo access.
+    # We intentionally allow any PR commenter here rather than adding a second author check.
     if: |
       !contains(github.event.pull_request.labels.*.name, 'agentic-review-opt-out') &&
       !contains(github.event.issue.labels.*.name, 'agentic-review-opt-out') &&
@@ -32,7 +34,8 @@ jobs:
           github.event_name == 'pull_request' && (
             github.event.action == 'opened' ||
             github.event.action == 'ready_for_review' ||
-            (github.event.action == 'labeled' && github.event.label.name == 'agentic-review')
+            (github.event.action == 'labeled' && github.event.label.name == 'agentic-review') ||
+            (github.event.action == 'synchronize')
           )
         ) ||
         (
@@ -43,6 +46,11 @@ jobs:
         )
       )
     runs-on: ubuntu-latest
+    # The Claude provider authenticates with this job's GitHub OIDC token.
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
     steps:
       - name: Skip ineligible PRs
         id: skip_gate
@@ -52,14 +60,20 @@ jobs:
           echo "skip=true" >> "${GITHUB_OUTPUT}"
           echo "Skipping agentic review because the PR is not open"
 
-      - name: Review PR
-        timeout-minutes: 15
+      - name: Review PR with Claude
+        timeout-minutes: 30
         if: steps.skip_gate.outputs.skip != 'true'
-        uses: powerhome/github-actions-workflows/agentic-pr-review@5863b64d44ea6a59869f11f5880a5531b6b9f0d6 # main
+        uses: powerhome/github-actions-workflows/agentic-pr-review@874e39c4e1004e505f81a8cb48e338dae09d936f # main
         with:
           app-id: ${{ secrets.AGENTIC_REVIEW_GITHUB_APP_ID }}
           private-key: ${{ secrets.AGENTIC_REVIEW_GITHUB_APP_PRIVATE_KEY }}
-          provider-api-key: ${{ secrets.AGENTIC_REVIEW_PROVIDER_API_KEY }}
+          provider: claude
+          model: opus
+          anthropic-federation-rule-id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          anthropic-organization-id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          anthropic-service-account-id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          anthropic-workspace-id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
           pull-request-number: ${{ github.event.pull_request.number || github.event.issue.number }}
           # Intentionally pass the full comment through so reviewers can steer a rerun.
+          # In this private repo, commenters already have visibility into the code being reviewed.
           additional-prompt: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
