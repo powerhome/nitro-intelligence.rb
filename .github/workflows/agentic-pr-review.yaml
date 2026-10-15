@@ -67,7 +67,7 @@ jobs:
           app-id: ${{ secrets.AGENTIC_REVIEW_GITHUB_APP_ID }}
           private-key: ${{ secrets.AGENTIC_REVIEW_GITHUB_APP_PRIVATE_KEY }}
           provider: claude
-          model: sonnet
+          model: opus
           anthropic-federation-rule-id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
           anthropic-organization-id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           anthropic-service-account-id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
