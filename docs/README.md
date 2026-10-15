@@ -130,11 +130,11 @@ For a full list of supported parameters, see the [API reference here](https://de
 
 The client does not retry failed requests by default. openai-ruby on its own retries a `429`, `408`, `409` or `5xx` twice within about two seconds, but none of those is worth repeating that quickly from here: the inference gateway has already failed over between providers before it answers, and a rate limit or exhausted budget it passes on will not clear within a second. Each retry only adds load, and for billable work such as image generation a retry after a timeout can pay twice. A caller that wants retries decides when, typically in a job with backoff, and can tell a rate limit from an exhausted budget first (see the gateway's [error guidance](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md)).
 
-To retry anyway, or to change the timeout, set them for every client in the configuration (`inference_max_retries`, `inference_timeout`), for one client, or for one request. The narrower setting wins.
+To retry anyway, or to change the timeout, set them for every client in the configuration (`inference_max_retries`, `inference_timeout`), for one client with the same names, or for one request with openai-ruby's `request_options`. The narrower setting wins.
 
 ```ruby
 # For one client
-client = NitroIntelligence::Client.new(max_retries: 2, timeout: 30)
+client = NitroIntelligence::Client.new(inference_max_retries: 2, inference_timeout: 30)
 
 # For one request, with any method
 client.chat(message: "Why is the sky blue?", parameters: { request_options: { max_retries: 2, timeout: 30 } })

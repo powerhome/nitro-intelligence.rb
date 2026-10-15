@@ -67,7 +67,7 @@ RSpec.describe NitroIntelligence::Client::Factory do
       allow(NitroIntelligence.config).to receive(:inference_max_retries).and_return(2)
       allow(NitroIntelligence.config).to receive(:inference_timeout).and_return(120)
 
-      client = described_class.new(observability_project_slug: nil, max_retries: 0, timeout: 30).build.client
+      client = described_class.new(observability_project_slug: nil, inference_max_retries: 0, inference_timeout: 30).build.client
 
       expect(client.max_retries).to eq(0)
       expect(client.timeout).to eq(30)
