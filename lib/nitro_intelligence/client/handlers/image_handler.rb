@@ -40,7 +40,9 @@ module NitroIntelligence
               },
             },
           }
-          parameters.replace(default_parameters.merge(parameters))
+          # Deep, so that request options a caller passes (headers, max_retries,
+          # timeout) sit alongside the image config rather than replacing it.
+          parameters.replace(default_parameters.deep_merge(parameters))
           Client.validate_model(parameters[:model])
         end
 
