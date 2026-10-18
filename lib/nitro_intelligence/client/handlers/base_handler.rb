@@ -130,10 +130,16 @@ module NitroIntelligence
         # out means pulling a date range and filtering on each row's tags.
         # See https://docs.litellm.ai/docs/proxy/cost_tracking#custom-tags
         #
-        # Note the gateway also reads this header for tag-based routing. That is off
-        # unless `enable_tag_filtering` is set, but were it ever enabled, a request
-        # whose tags match no deployment fails outright unless `allow_fail_open` is
-        # set or deployments carry `tags: ["default"]`.
+        # The gateway reads this header for tag-based routing as well, and routes on
+        # it: `enable_tag_filtering` is on. These tags stay inert because every
+        # deployment carries `default`, so a tag matching none of them falls back to
+        # the default pool and routes normally, and because `allow_fail_open` is
+        # unset, that fallback is what keeps them routable at all.
+        #
+        # Two rules hold these tags on that side of the line. They must not use the
+        # `provider:` prefix, which pins a request to one deployment and defeats
+        # `order`-based failover, nor the negation (`!`) and required (`&`)
+        # operators, which fail a request outright when nothing matches.
         # See https://docs.litellm.ai/docs/proxy/tag_routing
         def spend_tags(tags)
           return nil if tags.blank?
