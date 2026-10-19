@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Upgrade `langfuse-rb` to 0.12.4, from 0.7.0. Seeded observations still export as real roots under their deterministic trace ID, now through langfuse-rb's own support for explicit trace IDs (simplepractice/langfuse-rb#128 and #129) instead of our copy of it. Seeded roots also carry langfuse-rb's `as_root` marker, which Langfuse's legacy trace summaries use to pick trace input and output. (#164)
 - The client no longer retries failed requests by default. openai-ruby retried each `429`, `408`, `409` and `5xx` twice within about two seconds, which turned every rate-limited request into three rejected calls on top of any retries the caller made. Retries and the request timeout can now be set for every client (`inference_max_retries`, `inference_timeout`), for one client (`NitroIntelligence::Client.new(inference_max_retries:, inference_timeout:)`) or for one request (`request_options: { max_retries:, timeout: }`); set `inference_max_retries` to restore retries for every client. `generate_image` now keeps its image configuration when the caller passes `request_options`; before, the caller's options replaced it, dropping the requested aspect ratio and resolution. (#157)
 
 ## [3.1.0] - 2026-10-06
