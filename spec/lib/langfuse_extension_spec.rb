@@ -104,6 +104,17 @@ RSpec.describe NitroIntelligence::LangfuseExtension do
     end
   end
 
+  it "marks seeded roots, and only seeded roots, for legacy trace summaries" do
+    emit("ordinary")
+    emit("seeded", seed:)
+
+    marked = wire_spans.to_h do |span|
+      as_root = span.attributes.find { |attribute| attribute.key == "langfuse.internal.as_root" }
+      [span.name, as_root&.value&.bool_value]
+    end
+    expect(marked).to eq("ordinary" => nil, "seeded" => true)
+  end
+
   it "sends the exported seeded trace ID in the inference correlation header" do
     parameters = {}
     handler = NitroIntelligence::Client::Handlers::BaseHandler.new(client: nil)

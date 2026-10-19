@@ -4,9 +4,6 @@
 # The content of this file should eventually make its way upstream. Setting a custom trace ID is
 # already awaiting approval in https://github.com/simplepractice/langfuse-rb/pull/69.
 #
-# Explicit trace IDs create real roots here while the upstream fix awaits approval:
-# https://github.com/simplepractice/langfuse-rb/pull/128.
-#
 
 require "nitro_intelligence/langfuse_tracer_provider"
 
@@ -53,15 +50,14 @@ module NitroIntelligence
       Langfuse.send(:validate_observation_type!, as_type, type_str) unless skip_validation
 
       otel_tracer = @tracer_provider.tracer
-      otel_span = if trace_id
-                    @tracer_provider.start_root_span(name, trace_id: parent_span_context.trace_id, start_time:)
-                  else
-                    Langfuse.send(:create_otel_span,
-                                  name:,
-                                  start_time:,
-                                  parent_span_context:,
-                                  otel_tracer:)
-                  end
+      otel_span = Langfuse.send(:create_otel_span,
+                                name:,
+                                start_time:,
+                                parent_span_context:,
+                                otel_tracer:,
+                                trace_id: trace_id && parent_span_context.trace_id,
+                                id_generator: @tracer_provider.id_generator)
+      otel_span.set_attribute(Langfuse::OtelAttributes::AS_ROOT, true) if trace_id
 
       # Serialize attributes
       # Only set attributes if span is still recording (should always be true here, but guard for safety)
