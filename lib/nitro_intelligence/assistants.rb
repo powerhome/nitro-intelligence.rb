@@ -37,7 +37,10 @@ module NitroIntelligence
       @graph_ids = {}
     end
 
-    def await_run(thread_id:, assistant_id:, messages:, context: {})
+    # Runs the last of `messages` on the thread, seeding a new thread with the ones before it, and
+    # waits for the run to end or pause. A paused run's last AI message is a draft awaiting review,
+    # so the result's `reply` is nil whenever it paused; its `review` says what it is waiting on.
+    def run(thread_id:, assistant_id:, messages:, context: {})
       raise RunError, "messages cannot be empty" if messages.blank?
 
       initial_state = messages[0..-2]
@@ -45,6 +48,11 @@ module NitroIntelligence
 
       initialize_thread_if_needed(thread_id:, assistant_id:, initial_state:)
       trigger_run(thread_id:, assistant_id:, context:, last_message:)
+    end
+
+    # The run's final reply, or nil when it paused for review or ended without one.
+    def await_run(thread_id:, assistant_id:, messages:, context: {})
+      run(thread_id:, assistant_id:, messages:, context:).reply
     end
 
     # The thread's state as Assistants reports it, unformatted. Callers that only want the
@@ -236,7 +244,7 @@ module NitroIntelligence
       run = JSON.parse(run_response.body)
       raise_run_error!(run, RunError)
 
-      Array(run["messages"]).last&.dig("content")
+      RunResult.new(run)
     end
 
     def raise_run_error!(run, error)

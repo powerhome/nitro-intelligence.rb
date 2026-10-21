@@ -1552,4 +1552,137 @@ RSpec.describe NitroIntelligence::Assistants do
       end
     end
   end
+
+  describe "reply review and delivery" do
+    let(:thread_id) { "thread-456" }
+    let(:assistant_id) { "assistant-789" }
+    let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
+    let(:context) { { "prompt_variables" => { "first_name" => "Casey" } } }
+    let(:draft) { "Sure! You're booked for Tuesday at 10am." }
+    let(:human_message) { { "type" => "human", "id" => "human-1", "content" => "Can I move it to Tuesday?" } }
+    let(:draft_message) { { "type" => "ai", "id" => "ai-1", "content" => draft } }
+    let(:mixed_message) do
+      {
+        "type" => "ai",
+        "id" => "ai-1",
+        "content" => "I've confirmed your appointment.",
+        "tool_calls" => [{ "id" => "call-1", "name" => "confirm_appointment", "args" => { "id" => 7 } }],
+      }
+    end
+    let(:reply_allowed_decisions) { %w[approve edit reject] }
+    let(:reply_interrupt) do
+      {
+        "id" => "interrupt-reply",
+        "value" => {
+          "action_requests" => [
+            { "name" => "__reply__", "args" => { "content" => draft }, "description" => "Review this SMS" },
+          ],
+          "review_configs" => [{ "action_name" => "__reply__", "allowed_decisions" => reply_allowed_decisions }],
+        },
+      }
+    end
+    let(:tool_interrupt) do
+      {
+        "id" => "interrupt-tools",
+        "value" => {
+          "action_requests" => [{ "name" => "confirm_appointment", "args" => { "id" => 7 } }],
+          "review_configs" => [{ "action_name" => "confirm_appointment", "allowed_decisions" => %w[approve reject] }],
+        },
+      }
+    end
+    let(:delivery_interrupt) do
+      {
+        "id" => "interrupt-delivery",
+        "value" => {
+          "action_requests" => [
+            {
+              "name" => "__delivery__",
+              "args" => {
+                "content" => draft,
+                "message_id" => "ai-1",
+                "error" => "Quiet hours: messages can't be sent before 8am",
+                "attempts" => 3,
+              },
+              "description" => "This reply couldn't be delivered.",
+            },
+          ],
+          "review_configs" => [{ "action_name" => "__delivery__", "allowed_decisions" => %w[approve edit reject] }],
+        },
+      }
+    end
+
+    def stub_json(method, url, body, status: 200)
+      stub_request(method, url).to_return(
+        status:, body: body.to_json, headers: { "Content-Type" => "application/json" }
+      )
+    end
+
+    describe "#run" do
+      let(:messages) { [{ role: "user", content: "Can I move it to Tuesday?" }] }
+      let(:run_response_body) { { "messages" => [human_message, draft_message] } }
+
+      before do
+        stub_json(:get, "#{base_url}/assistants/#{assistant_id}", { "graph_id" => "confirmation-agent" })
+        stub_json(:post, "#{base_url}/threads", {}, status: 409)
+        stub_json(:post, run_url, run_response_body)
+      end
+
+      it "returns the final reply of a run that ended" do
+        result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+        expect(result).to be_a(NitroIntelligence::RunResult)
+        expect(result).not_to be_interrupted
+        expect(result.reply).to eq(draft)
+      end
+
+      context "when the run pauses on its reply" do
+        let(:run_response_body) { { "messages" => [human_message, draft_message], "__interrupt__" => [reply_interrupt] } }
+
+        it "holds the draft back and reports it for review" do
+          result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+          expect(result).to be_interrupted
+          expect(result.reply).to be_nil
+          expect(result.review.reply).to have_attributes(
+            content: draft,
+            allowed_decisions: %w[approve edit reject],
+            description: "Review this SMS",
+            interrupt_id: "interrupt-reply"
+          )
+        end
+
+        it "makes #await_run return nil rather than the draft" do
+          expect(assistants.await_run(thread_id:, assistant_id:, messages:, context:)).to be_nil
+        end
+      end
+
+      context "when a turn with text and a held tool call pauses on the tool calls first" do
+        let(:run_response_body) { { "messages" => [human_message, mixed_message], "__interrupt__" => [tool_interrupt] } }
+
+        it "reports the tool calls and no reply review yet" do
+          result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+          expect(result.reply).to be_nil
+          expect(result.review.tool_calls.map { |tool_call| tool_call["id"] }).to eq(["call-1"])
+          expect(result.review.reply).to be_nil
+        end
+      end
+
+      context "when the run pauses on a failed delivery" do
+        let(:run_response_body) { { "messages" => [human_message, draft_message], "__interrupt__" => [delivery_interrupt] } }
+
+        it "reports the undelivered reply" do
+          result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+          expect(result.reply).to be_nil
+          expect(result.review.delivery).to have_attributes(
+            content: draft,
+            message_id: "ai-1",
+            error: "Quiet hours: messages can't be sent before 8am",
+            attempts: 3
+          )
+        end
+      end
+    end
+  end
 end
