@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Reply review and delivery, for assistants that hold their replies for review (`__reply__`) or deliver them through a delivery tool (`__delivery__`), as NIP Assistants implements them. `Assistants#run` (and `Assistant#run`) returns a `NitroIntelligence::RunResult`: `reply` is the final reply, `interrupted?` says whether the run paused, and `review` is a `NitroIntelligence::PendingReview` exposing whichever the run paused on -- `tool_calls`, `reply` (the draft's `content`, `allowed_decisions`, `description`, `interrupt_id`) or `delivery` (`content`, `message_id`, `error`, `attempts`). `#under_review` reads the same from the thread state. `#review` resumes a pause with exactly one of `reply:`, `delivery:` or `tool_calls:`, validates the action against the pause's `allowed_decisions` before sending, and puts `reviewer_id` and `reviewed_at` in each decision, where the platform reads them. Given the `interrupt_id` the reviewer was shown, it refuses a review the thread has moved past -- a new message superseded it, or another reviewer decided it first -- with `Assistants::ReviewSupersededError`, a `ThreadResumptionError`. A turn with both text and a held tool call pauses twice, on its tool calls and then on its text, and `#review` returns the resumed run's result so the second pause can be read from it. These are the public calls that replace nitro-web's `ContactCenter::VirtualConfirmationAgent::Client` override.
+
 ### Changed
 
 - `Assistants#await_run` is now `run(...).reply`: it returns `nil` whenever the run paused, rather than the last message's text. A paused run's last AI message is a draft awaiting review, and returning it handed an unreviewed reply to a caller that might send it. It also returns `nil` when the run ended without a reply -- when the last message is not the assistant's (a rejected draft is removed, leaving the human's message last) or has no text -- where it returned that message's content, including an empty string. Upgrade before any assistant turns reply review on.
