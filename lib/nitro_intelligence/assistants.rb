@@ -1,6 +1,7 @@
 require "json"
 require "net/http"
 require "uri"
+require "nitro_intelligence/pending_review"
 require "nitro_intelligence/tool_call_review_interrupt"
 require "nitro_intelligence/tool_call_review_validator"
 
