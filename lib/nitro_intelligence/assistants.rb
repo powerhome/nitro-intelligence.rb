@@ -97,6 +97,12 @@ module NitroIntelligence
       ToolCallReviewInterrupt.new(get_thread_state(thread_id:)).tool_calls
     end
 
+    # What the thread is paused on -- its tool calls, its reply or a failed delivery -- or nil when
+    # it is not waiting on a review.
+    def under_review(thread_id:)
+      PendingReview.from_thread_state(get_thread_state(thread_id:, error: ThreadStateError))
+    end
+
     # Resumes an interrupted thread with one review per tool call the interrupt is holding. Each
     # review is keyed by tool call id and names an `action` -- `approve`, `edit`, `reject` or
     # `respond` -- from the decisions the interrupt allows for that tool. `edit` carries `args`,

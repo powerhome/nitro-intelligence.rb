@@ -1556,6 +1556,8 @@ RSpec.describe NitroIntelligence::Assistants do
   describe "reply review and delivery" do
     let(:thread_id) { "thread-456" }
     let(:assistant_id) { "assistant-789" }
+    let(:thread_url) { "#{base_url}/threads/#{thread_id}" }
+    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
     let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
     let(:context) { { "prompt_variables" => { "first_name" => "Casey" } } }
     let(:draft) { "Sure! You're booked for Tuesday at 10am." }
@@ -1615,6 +1617,11 @@ RSpec.describe NitroIntelligence::Assistants do
       stub_request(method, url).to_return(
         status:, body: body.to_json, headers: { "Content-Type" => "application/json" }
       )
+    end
+
+    def stub_paused_thread(messages:, interrupt:, status: "interrupted")
+      stub_json(:get, thread_url, { "thread_id" => thread_id, "status" => status })
+      stub_json(:get, state_url, { "values" => { "messages" => messages }, "interrupts" => [interrupt].compact })
     end
 
     describe "#run" do
@@ -1682,6 +1689,27 @@ RSpec.describe NitroIntelligence::Assistants do
             attempts: 3
           )
         end
+      end
+    end
+
+    describe "#under_review" do
+      it "reads the pending review from the thread state" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+
+        expect(assistants.under_review(thread_id:).reply.content).to eq(draft)
+      end
+
+      it "is nil when the thread is not paused" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: nil, status: "idle")
+
+        expect(assistants.under_review(thread_id:)).to be_nil
+      end
+
+      it "raises ThreadStateError when the state cannot be read" do
+        stub_json(:get, state_url, { "error" => "boom" }, status: 500)
+
+        expect { assistants.under_review(thread_id:) }
+          .to raise_error(NitroIntelligence::Assistants::ThreadStateError, '{"error":"boom"}')
       end
     end
   end
