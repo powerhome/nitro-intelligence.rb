@@ -35,7 +35,6 @@ module NitroIntelligence
       @base_url = base_url.presence || DEFAULT_BASE_URL
       @api_key = api_key
       @user_id = user_id
-      @tool_call_review_validator = ToolCallReviewValidator.new
       @graph_ids = {}
     end
 
@@ -95,8 +94,11 @@ module NitroIntelligence
     # A tool the assistant is not configured to interrupt on runs without review, so an AI message
     # can mix calls under review with calls that are only waiting to be executed. This reports the
     # former; #tool_calls_pending_review reports both.
+    #
+    # Raises ThreadResumptionError when the state cannot be read, as it always has; #under_review is
+    # the plain read.
     def tool_calls_under_review(thread_id:)
-      ToolCallReviewInterrupt.new(get_thread_state(thread_id:)).tool_calls
+      PendingReview.from_thread_state(get_thread_state(thread_id:))&.tool_calls || []
     end
 
     # What the thread is paused on -- its tool calls, its reply or a failed delivery -- or nil when
@@ -105,20 +107,27 @@ module NitroIntelligence
       PendingReview.from_thread_state(get_thread_state(thread_id:, error: ThreadStateError))
     end
 
-    # Resumes a thread paused on its reply with a reviewer's decision on it, a single review of the
-    # held draft: `{"action" => "approve"}`, `{"action" => "edit", "content" => "..."}`,
-    # `{"action" => "reject", "message" => "reason"}` or `{"action" => "respond", "message" => "..."}`.
+    # Resumes a paused thread with a reviewer's decision on whatever it is paused on. Pass exactly
+    # one of:
+    #
+    # - `reply:`, a single review of the held draft: `{"action" => "approve"}`,
+    #   `{"action" => "edit", "content" => "..."}`, `{"action" => "reject", "message" => "reason"}` or
+    #   `{"action" => "respond", "message" => "..."}`;
+    # - `tool_calls:`, reviews keyed by tool call id, as #review_tool_calls takes them.
     #
     # Every decision sent carries `reviewer_id` and `reviewed_at` (now, unless given), which the
     # platform records on the reply and in Cerebro but never checks.
     #
-    # Returns the RunResult of the resumed run.
-    def review(thread_id:, assistant_id:, reviewer_id:, reply:, reviewed_at: nil, context: {})
+    # Returns the RunResult of the resumed run, which can itself pause: a turn's reply is reviewed
+    # after its tool calls.
+    def review(thread_id:, assistant_id:, reviewer_id:, reply: nil, tool_calls: nil, # rubocop:disable Metrics/ParameterLists
+               reviewed_at: nil, context: {})
+      kind, reviews = review_subject!(reply:, tool_calls:)
       raise ArgumentError, "reviewer_id is required" if reviewer_id.blank?
 
-      pending_review = pending_review!(thread_id:, kind: :reply)
+      pending_review = pending_review!(thread_id:, kind:)
       stamp = { "reviewer_id" => reviewer_id.to_s, "reviewed_at" => review_time(reviewed_at) }
-      decisions = pending_review.decisions(reply).map { |decision| decision.merge(stamp) }
+      decisions = pending_review.decisions(reviews).map { |decision| decision.merge(stamp) }
 
       RunResult.new(resume_run(thread_id:, assistant_id:, resume: { decisions: }, context:))
     end
@@ -135,21 +144,13 @@ module NitroIntelligence
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)
 
-      interrupt = ToolCallReviewInterrupt.new(get_thread_state(thread_id:))
-      tool_calls_under_review = interrupt.tool_calls
+      pending_review = PendingReview.from_thread_state(get_thread_state(thread_id:))
 
-      if tool_calls_under_review.empty?
+      if pending_review.nil? || pending_review.tool_calls.empty?
         raise ThreadResumptionError, "Thread #{thread_id} has no tool calls awaiting review"
       end
 
-      @tool_call_review_validator.validate!(tool_calls:, tool_calls_under_review:)
-
-      resume_run(
-        thread_id:,
-        assistant_id:,
-        resume: { decisions: interrupt.decisions(tool_calls) },
-        context:
-      )
+      resume_run(thread_id:, assistant_id:, resume: { decisions: pending_review.decisions(tool_calls) }, context:)
 
       nil
     end
@@ -271,6 +272,13 @@ module NitroIntelligence
       raise_run_error!(run, RunError)
 
       RunResult.new(run)
+    end
+
+    def review_subject!(reply:, tool_calls:)
+      subjects = { reply:, tool_calls: }.compact
+      return subjects.first if subjects.one?
+
+      raise ArgumentError, "pass exactly one of reply: or tool_calls:"
     end
 
     # The thread has to be paused, and on the kind of review the reviewer is answering. A thread

@@ -1594,6 +1594,15 @@ RSpec.describe NitroIntelligence::Assistants do
         },
       }
     end
+    let(:mixed_reply_interrupt) do
+      {
+        "id" => "interrupt-mixed-reply",
+        "value" => {
+          "action_requests" => [{ "name" => "__reply__", "args" => { "content" => mixed_message["content"] } }],
+          "review_configs" => [{ "action_name" => "__reply__", "allowed_decisions" => %w[approve edit reject] }],
+        },
+      }
+    end
     let(:delivery_interrupt) do
       {
         "id" => "interrupt-delivery",
@@ -1723,6 +1732,27 @@ RSpec.describe NitroIntelligence::Assistants do
       end
     end
 
+    describe "#tool_calls_under_review on a reply pause" do
+      it "returns an empty array instead of failing to match __reply__ to a tool call" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+
+        expect(assistants.tool_calls_under_review(thread_id:)).to eq([])
+      end
+    end
+
+    describe "#review_tool_calls on a reply pause" do
+      it "refuses, as it does for any pause holding no tool calls" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+
+        expect do
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls: {})
+        end.to raise_error(
+          NitroIntelligence::Assistants::ThreadResumptionError,
+          "Thread #{thread_id} has no tool calls awaiting review"
+        )
+      end
+    end
+
     describe "#review" do
       let(:resumed_run_body) { { "messages" => [human_message, draft_message] } }
 
@@ -1788,6 +1818,12 @@ RSpec.describe NitroIntelligence::Assistants do
         end.to raise_error(ArgumentError, "reviewer_id is required")
       end
 
+      it "requires exactly one thing to review" do
+        expect { review(reply: { "action" => "approve" }, tool_calls: { "call-1" => { "action" => "approve" } }) }
+          .to raise_error(ArgumentError, "pass exactly one of reply: or tool_calls:")
+        expect { review }.to raise_error(ArgumentError, "pass exactly one of reply: or tool_calls:")
+      end
+
       context "when the thread's run is under way again" do
         before { stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt, status: "busy") }
 
@@ -1809,6 +1845,30 @@ RSpec.describe NitroIntelligence::Assistants do
             "Thread #{thread_id} is awaiting review of tool calls, not of a reply"
           )
           expect(WebMock).not_to have_requested(:post, run_url)
+        end
+      end
+
+      context "when a turn with text and a held tool call pauses twice" do
+        before { stub_paused_thread(messages: [human_message, mixed_message], interrupt: tool_interrupt) }
+
+        it "decides the tool calls, with the reviewer in each decision, then the reply" do
+          stub_json(:post, run_url, { "messages" => [human_message, mixed_message], "__interrupt__" => [mixed_reply_interrupt] })
+
+          first = review(tool_calls: { "call-1" => { "action" => "approve" } })
+
+          expect(WebMock).to have_requested(:post, run_url)
+            .with(body: resume_body([stamped("type" => "approve")]).to_json)
+          expect(first.reply).to be_nil
+          expect(first.review.tool_calls).to eq([])
+          expect(first.review.reply.content).to eq("I've confirmed your appointment.")
+
+          stub_paused_thread(messages: [human_message, mixed_message], interrupt: mixed_reply_interrupt)
+          stub_json(:post, run_url, { "messages" => [human_message, mixed_message] })
+
+          second = review(reply: { "action" => "approve" })
+
+          expect(second).not_to be_interrupted
+          expect(second.reply).to eq("I've confirmed your appointment.")
         end
       end
     end
