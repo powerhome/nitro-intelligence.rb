@@ -43,13 +43,14 @@ module NitroIntelligence
             end
           end
 
-          def handle_image_generation_uploads(input, output, image_generation)
+          def handle_image_generation_uploads(input, output, image_generation, observation_id:)
             # If we are doing image generation we should upload the media to observability manually
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(
               auth_token: @observer.project_client.project.auth_token
             )
             upload_handler.upload(
               image_generation.trace_id,
+              observation_id:,
               upload_queue: Queue.new(image_generation.files)
             )
 
@@ -83,7 +84,7 @@ module NitroIntelligence
 
             input = parameters[:messages]
             output = chat_completion.choices.first.message.to_h
-            handle_image_generation_uploads(input, output, image_generation)
+            handle_image_generation_uploads(input, output, image_generation, observation_id: generation.id)
 
             trace_attributes = {
               model: chat_completion.model,

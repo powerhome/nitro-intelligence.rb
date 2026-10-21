@@ -248,6 +248,8 @@ siding = File.binread("./siding.png")
 result = client.generate_image(target_image: house, reference_images: [siding], parameters: {prompt_name: "Sample Prompt Name"})
 ```
 
+With observability enabled, the input and generated images are attached to the generation observation. Cerebro's Formatted observation preview displays them together, including in the tracing list's preview panel.
+
 #### Image Configuration
 
 You can specify parameters such as model to use, aspect ratio and resolution via the `parameters` key:
