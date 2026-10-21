@@ -113,16 +113,18 @@ module NitroIntelligence
     # - `reply:`, a single review of the held draft: `{"action" => "approve"}`,
     #   `{"action" => "edit", "content" => "..."}`, `{"action" => "reject", "message" => "reason"}` or
     #   `{"action" => "respond", "message" => "..."}`;
+    # - `delivery:`, a single review of an undelivered reply: approve retries, edit delivers the new
+    #   `content` instead, reject gives up;
     # - `tool_calls:`, reviews keyed by tool call id, as #review_tool_calls takes them.
     #
     # Every decision sent carries `reviewer_id` and `reviewed_at` (now, unless given), which the
     # platform records on the reply and in Cerebro but never checks.
     #
     # Returns the RunResult of the resumed run, which can itself pause: a turn's reply is reviewed
-    # after its tool calls.
-    def review(thread_id:, assistant_id:, reviewer_id:, reply: nil, tool_calls: nil, # rubocop:disable Metrics/ParameterLists
+    # after its tool calls, and a reply whose delivery fails pauses again.
+    def review(thread_id:, assistant_id:, reviewer_id:, reply: nil, tool_calls: nil, delivery: nil, # rubocop:disable Metrics/ParameterLists
                reviewed_at: nil, context: {})
-      kind, reviews = review_subject!(reply:, tool_calls:)
+      kind, reviews = review_subject!(reply:, tool_calls:, delivery:)
       raise ArgumentError, "reviewer_id is required" if reviewer_id.blank?
 
       pending_review = pending_review!(thread_id:, kind:)
@@ -274,11 +276,11 @@ module NitroIntelligence
       RunResult.new(run)
     end
 
-    def review_subject!(reply:, tool_calls:)
-      subjects = { reply:, tool_calls: }.compact
+    def review_subject!(reply:, tool_calls:, delivery:)
+      subjects = { reply:, tool_calls:, delivery: }.compact
       return subjects.first if subjects.one?
 
-      raise ArgumentError, "pass exactly one of reply: or tool_calls:"
+      raise ArgumentError, "pass exactly one of reply:, tool_calls: or delivery:"
     end
 
     # The thread has to be paused, and on the kind of review the reviewer is answering. A thread

@@ -1819,9 +1819,9 @@ RSpec.describe NitroIntelligence::Assistants do
       end
 
       it "requires exactly one thing to review" do
-        expect { review(reply: { "action" => "approve" }, tool_calls: { "call-1" => { "action" => "approve" } }) }
-          .to raise_error(ArgumentError, "pass exactly one of reply: or tool_calls:")
-        expect { review }.to raise_error(ArgumentError, "pass exactly one of reply: or tool_calls:")
+        expect { review(reply: { "action" => "approve" }, delivery: { "action" => "approve" }) }
+          .to raise_error(ArgumentError, "pass exactly one of reply:, tool_calls: or delivery:")
+        expect { review }.to raise_error(ArgumentError, "pass exactly one of reply:, tool_calls: or delivery:")
       end
 
       context "when the thread's run is under way again" do
@@ -1845,6 +1845,37 @@ RSpec.describe NitroIntelligence::Assistants do
             "Thread #{thread_id} is awaiting review of tool calls, not of a reply"
           )
           expect(WebMock).not_to have_requested(:post, run_url)
+        end
+      end
+
+      context "when the reply's delivery failed" do
+        before { stub_paused_thread(messages: [human_message, draft_message], interrupt: delivery_interrupt) }
+
+        it "retries on approve" do
+          review(delivery: { "action" => "approve" })
+
+          expect(WebMock).to have_requested(:post, run_url)
+            .with(body: resume_body([stamped("type" => "approve")]).to_json)
+        end
+
+        it "delivers edited text under the __delivery__ action" do
+          review(delivery: { "action" => "edit", "content" => "See you Tuesday!" })
+
+          expect(WebMock).to have_requested(:post, run_url).with(
+            body: resume_body(
+              [stamped("type" => "edit",
+                       "edited_action" => { "name" => "__delivery__", "args" => { "content" => "See you Tuesday!" } })]
+            ).to_json
+          )
+        end
+
+        it "reports a delivery that pauses again" do
+          stub_json(:post, run_url, { "messages" => [human_message, draft_message], "__interrupt__" => [delivery_interrupt] })
+
+          result = review(delivery: { "action" => "approve" })
+
+          expect(result.reply).to be_nil
+          expect(result.review.delivery.attempts).to eq(3)
         end
       end
 
