@@ -55,7 +55,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
              usage: double(prompt_tokens: 15, completion_tokens: 30, total_tokens: 45))
     end
 
-    let(:fake_generation) { double("Generation", trace_id: "trace-999") }
+    let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-999", id: "f8ccff00e8b9e5bd") }
 
     it "observes the request, handles uploads, and builds trace attributes" do
       expect(fake_observer).to receive(:observe).with(
@@ -73,7 +73,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
       expect(fake_image_generation).to receive(:trace_id=).with("trace-999")
       expect(fake_image_generation).to receive(:parse_file).with(fake_completion_response)
 
-      expect(fake_upload_handler).to receive(:upload).with("trace-999", upload_queue: instance_of(Queue))
+      expect(fake_upload_handler).to receive(:upload).with("trace-999", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
       expect(fake_upload_handler).to receive(:replace_base64_with_media_references).twice
 
       # FIX: Removed array destructuring (trace_attributes) since the handler just returns the image object
@@ -134,7 +134,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
         expect(fake_image_generation).to receive(:trace_id=).with("trace-999")
         expect(fake_image_generation).to receive(:parse_file).with(fake_completion_response)
 
-        expect(fake_upload_handler).to receive(:upload).with("trace-999", upload_queue: instance_of(Queue))
+        expect(fake_upload_handler).to receive(:upload).with("trace-999", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
         expect(fake_upload_handler).to receive(:replace_base64_with_media_references).twice
 
         handler.create(message: "draw a cat", parameters: { metadata: { custom_key: "custom_value" } })
@@ -165,7 +165,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
         expect(fake_image_generation).to receive(:trace_id=).with("trace-999")
         expect(fake_image_generation).to receive(:parse_file).with(fake_completion_response)
 
-        expect(fake_upload_handler).to receive(:upload).with("trace-999", upload_queue: instance_of(Queue))
+        expect(fake_upload_handler).to receive(:upload).with("trace-999", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
         expect(fake_upload_handler).to receive(:replace_base64_with_media_references).twice
 
         handler.create(message: "draw a cat", parameters: { prompt_name: "test-image-prompt" })
