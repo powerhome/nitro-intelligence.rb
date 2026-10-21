@@ -6,10 +6,12 @@ module NitroIntelligence
   # What a paused run is waiting on: the interrupt the thread is holding, and the decisions that
   # answer it.
   #
-  # Assistants pauses for two kinds of review, never mixed in one interrupt:
+  # Assistants pauses for three kinds of review, never mixed in one interrupt:
   #
   # - tool calls, held by LangChain's `HumanInTheLoopMiddleware`, one action per call;
-  # - the reply, a single action named `__reply__` whose `args` carry the draft's `content`.
+  # - the reply, a single action named `__reply__` whose `args` carry the draft's `content`;
+  # - a failed delivery, a single action named `__delivery__` whose `args` carry the reply's
+  #   `content`, its `message_id`, the delivery tool's `error` and the number of `attempts`.
   #
   # A model turn with both text and a held tool call pauses twice: on its tool calls first, then,
   # once they are decided, on its text. So `#tool_calls` and `#reply` are never both present.
@@ -19,9 +21,14 @@ module NitroIntelligence
   # tool calls are matched back onto.
   class PendingReview
     REPLY_ACTION = "__reply__".freeze
+    DELIVERY_ACTION = "__delivery__".freeze
 
     # The draft reply a reviewer is asked to approve, edit, reject or replace.
     Reply = Struct.new(:content, :allowed_decisions, :description, :interrupt_id, keyword_init: true)
+
+    # A settled reply the delivery tool kept failing to send.
+    Delivery = Struct.new(:content, :message_id, :error, :attempts, :allowed_decisions, :description,
+                          :interrupt_id, keyword_init: true)
 
     # The pending review in a thread state, or nil when the thread is not paused.
     def self.from_thread_state(thread_state)
@@ -46,10 +53,11 @@ module NitroIntelligence
       @interrupt["id"] || @interrupt["interrupt_id"]
     end
 
-    # `:tool_calls` or `:reply`.
+    # `:tool_calls`, `:reply` or `:delivery`.
     def kind
       case action_requests.first&.dig("name")
       when REPLY_ACTION then :reply
+      when DELIVERY_ACTION then :delivery
       else :tool_calls
       end
     end
@@ -62,8 +70,12 @@ module NitroIntelligence
       kind == :reply
     end
 
+    def delivery?
+      kind == :delivery
+    end
+
     # The tool calls the interrupt is holding, as `Assistants#tool_calls_under_review` reports them.
-    # Empty when the pause is on a reply.
+    # Empty when the pause is on a reply or a delivery.
     def tool_calls
       return [] unless tool_calls?
 
@@ -82,10 +94,25 @@ module NitroIntelligence
       )
     end
 
+    # The undelivered reply, or nil when the pause is not on a delivery.
+    def delivery
+      return nil unless delivery?
+
+      @delivery ||= Delivery.new(
+        content: action_args["content"],
+        message_id: action_args["message_id"],
+        error: action_args["error"],
+        attempts: action_args["attempts"],
+        allowed_decisions:,
+        description: action_requests.first["description"],
+        interrupt_id:
+      )
+    end
+
     # The `command.resume` decisions for a review of this pause. `reviews` takes the shape of the
     # pause: tool call reviews keyed by tool call id, as `Assistants#review_tool_calls` takes them,
-    # or a single review hash for a reply. Every review is validated against what the interrupt
-    # allows, raising `Assistants::ThreadResumptionError`, before anything is built.
+    # or a single review hash for a reply or a delivery. Every review is validated against what the
+    # interrupt allows, raising `Assistants::ThreadResumptionError`, before anything is built.
     def decisions(reviews)
       if tool_calls?
         ToolCallReviewValidator.new.validate!(tool_calls: reviews, tool_calls_under_review: tool_calls)
@@ -128,7 +155,7 @@ module NitroIntelligence
       Array(review_config&.dig("allowed_decisions")).map(&:to_s)
     end
 
-    # A reply is a single action, so it is reviewed with a single hash.
+    # A reply and a delivery are a single action each, so they are reviewed with a single hash.
     def text_decision(review)
       raise_error!("The #{kind} review must be a hash") unless review.is_a?(Hash)
 

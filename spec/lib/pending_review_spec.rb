@@ -28,6 +28,28 @@ RSpec.describe NitroIntelligence::PendingReview do
       },
     }
   end
+  let(:delivery_interrupt) do
+    {
+      "id" => "interrupt-delivery",
+      "value" => {
+        "action_requests" => [
+          {
+            "name" => "__delivery__",
+            "args" => {
+              "content" => "Great, see you Thursday at 9am!",
+              "message_id" => "ai-1",
+              "error" => "Quiet hours: messages can't be sent before 8am",
+              "attempts" => 3,
+            },
+            "description" => "This reply couldn't be delivered.",
+          },
+        ],
+        "review_configs" => [
+          { "action_name" => "__delivery__", "allowed_decisions" => %w[approve edit reject] },
+        ],
+      },
+    }
+  end
   let(:interrupt) { reply_interrupt }
 
   def resumption_error
@@ -50,9 +72,9 @@ RSpec.describe NitroIntelligence::PendingReview do
 
   describe ".from_run" do
     it "reads the run's __interrupt__" do
-      review = described_class.from_run("messages" => messages, "__interrupt__" => [reply_interrupt])
+      review = described_class.from_run("messages" => messages, "__interrupt__" => [delivery_interrupt])
 
-      expect(review).to be_reply
+      expect(review).to be_delivery
     end
 
     it "is nil when the run did not pause" do
@@ -71,8 +93,9 @@ RSpec.describe NitroIntelligence::PendingReview do
       )
     end
 
-    it "holds no tool calls" do
+    it "holds no tool calls and no delivery" do
       expect(pending_review.tool_calls).to eq([])
+      expect(pending_review.delivery).to be_nil
     end
 
     it "approves" do
@@ -128,6 +151,35 @@ RSpec.describe NitroIntelligence::PendingReview do
     it "refuses a review that is not a hash" do
       expect { pending_review.decisions("approve") }
         .to raise_error(resumption_error, "The reply review must be a hash")
+    end
+  end
+
+  context "when the pause is on a delivery" do
+    let(:interrupt) { delivery_interrupt }
+
+    it "exposes the undelivered reply, the error and the attempts" do
+      expect(pending_review.kind).to eq(:delivery)
+      expect(pending_review.delivery).to have_attributes(
+        content: "Great, see you Thursday at 9am!",
+        message_id: "ai-1",
+        error: "Quiet hours: messages can't be sent before 8am",
+        attempts: 3,
+        allowed_decisions: %w[approve edit reject],
+        interrupt_id: "interrupt-delivery"
+      )
+      expect(pending_review.reply).to be_nil
+      expect(pending_review.tool_calls).to eq([])
+    end
+
+    it "edits under the __delivery__ action" do
+      expect(pending_review.decisions("action" => "edit", "content" => "See you Thursday!")).to eq(
+        [{ "type" => "edit", "edited_action" => { "name" => "__delivery__", "args" => { "content" => "See you Thursday!" } } }]
+      )
+    end
+
+    it "refuses respond, which a delivery never allows" do
+      expect { pending_review.decisions("action" => "respond", "message" => "Hi") }
+        .to raise_error(resumption_error, /Invalid review action `respond` for the delivery/)
     end
   end
 
