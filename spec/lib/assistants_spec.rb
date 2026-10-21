@@ -1559,6 +1559,8 @@ RSpec.describe NitroIntelligence::Assistants do
     let(:thread_url) { "#{base_url}/threads/#{thread_id}" }
     let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
     let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
+    let(:reviewer_id) { "jane@example.com" }
+    let(:reviewed_at) { "2026-10-18T14:03:00Z" }
     let(:context) { { "prompt_variables" => { "first_name" => "Casey" } } }
     let(:draft) { "Sure! You're booked for Tuesday at 10am." }
     let(:human_message) { { "type" => "human", "id" => "human-1", "content" => "Can I move it to Tuesday?" } }
@@ -1622,6 +1624,14 @@ RSpec.describe NitroIntelligence::Assistants do
     def stub_paused_thread(messages:, interrupt:, status: "interrupted")
       stub_json(:get, thread_url, { "thread_id" => thread_id, "status" => status })
       stub_json(:get, state_url, { "values" => { "messages" => messages }, "interrupts" => [interrupt].compact })
+    end
+
+    def resume_body(decisions, context: self.context)
+      { assistant_id:, command: { resume: { decisions: } }, context: }
+    end
+
+    def stamped(decision)
+      decision.merge("reviewer_id" => reviewer_id, "reviewed_at" => reviewed_at)
     end
 
     describe "#run" do
@@ -1710,6 +1720,96 @@ RSpec.describe NitroIntelligence::Assistants do
 
         expect { assistants.under_review(thread_id:) }
           .to raise_error(NitroIntelligence::Assistants::ThreadStateError, '{"error":"boom"}')
+      end
+    end
+
+    describe "#review" do
+      let(:resumed_run_body) { { "messages" => [human_message, draft_message] } }
+
+      before do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+        stub_json(:post, run_url, resumed_run_body)
+      end
+
+      def review(**kwargs)
+        assistants.review(thread_id:, assistant_id:, reviewer_id:, reviewed_at:, context:, **kwargs)
+      end
+
+      it "edits the reply, with the reviewer in the decision" do
+        result = review(reply: { "action" => "edit", "content" => "Tuesday at 10am works." })
+
+        expect(WebMock).to have_requested(:post, run_url).with(
+          body: resume_body(
+            [stamped("type" => "edit",
+                     "edited_action" => { "name" => "__reply__", "args" => { "content" => "Tuesday at 10am works." } })]
+          ).to_json
+        )
+        expect(result).to be_a(NitroIntelligence::RunResult)
+        expect(result.reply).to eq(draft)
+      end
+
+      it "rejects the reply with a reason" do
+        review(reply: { "action" => "reject", "message" => "Wrong appointment" })
+
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: resume_body([stamped("type" => "reject", "message" => "Wrong appointment")]).to_json)
+      end
+
+      it "returns no reply when the rejected draft was the run's only answer" do
+        stub_json(:post, run_url, { "messages" => [human_message] })
+
+        expect(review(reply: { "action" => "reject" }).reply).to be_nil
+      end
+
+      it "stamps the current time when reviewed_at is not given" do
+        travel_time = Time.utc(2026, 10, 21, 12, 0, 0)
+        allow(Time).to receive(:now).and_return(travel_time)
+
+        assistants.review(thread_id:, assistant_id:, reviewer_id:, context:, reply: { "action" => "approve" })
+
+        expect(WebMock).to have_requested(:post, run_url).with(
+          body: resume_body(
+            [{ "type" => "approve", "reviewer_id" => reviewer_id, "reviewed_at" => "2026-10-21T12:00:00Z" }]
+          ).to_json
+        )
+      end
+
+      it "refuses a decision the interrupt does not allow, sending nothing" do
+        expect { review(reply: { "action" => "respond", "message" => "Hi" }) }.to raise_error(
+          NitroIntelligence::Assistants::ThreadResumptionError,
+          "Invalid review action `respond` for the reply; allowed: approve, edit, reject"
+        )
+        expect(WebMock).not_to have_requested(:post, run_url)
+      end
+
+      it "requires a reviewer" do
+        expect do
+          assistants.review(thread_id:, assistant_id:, reviewer_id: "", reply: { "action" => "approve" })
+        end.to raise_error(ArgumentError, "reviewer_id is required")
+      end
+
+      context "when the thread's run is under way again" do
+        before { stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt, status: "busy") }
+
+        it "refuses without reading the stale interrupt" do
+          expect { review(reply: { "action" => "approve" }) }.to raise_error(
+            NitroIntelligence::Assistants::ThreadResumptionError,
+            "Thread #{thread_id} is not awaiting review"
+          )
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+      end
+
+      context "when the thread is paused on something else" do
+        before { stub_paused_thread(messages: [human_message, mixed_message], interrupt: tool_interrupt) }
+
+        it "refuses a reply review of a tool call pause" do
+          expect { review(reply: { "action" => "approve" }) }.to raise_error(
+            NitroIntelligence::Assistants::ThreadResumptionError,
+            "Thread #{thread_id} is awaiting review of tool calls, not of a reply"
+          )
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
       end
     end
   end

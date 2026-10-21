@@ -14,6 +14,8 @@ module NitroIntelligence
     class ThreadResumptionError < StandardError; end
     class ThreadStateError < StandardError; end
 
+    PAUSE_NAMES = { tool_calls: "tool calls", reply: "a reply", delivery: "a delivery" }.freeze
+
     # Assistants answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
     THREAD_CONFLICT_CODE = 409
 
@@ -101,6 +103,24 @@ module NitroIntelligence
     # it is not waiting on a review.
     def under_review(thread_id:)
       PendingReview.from_thread_state(get_thread_state(thread_id:, error: ThreadStateError))
+    end
+
+    # Resumes a thread paused on its reply with a reviewer's decision on it, a single review of the
+    # held draft: `{"action" => "approve"}`, `{"action" => "edit", "content" => "..."}`,
+    # `{"action" => "reject", "message" => "reason"}` or `{"action" => "respond", "message" => "..."}`.
+    #
+    # Every decision sent carries `reviewer_id` and `reviewed_at` (now, unless given), which the
+    # platform records on the reply and in Cerebro but never checks.
+    #
+    # Returns the RunResult of the resumed run.
+    def review(thread_id:, assistant_id:, reviewer_id:, reply:, reviewed_at: nil, context: {})
+      raise ArgumentError, "reviewer_id is required" if reviewer_id.blank?
+
+      pending_review = pending_review!(thread_id:, kind: :reply)
+      stamp = { "reviewer_id" => reviewer_id.to_s, "reviewed_at" => review_time(reviewed_at) }
+      decisions = pending_review.decisions(reply).map { |decision| decision.merge(stamp) }
+
+      RunResult.new(resume_run(thread_id:, assistant_id:, resume: { decisions: }, context:))
     end
 
     # Resumes an interrupted thread with one review per tool call the interrupt is holding. Each
@@ -251,6 +271,29 @@ module NitroIntelligence
       raise_run_error!(run, RunError)
 
       RunResult.new(run)
+    end
+
+    # The thread has to be paused, and on the kind of review the reviewer is answering. A thread
+    # whose run is under way again is not paused, whatever its state still reports.
+    def pending_review!(thread_id:, kind:)
+      pending_review = interrupted?(get_thread(thread_id:)) &&
+                       PendingReview.from_thread_state(get_thread_state(thread_id:))
+
+      raise ThreadResumptionError, "Thread #{thread_id} is not awaiting review" unless pending_review
+
+      if pending_review.kind != kind
+        raise ThreadResumptionError,
+              "Thread #{thread_id} is awaiting review of #{PAUSE_NAMES[pending_review.kind]}, " \
+              "not of #{PAUSE_NAMES[kind]}"
+      end
+
+      pending_review
+    end
+
+    def review_time(reviewed_at)
+      return reviewed_at if reviewed_at.is_a?(String)
+
+      (reviewed_at || Time.now).utc.iso8601
     end
 
     def raise_run_error!(run, error)
