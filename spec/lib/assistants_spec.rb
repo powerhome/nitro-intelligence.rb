@@ -1766,7 +1766,8 @@ RSpec.describe NitroIntelligence::Assistants do
       end
 
       it "edits the reply, with the reviewer in the decision" do
-        result = review(reply: { "action" => "edit", "content" => "Tuesday at 10am works." })
+        result = review(reply: { "action" => "edit", "content" => "Tuesday at 10am works." },
+                        interrupt_id: "interrupt-reply")
 
         expect(WebMock).to have_requested(:post, run_url).with(
           body: resume_body(
@@ -1824,15 +1825,42 @@ RSpec.describe NitroIntelligence::Assistants do
         expect { review }.to raise_error(ArgumentError, "pass exactly one of reply:, tool_calls: or delivery:")
       end
 
+      context "when a new message superseded the review the reviewer was shown" do
+        before do
+          stub_paused_thread(messages: [human_message, draft_message],
+                             interrupt: reply_interrupt.merge("id" => "interrupt-newer"))
+        end
+
+        it "refuses as superseded instead of deciding the newer draft" do
+          expect { review(reply: { "action" => "approve" }, interrupt_id: "interrupt-reply") }.to raise_error(
+            NitroIntelligence::Assistants::ReviewSupersededError,
+            /no longer paused on interrupt-reply/
+          )
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+
+        it "is still a ThreadResumptionError for callers that rescue that" do
+          expect { review(reply: { "action" => "approve" }, interrupt_id: "interrupt-reply") }
+            .to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
+        end
+      end
+
+      context "when another review already decided it and the thread has moved on" do
+        before { stub_paused_thread(messages: [human_message, draft_message], interrupt: nil, status: "idle") }
+
+        it "refuses as superseded" do
+          expect { review(reply: { "action" => "approve" }, interrupt_id: "interrupt-reply") }
+            .to raise_error(NitroIntelligence::Assistants::ReviewSupersededError)
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+      end
+
       context "when the thread's run is under way again" do
         before { stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt, status: "busy") }
 
-        it "refuses without reading the stale interrupt" do
-          expect { review(reply: { "action" => "approve" }) }.to raise_error(
-            NitroIntelligence::Assistants::ThreadResumptionError,
-            "Thread #{thread_id} is not awaiting review"
-          )
-          expect(WebMock).not_to have_requested(:post, run_url)
+        it "refuses as superseded without reading the stale interrupt" do
+          expect { review(reply: { "action" => "approve" }) }
+            .to raise_error(NitroIntelligence::Assistants::ReviewSupersededError, /no longer paused on a review/)
         end
       end
 
@@ -1852,7 +1880,7 @@ RSpec.describe NitroIntelligence::Assistants do
         before { stub_paused_thread(messages: [human_message, draft_message], interrupt: delivery_interrupt) }
 
         it "retries on approve" do
-          review(delivery: { "action" => "approve" })
+          review(delivery: { "action" => "approve" }, interrupt_id: "interrupt-delivery")
 
           expect(WebMock).to have_requested(:post, run_url)
             .with(body: resume_body([stamped("type" => "approve")]).to_json)
@@ -1885,7 +1913,7 @@ RSpec.describe NitroIntelligence::Assistants do
         it "decides the tool calls, with the reviewer in each decision, then the reply" do
           stub_json(:post, run_url, { "messages" => [human_message, mixed_message], "__interrupt__" => [mixed_reply_interrupt] })
 
-          first = review(tool_calls: { "call-1" => { "action" => "approve" } })
+          first = review(tool_calls: { "call-1" => { "action" => "approve" } }, interrupt_id: "interrupt-tools")
 
           expect(WebMock).to have_requested(:post, run_url)
             .with(body: resume_body([stamped("type" => "approve")]).to_json)
@@ -1896,7 +1924,7 @@ RSpec.describe NitroIntelligence::Assistants do
           stub_paused_thread(messages: [human_message, mixed_message], interrupt: mixed_reply_interrupt)
           stub_json(:post, run_url, { "messages" => [human_message, mixed_message] })
 
-          second = review(reply: { "action" => "approve" })
+          second = review(reply: { "action" => "approve" }, interrupt_id: first.review.interrupt_id)
 
           expect(second).not_to be_interrupted
           expect(second.reply).to eq("I've confirmed your appointment.")

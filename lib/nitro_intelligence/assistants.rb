@@ -13,6 +13,9 @@ module NitroIntelligence
     class RunError < StandardError; end
     class ThreadResumptionError < StandardError; end
     class ThreadStateError < StandardError; end
+    # The review being answered is no longer the one the thread is paused on. A subclass, so that
+    # callers rescuing ThreadResumptionError still catch it.
+    class ReviewSupersededError < ThreadResumptionError; end
 
     PAUSE_NAMES = { tool_calls: "tool calls", reply: "a reply", delivery: "a delivery" }.freeze
 
@@ -120,14 +123,20 @@ module NitroIntelligence
     # Every decision sent carries `reviewer_id` and `reviewed_at` (now, unless given), which the
     # platform records on the reply and in Cerebro but never checks.
     #
+    # Pass the `interrupt_id` the reviewer was shown (`PendingReview#interrupt_id`). A thread that
+    # has moved on -- a new message superseded the review, or another reviewer decided it first --
+    # is no longer paused on that interrupt, and the review is refused with ReviewSupersededError
+    # rather than applied to whatever the thread is waiting on now. Without it, only the kind of
+    # pause is checked.
+    #
     # Returns the RunResult of the resumed run, which can itself pause: a turn's reply is reviewed
     # after its tool calls, and a reply whose delivery fails pauses again.
     def review(thread_id:, assistant_id:, reviewer_id:, reply: nil, tool_calls: nil, delivery: nil, # rubocop:disable Metrics/ParameterLists
-               reviewed_at: nil, context: {})
+               interrupt_id: nil, reviewed_at: nil, context: {})
       kind, reviews = review_subject!(reply:, tool_calls:, delivery:)
       raise ArgumentError, "reviewer_id is required" if reviewer_id.blank?
 
-      pending_review = pending_review!(thread_id:, kind:)
+      pending_review = pending_review!(thread_id:, kind:, interrupt_id:)
       stamp = { "reviewer_id" => reviewer_id.to_s, "reviewed_at" => review_time(reviewed_at) }
       decisions = pending_review.decisions(reviews).map { |decision| decision.merge(stamp) }
 
@@ -161,7 +170,9 @@ module NitroIntelligence
     # VCA's own review protocol, and its override reaches `get_thread`, `interrupted?`,
     # `get_thread_state` and `resume_run` below. Renaming any of the four breaks that override --
     # loudly, in nitro-web's suite at bump time rather than in anything here. The subclass goes when
-    # the VCA moves onto this platform, and this note with it.
+    # the VCA moves onto this platform, and this note with it: #run, #under_review and #review are
+    # the public calls that replace it, reviewing the VCA's replies as `__reply__` pauses with the
+    # reviewer recorded in each decision. `resume_run` still returns the raw response for it.
   private
 
     # Assistants accepts `initial_state` on thread creation but never applies it, so a brand new thread is
@@ -283,13 +294,18 @@ module NitroIntelligence
       raise ArgumentError, "pass exactly one of reply:, tool_calls: or delivery:"
     end
 
-    # The thread has to be paused, and on the kind of review the reviewer is answering. A thread
-    # whose run is under way again is not paused, whatever its state still reports.
-    def pending_review!(thread_id:, kind:)
+    # The thread has to be paused, on the interrupt the reviewer was shown when they say which, and
+    # on the kind of review they are answering. A thread whose run is under way again is not
+    # paused, whatever its state still reports.
+    def pending_review!(thread_id:, kind:, interrupt_id:)
       pending_review = interrupted?(get_thread(thread_id:)) &&
                        PendingReview.from_thread_state(get_thread_state(thread_id:))
 
-      raise ThreadResumptionError, "Thread #{thread_id} is not awaiting review" unless pending_review
+      if !pending_review || (interrupt_id.present? && pending_review.interrupt_id != interrupt_id)
+        raise ReviewSupersededError,
+              "Thread #{thread_id} is no longer paused on #{interrupt_id.presence || 'a review'}: " \
+              "a new message superseded it or another review already decided it"
+      end
 
       if pending_review.kind != kind
         raise ThreadResumptionError,
