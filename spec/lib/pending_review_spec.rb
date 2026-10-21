@@ -52,11 +52,82 @@ RSpec.describe NitroIntelligence::PendingReview do
     it "reads the run's __interrupt__" do
       review = described_class.from_run("messages" => messages, "__interrupt__" => [reply_interrupt])
 
-      expect(review.interrupt_id).to eq("interrupt-reply")
+      expect(review).to be_reply
     end
 
     it "is nil when the run did not pause" do
       expect(described_class.from_run("messages" => messages)).to be_nil
+    end
+  end
+
+  context "when the pause is on a reply" do
+    it "exposes the draft with what a reviewer may do with it" do
+      expect(pending_review.kind).to eq(:reply)
+      expect(pending_review.reply).to have_attributes(
+        content: "Sure! You're booked for Tuesday at 10am.",
+        allowed_decisions: %w[approve edit reject],
+        description: "Review this SMS",
+        interrupt_id: "interrupt-reply"
+      )
+    end
+
+    it "holds no tool calls" do
+      expect(pending_review.tool_calls).to eq([])
+    end
+
+    it "approves" do
+      expect(pending_review.decisions("action" => "approve")).to eq([{ "type" => "approve" }])
+    end
+
+    it "edits the reply's content" do
+      expect(pending_review.decisions("action" => "edit", "content" => "Tuesday at 10am works.")).to eq(
+        [{ "type" => "edit", "edited_action" => { "name" => "__reply__", "args" => { "content" => "Tuesday at 10am works." } } }]
+      )
+    end
+
+    it "rejects with a reason" do
+      expect(pending_review.decisions(action: "reject", message: "Wrong appointment")).to eq(
+        [{ "type" => "reject", "message" => "Wrong appointment" }]
+      )
+    end
+
+    it "rejects without a reason" do
+      expect(pending_review.decisions("action" => "reject")).to eq([{ "type" => "reject" }])
+    end
+
+    context "when respond is allowed" do
+      let(:reply_allowed_decisions) { %w[approve respond] }
+
+      it "replaces the reply with the reviewer's message" do
+        expect(pending_review.decisions("action" => "respond", "message" => "I'll call you.")).to eq(
+          [{ "type" => "respond", "message" => "I'll call you." }]
+        )
+      end
+
+      it "refuses a respond without a message" do
+        expect { pending_review.decisions("action" => "respond") }
+          .to raise_error(resumption_error, /`respond` review of the reply must include a non-empty `message`/)
+      end
+    end
+
+    it "refuses a decision the interrupt does not allow" do
+      expect { pending_review.decisions("action" => "respond", "message" => "Hi") }
+        .to raise_error(resumption_error, "Invalid review action `respond` for the reply; allowed: approve, edit, reject")
+    end
+
+    it "refuses an edit without content" do
+      expect { pending_review.decisions("action" => "edit", "content" => " ") }
+        .to raise_error(resumption_error, /`edit` review of the reply must include a non-empty `content`/)
+    end
+
+    it "refuses a reason that is not a string" do
+      expect { pending_review.decisions("action" => "reject", "message" => 1) }
+        .to raise_error(resumption_error, /`message` for the reply review must be a string/)
+    end
+
+    it "refuses a review that is not a hash" do
+      expect { pending_review.decisions("approve") }
+        .to raise_error(resumption_error, "The reply review must be a hash")
     end
   end
 
@@ -82,7 +153,8 @@ RSpec.describe NitroIntelligence::PendingReview do
       }
     end
 
-    it "lists the held tool calls" do
+    it "lists the held tool calls, and no reply even though the turn has text" do
+      expect(pending_review.kind).to eq(:tool_calls)
       expect(pending_review.tool_calls).to eq(
         [
           {
@@ -94,6 +166,7 @@ RSpec.describe NitroIntelligence::PendingReview do
           },
         ]
       )
+      expect(pending_review.reply).to be_nil
     end
 
     it "builds the decisions from reviews keyed by tool call id" do
