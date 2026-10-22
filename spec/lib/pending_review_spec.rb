@@ -276,4 +276,47 @@ RSpec.describe NitroIntelligence::PendingReview do
         .to raise_error(resumption_error, "Invalid review action `edit` for tool call call-1")
     end
   end
+
+  describe "#resume" do
+    it "keys the decisions by the pause's interrupt" do
+      expect(pending_review.resume([{ "type" => "approve" }]))
+        .to eq("interrupt-reply" => { decisions: [{ "type" => "approve" }] })
+    end
+
+    context "when the interrupt reports no id" do
+      let(:interrupt) { reply_interrupt.except("id") }
+
+      it "sends them unkeyed" do
+        expect(pending_review.resume([{ "type" => "approve" }])).to eq(decisions: [{ "type" => "approve" }])
+      end
+    end
+  end
+
+  describe "#unapplied_resume?" do
+    let(:newer) { delivery_interrupt }
+    let(:run) { { "messages" => messages, "__interrupt__" => [newer] } }
+
+    def state(written_by:, interrupt: newer)
+      { "values" => { "messages" => messages }, "interrupts" => [interrupt], "metadata" => { "run_id" => written_by } }
+    end
+
+    it "is true when the reported pause sits on a checkpoint another run wrote" do
+      expect(pending_review.unapplied_resume?(run:, run_id: "run-mine") { state(written_by: "run-theirs") }).to be(true)
+    end
+
+    it "is false when this run wrote it, having applied the decision and paused again" do
+      expect(pending_review.unapplied_resume?(run:, run_id: "run-mine") { state(written_by: "run-mine") }).to be(false)
+    end
+
+    it "reads no state when the run did not pause, or paused on the interrupt it was sent to" do
+      [{ "messages" => messages }, { "messages" => messages, "__interrupt__" => [reply_interrupt] }].each do |ended|
+        expect(pending_review.unapplied_resume?(run: ended, run_id: "run-mine") { raise "read" }).to be(false)
+      end
+    end
+
+    it "is false without the run's id, or when the state cannot be read" do
+      expect(pending_review.unapplied_resume?(run:, run_id: nil) { state(written_by: "run-theirs") }).to be(false)
+      expect(pending_review.unapplied_resume?(run:, run_id: "run-mine") { raise resumption_error, "boom" }).to be(false)
+    end
+  end
 end

@@ -116,6 +116,40 @@ module NitroIntelligence
       )
     end
 
+    # The `command.resume` that sends `decisions` to this pause, keyed by its interrupt. LangGraph
+    # applies a keyed resume to that interrupt only: keyed by one that is no longer pending -- the
+    # thread moved on between reading this pause and resuming it -- it decides nothing, and the
+    # thread stays paused on the newer interrupt. An interrupt reported without an id can only be
+    # resumed unkeyed.
+    def resume(decisions)
+      interrupt_id.blank? ? { decisions: } : { interrupt_id => { decisions: } }
+    end
+
+    # Whether `run`, the response to a keyed resume of this pause, decided nothing because the
+    # interrupt was gone by the time the resume arrived. `run_id` is the run Assistants created for
+    # the resume, and the block reads the thread's state, only when it is needed.
+    #
+    # Such a resume comes back paused on the newer interrupt, exactly as a resume that was applied
+    # and paused again does -- a turn's reply after its tool calls, a delivery that fails again.
+    # What tells them apart is who wrote the thread's latest checkpoint: Assistants records each
+    # run's id in the metadata of the checkpoints it writes, and a resume that decided nothing writes
+    # none, so the pause it reports still sits on a checkpoint an earlier run wrote.
+    #
+    # Best-effort, and only ever true on that evidence: without the run's id, the checkpoint's, or a
+    # state still on the reported pause (a new message may already have moved it on), or when the
+    # state cannot be read, it is false and the result stands as returned. That a stale decision is
+    # never applied is guaranteed by the keyed resume, not by this.
+    def unapplied_resume?(run:, run_id:)
+      paused_on = self.class.from_run(run)&.interrupt_id
+      return false if interrupt_id.blank? || run_id.blank? || paused_on.blank? || paused_on == interrupt_id
+
+      state = yield
+      writer = state.dig("metadata", "run_id")
+      self.class.from_thread_state(state)&.interrupt_id == paused_on && writer.present? && writer != run_id
+    rescue
+      false
+    end
+
     # The `command.resume` decisions for a review of this pause. `reviews` takes the shape of the
     # pause: tool call reviews keyed by tool call id, as `Assistants#review_tool_calls` takes them,
     # or a single review hash for a reply or a delivery. Every review is validated against what the

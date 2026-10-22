@@ -22,6 +22,9 @@ module NitroIntelligence
     # What Assistants answers, with a 400, to a resume of a thread that is no longer paused.
     NOT_INTERRUPTED_REFUSAL = "thread is not in interrupted state".freeze
 
+    # Where a `/runs/wait` response says which run it waited on.
+    RUN_LOCATION = %r{/runs/([^/]+)\z}
+
     # Assistants answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
     THREAD_CONFLICT_CODE = 409
 
@@ -132,6 +135,12 @@ module NitroIntelligence
     # rather than applied to whatever the thread is waiting on now. Without it, only the kind of
     # pause is checked.
     #
+    # The resume is keyed by the interrupt read here, so a pause that appears between that read and
+    # the resume -- a turn's reply after its tool calls, a delivery that fails again at once -- is
+    # never decided by it: Assistants leaves the thread paused on the newer interrupt instead. That
+    # a stale decision is never applied is guaranteed; reporting it as ReviewSupersededError rather
+    # than as a run still paused is best-effort (see #superseded_resume?).
+    #
     # Returns the RunResult of the resumed run, which can itself pause: a turn's reply is reviewed
     # after its tool calls, and a reply whose delivery fails pauses again.
     def review(thread_id:, assistant_id:, reviewer_id:, reply: nil, tool_calls: nil, delivery: nil, # rubocop:disable Metrics/ParameterLists
@@ -159,9 +168,11 @@ module NitroIntelligence
     # merged over the arguments the model asked for; `respond` carries the `message` returned to the
     # model as the tool's result; `reject` may carry a `message` explaining the refusal.
     #
-    # A thin wrapper over what #review sends for `tool_calls:`. `reviewer_id` and `reviewed_at` are
-    # optional here, and put in each decision when a reviewer is given; #review requires one, refuses
-    # a superseded review and returns the resumed run's result, where this returns nil.
+    # A thin wrapper over what #review sends for `tool_calls:`, keyed by the interrupt it read in the
+    # same way, and raising ReviewSupersededError on the same evidence that the decisions were not
+    # applied. `reviewer_id` and `reviewed_at` are optional here, and put in each decision when a
+    # reviewer is given; #review requires one, checks an `interrupt_id` before resuming and returns
+    # the resumed run's result, where this returns nil.
     def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {}, reviewer_id: nil, reviewed_at: nil)
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)
@@ -331,7 +342,8 @@ module NitroIntelligence
     end
 
     # The decisions for `reviews`, validated against the pause and stamped with the reviewer when
-    # there is one, sent as the resume.
+    # there is one, sent as the resume keyed by the pause's interrupt. Raises ReviewSupersededError
+    # when the run shows the decisions were not applied.
     def resume_review(thread_id:, assistant_id:, pending_review:, reviews:, reviewer_id:, reviewed_at:, context:) # rubocop:disable Metrics/ParameterLists
       decisions = pending_review.decisions(reviews)
       if reviewer_id.present?
@@ -339,7 +351,13 @@ module NitroIntelligence
         decisions = decisions.map { |decision| decision.merge(stamp) }
       end
 
-      resume_run(thread_id:, assistant_id:, resume: { decisions: }, context:)
+      run, run_id = resume_run_with_id(thread_id:, assistant_id:, resume: pending_review.resume(decisions), context:)
+      return run unless pending_review.unapplied_resume?(run:, run_id:) { get_thread_state(thread_id:) }
+
+      raise ReviewSupersededError,
+            "Thread #{thread_id} is no longer paused on #{pending_review.interrupt_id}: another review already " \
+            "resumed it, and it is now paused on #{PendingReview.from_run(run).interrupt_id}; " \
+            "the decision was not applied"
     end
 
     def review_time(reviewed_at)
@@ -357,6 +375,12 @@ module NitroIntelligence
     end
 
     def resume_run(thread_id:, assistant_id:, resume:, context:)
+      resume_run_with_id(thread_id:, assistant_id:, resume:, context:).first
+    end
+
+    # The resumed run's response, and the id of the run Assistants created for it, which the wait
+    # reports in its `Content-Location` (`/threads/{thread_id}/runs/{run_id}`); nil without one.
+    def resume_run_with_id(thread_id:, assistant_id:, resume:, context:)
       run_response = post(
         path: "/threads/#{thread_id}/runs/wait",
         body: {
@@ -373,7 +397,7 @@ module NitroIntelligence
       run = JSON.parse(run_response.body)
       raise_run_error!(run, ThreadResumptionError)
 
-      run
+      [run, run_response["Content-Location"].to_s[RUN_LOCATION, 1]]
     end
 
     def interrupted?(thread)

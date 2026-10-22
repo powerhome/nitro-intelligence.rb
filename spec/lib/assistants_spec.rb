@@ -1635,8 +1635,23 @@ RSpec.describe NitroIntelligence::Assistants do
       stub_json(:get, state_url, { "values" => { "messages" => messages }, "interrupts" => [interrupt].compact })
     end
 
-    def resume_body(decisions, context: self.context)
-      { assistant_id:, command: { resume: { decisions: } }, context: }
+    def resume_body(decisions, interrupt_id: "interrupt-reply", context: self.context)
+      { assistant_id:, command: { resume: { interrupt_id => { decisions: } } }, context: }
+    end
+
+    # A resume Assistants accepted, with the run it created named in the wait's Content-Location.
+    def stub_resume(body, run_id: "run-mine")
+      stub_request(:post, run_url).to_return(
+        status: 200, body: body.to_json,
+        headers: { "Content-Type" => "application/json", "Content-Location" => "/threads/#{thread_id}/runs/#{run_id}" }
+      )
+    end
+
+    # The thread's state as it reads before the resume, then after it.
+    def stub_states(before, after)
+      stub_request(:get, state_url)
+        .to_return(status: 200, body: before.to_json, headers: { "Content-Type" => "application/json" })
+        .then.to_return(status: 200, body: after.to_json, headers: { "Content-Type" => "application/json" })
     end
 
     def stamped(decision)
@@ -1768,14 +1783,15 @@ RSpec.describe NitroIntelligence::Assistants do
 
         expect(result).to be_nil
         expect(WebMock).to have_requested(:post, run_url)
-          .with(body: resume_body([stamped("type" => "approve")]).to_json)
+          .with(body: resume_body([stamped("type" => "approve")], interrupt_id: "interrupt-tools").to_json)
       end
 
       it "sends the decisions unstamped without one" do
         assistants.review_tool_calls(thread_id:, assistant_id:, context:,
                                      tool_calls: { "call-1" => { "action" => "approve" } })
 
-        expect(WebMock).to have_requested(:post, run_url).with(body: resume_body([{ "type" => "approve" }]).to_json)
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: resume_body([{ "type" => "approve" }], interrupt_id: "interrupt-tools").to_json)
       end
     end
 
@@ -1934,14 +1950,15 @@ RSpec.describe NitroIntelligence::Assistants do
           review(delivery: { "action" => "retry" }, interrupt_id: "interrupt-delivery")
 
           expect(WebMock).to have_requested(:post, run_url)
-            .with(body: resume_body([stamped("type" => "retry")]).to_json)
+            .with(body: resume_body([stamped("type" => "retry")], interrupt_id: "interrupt-delivery").to_json)
         end
 
         it "gives up with a reason" do
           review(delivery: { "action" => "reject", "message" => "Customer opted out" })
 
           expect(WebMock).to have_requested(:post, run_url)
-            .with(body: resume_body([stamped("type" => "reject", "message" => "Customer opted out")]).to_json)
+            .with(body: resume_body([stamped("type" => "reject", "message" => "Customer opted out")],
+                                    interrupt_id: "interrupt-delivery").to_json)
         end
 
         it "refuses approve and edit before resuming" do
@@ -1973,7 +1990,7 @@ RSpec.describe NitroIntelligence::Assistants do
           first = review(tool_calls: { "call-1" => { "action" => "approve" } }, interrupt_id: "interrupt-tools")
 
           expect(WebMock).to have_requested(:post, run_url)
-            .with(body: resume_body([stamped("type" => "approve")]).to_json)
+            .with(body: resume_body([stamped("type" => "approve")], interrupt_id: "interrupt-tools").to_json)
           expect(first.reply).to be_nil
           expect(first.review.tool_calls).to eq([])
           expect(first.review.reply.content).to eq("I've confirmed your appointment.")
@@ -1985,6 +2002,118 @@ RSpec.describe NitroIntelligence::Assistants do
 
           expect(second).not_to be_interrupted
           expect(second.reply).to eq("I've confirmed your appointment.")
+        end
+      end
+    end
+
+    describe "keyed resumes" do
+      let(:tools_state) { { "values" => { "messages" => [human_message, mixed_message] }, "interrupts" => [tool_interrupt] } }
+      let(:reply_paused_run) { { "messages" => [human_message, mixed_message], "__interrupt__" => [mixed_reply_interrupt] } }
+
+      def reply_state(written_by:)
+        {
+          "values" => { "messages" => [human_message, mixed_message] },
+          "interrupts" => [mixed_reply_interrupt],
+          "metadata" => { "run_id" => written_by, "step" => 2 },
+        }
+      end
+
+      def review_tools(**kwargs)
+        assistants.review(thread_id:, assistant_id:, reviewer_id:, reviewed_at:, context:,
+                          tool_calls: { "call-1" => { "action" => "approve" } }, **kwargs)
+      end
+
+      before { stub_json(:get, thread_url, { "thread_id" => thread_id, "status" => "interrupted" }) }
+
+      context "when the resume was applied and the run paused again on the turn's reply" do
+        before do
+          stub_states(tools_state, reply_state(written_by: "run-mine"))
+          stub_resume(reply_paused_run, run_id: "run-mine")
+        end
+
+        it "returns the new pause" do
+          result = review_tools
+
+          expect(WebMock).to have_requested(:post, run_url)
+            .with(body: resume_body([stamped("type" => "approve")], interrupt_id: "interrupt-tools").to_json)
+          expect(result.review.reply.content).to eq("I've confirmed your appointment.")
+        end
+      end
+
+      # Another reviewer's resume decided the tool calls between this review's read and its resume,
+      # and the turn's reply paused at once. Keyed by the tool call interrupt, this resume decided
+      # nothing, so the latest checkpoint is still the one the other reviewer's run wrote.
+      context "when another review's resume moved the thread on between the read and the resume" do
+        before do
+          stub_states(tools_state, reply_state(written_by: "run-theirs"))
+          stub_resume(reply_paused_run, run_id: "run-mine")
+        end
+
+        it "refuses as superseded, rather than reporting the reply pause as this review's" do
+          expect { review_tools }.to raise_error(
+            NitroIntelligence::Assistants::ReviewSupersededError,
+            "Thread #{thread_id} is no longer paused on interrupt-tools: another review already resumed it, " \
+            "and it is now paused on interrupt-mixed-reply; the decision was not applied"
+          )
+        end
+
+        it "refuses the same through #review_tool_calls" do
+          expect do
+            assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls: { "call-1" => { "action" => "approve" } })
+          end.to raise_error(NitroIntelligence::Assistants::ReviewSupersededError, /the decision was not applied/)
+        end
+      end
+
+      context "when the wait does not say which run it was" do
+        before do
+          stub_states(tools_state, reply_state(written_by: "run-theirs"))
+          stub_json(:post, run_url, reply_paused_run)
+        end
+
+        it "returns the pause, since nothing shows the decision was not applied" do
+          expect(review_tools.review.reply).to be_present
+          expect(WebMock).to have_requested(:get, state_url).once
+        end
+      end
+
+      context "when the thread has moved past the reported pause by the time it is read" do
+        before do
+          stub_states(tools_state, { "values" => { "messages" => [] }, "interrupts" => [], "metadata" => { "run_id" => "run-new" } })
+          stub_resume(reply_paused_run, run_id: "run-mine")
+        end
+
+        it "returns the pause rather than guessing" do
+          expect(review_tools.review.reply).to be_present
+        end
+      end
+
+      context "when the state cannot be read after the resume" do
+        before do
+          stub_request(:get, state_url)
+            .to_return(status: 200, body: tools_state.to_json, headers: { "Content-Type" => "application/json" })
+            .then.to_return(status: 500, body: "boom")
+          stub_resume(reply_paused_run, run_id: "run-mine")
+        end
+
+        it "returns the pause, as the resume itself succeeded" do
+          expect(review_tools.review.reply).to be_present
+        end
+      end
+
+      context "when the interrupt reports no id" do
+        before do
+          stub_states({ "values" => { "messages" => [human_message, draft_message] },
+                        "interrupts" => [reply_interrupt.except("id")] }, {})
+          stub_resume({ "messages" => [human_message, draft_message] })
+        end
+
+        it "resumes unkeyed, the only resume such a pause takes" do
+          assistants.review(thread_id:, assistant_id:, reviewer_id:, reviewed_at:, context:,
+                            reply: { "action" => "approve" })
+
+          expect(WebMock).to have_requested(:post, run_url).with(
+            body: { assistant_id:, command: { resume: { decisions: [stamped("type" => "approve")] } }, context: }.to_json
+          )
         end
       end
     end
