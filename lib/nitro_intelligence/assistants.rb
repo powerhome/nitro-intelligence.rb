@@ -139,7 +139,7 @@ module NitroIntelligence
     # the resume -- a turn's reply after its tool calls, a delivery that fails again at once -- is
     # never decided by it: Assistants leaves the thread paused on the newer interrupt instead. That
     # a stale decision is never applied is guaranteed; reporting it as ReviewSupersededError rather
-    # than as a run still paused is best-effort (see #superseded_resume?).
+    # than as a run still paused is best-effort (see PendingReview#unapplied_resume?).
     #
     # Returns the RunResult of the resumed run, which can itself pause: a turn's reply is reviewed
     # after its tool calls, and a reply whose delivery fails pauses again.
