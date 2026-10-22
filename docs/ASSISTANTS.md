@@ -406,7 +406,7 @@ assistants.review_tool_calls(
 
 `context` is optional and is sent with the resumed run, exactly as it is for `#await_run`. Pass the `prompt_variables` the assistant's prompt needs if the resumed run has to render it again.
 
-There is no reviewer argument, and the decisions it sends carry none. To record who reviewed the calls in each decision, use [`#review`](#review) with `tool_calls:`, which takes the same reviews.
+`reviewer_id` and `reviewed_at` are optional. Given a `reviewer_id`, each decision carries both, as [`#review`](#review) sends them (`reviewed_at` is now unless given); without one, the decisions carry neither. `#review` with `tool_calls:` takes the same reviews, requires a reviewer, refuses a superseded review and returns the resumed run's result; this method is a thin wrapper that returns `nil`.
 
 ### Response
 

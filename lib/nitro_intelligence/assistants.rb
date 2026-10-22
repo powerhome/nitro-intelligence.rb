@@ -137,10 +137,9 @@ module NitroIntelligence
       raise ArgumentError, "reviewer_id is required" if reviewer_id.blank?
 
       pending_review = pending_review!(thread_id:, kind:, interrupt_id:)
-      stamp = { "reviewer_id" => reviewer_id.to_s, "reviewed_at" => review_time(reviewed_at) }
-      decisions = pending_review.decisions(reviews).map { |decision| decision.merge(stamp) }
+      run = resume_review(thread_id:, assistant_id:, pending_review:, reviews:, reviewer_id:, reviewed_at:, context:)
 
-      RunResult.new(resume_run(thread_id:, assistant_id:, resume: { decisions: }, context:))
+      RunResult.new(run)
     end
 
     # Resumes an interrupted thread with one review per tool call the interrupt is holding. Each
@@ -149,9 +148,10 @@ module NitroIntelligence
     # merged over the arguments the model asked for; `respond` carries the `message` returned to the
     # model as the tool's result; `reject` may carry a `message` explaining the refusal.
     #
-    # Assistants records nothing about who reviewed a tool call, and the resume payload it accepts
-    # has nowhere to carry it, so there is no reviewer argument to pass.
-    def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {})
+    # A thin wrapper over what #review sends for `tool_calls:`. `reviewer_id` and `reviewed_at` are
+    # optional here, and put in each decision when a reviewer is given; #review requires one, refuses
+    # a superseded review and returns the resumed run's result, where this returns nil.
+    def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {}, reviewer_id: nil, reviewed_at: nil)
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)
 
@@ -161,7 +161,8 @@ module NitroIntelligence
         raise ThreadResumptionError, "Thread #{thread_id} has no tool calls awaiting review"
       end
 
-      resume_run(thread_id:, assistant_id:, resume: { decisions: pending_review.decisions(tool_calls) }, context:)
+      resume_review(thread_id:, assistant_id:, pending_review:, reviews: tool_calls, reviewer_id:, reviewed_at:,
+                    context:)
 
       nil
     end
@@ -172,7 +173,9 @@ module NitroIntelligence
     # loudly, in nitro-web's suite at bump time rather than in anything here. The subclass goes when
     # the VCA moves onto this platform, and this note with it: #run, #under_review and #review are
     # the public calls that replace it, reviewing the VCA's replies as `__reply__` pauses with the
-    # reviewer recorded in each decision. `resume_run` still returns the raw response for it.
+    # reviewer recorded in each decision, and #review_tool_calls takes the `reviewer_id:` and
+    # `reviewed_at:` its override adds, so its callers keep working once it is gone. `resume_run`
+    # still returns the raw response for it.
   private
 
     # Assistants accepts `initial_state` on thread creation but never applies it, so a brand new thread is
@@ -314,6 +317,18 @@ module NitroIntelligence
       end
 
       pending_review
+    end
+
+    # The decisions for `reviews`, validated against the pause and stamped with the reviewer when
+    # there is one, sent as the resume.
+    def resume_review(thread_id:, assistant_id:, pending_review:, reviews:, reviewer_id:, reviewed_at:, context:) # rubocop:disable Metrics/ParameterLists
+      decisions = pending_review.decisions(reviews)
+      if reviewer_id.present?
+        stamp = { "reviewer_id" => reviewer_id.to_s, "reviewed_at" => review_time(reviewed_at) }
+        decisions = decisions.map { |decision| decision.merge(stamp) }
+      end
+
+      resume_run(thread_id:, assistant_id:, resume: { decisions: }, context:)
     end
 
     def review_time(reviewed_at)

@@ -1753,6 +1753,31 @@ RSpec.describe NitroIntelligence::Assistants do
       end
     end
 
+    describe "#review_tool_calls with a reviewer" do
+      before do
+        stub_paused_thread(messages: [human_message, mixed_message], interrupt: tool_interrupt)
+        stub_json(:post, run_url, { "messages" => [human_message, mixed_message] })
+      end
+
+      it "puts the reviewer in each decision, as #review does" do
+        result = assistants.review_tool_calls(
+          thread_id:, assistant_id:, reviewer_id:, reviewed_at:, context:,
+          tool_calls: { "call-1" => { "action" => "approve" } }
+        )
+
+        expect(result).to be_nil
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: resume_body([stamped("type" => "approve")]).to_json)
+      end
+
+      it "sends the decisions unstamped without one" do
+        assistants.review_tool_calls(thread_id:, assistant_id:, context:,
+                                     tool_calls: { "call-1" => { "action" => "approve" } })
+
+        expect(WebMock).to have_requested(:post, run_url).with(body: resume_body([{ "type" => "approve" }]).to_json)
+      end
+    end
+
     describe "#review" do
       let(:resumed_run_body) { { "messages" => [human_message, draft_message] } }
 
