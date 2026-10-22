@@ -14,7 +14,7 @@ User-facing documentation is `docs/README.md` (configuration and usage) and `doc
 - `lib/nitro_intelligence/client/`: the inference client. `handlers/` holds one plain handler per modality (chat, image, audio transcription, text-to-speech) and `base_handler.rb` sets the gateway request headers; `handlers/observed/` holds the variants that trace to Cerebro; `observers/langfuse_observer.rb` records generations, cost and usage.
 - `lib/nitro_intelligence/observability/`: Cerebro projects, per-project Langfuse clients, prompt resolution and fallbacks, media upload.
 - `lib/nitro_intelligence/langfuse_extension.rb`, `langfuse_tracer_provider.rb`, `trace.rb`: extensions to langfuse-rb that allow several Langfuse clients (one per Cerebro project) in one process. Candidates for upstreaming to langfuse-rb.
-- `lib/nitro_intelligence/assistants.rb`, `assistant.rb`, `assistant_registry.rb`, `run_result.rb`, `pending_review.rb`, `tool_call_review_interrupt.rb`, `tool_call_review_validator.rb`: the NIP Assistants client and the review protocol for tool calls, replies (`__reply__`) and failed deliveries (`__delivery__`).
+- `lib/nitro_intelligence/assistants.rb`, `assistant.rb`, `assistant_registry.rb`, `run_result.rb`, `pending_review.rb`, `review_decision.rb`, `tool_call_review_interrupt.rb`, `tool_call_review_validator.rb`: the NIP Assistants client and the review protocol for tool calls, replies (`__reply__`) and failed deliveries (`__delivery__`).
 - `lib/nitro_intelligence/models/`: the model catalog built from `model_config` and the per-modality default models.
 - `lib/nitro_intelligence/media/`: image and audio inputs and image generation results.
 - `spec/`: RSpec suite, mirroring `lib/` under `spec/lib/`. HTTP is stubbed with WebMock.

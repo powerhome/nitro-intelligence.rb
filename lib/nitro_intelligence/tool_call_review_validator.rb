@@ -1,4 +1,5 @@
 require "active_support/core_ext/hash/indifferent_access"
+require "nitro_intelligence/review_decision"
 
 module NitroIntelligence
   # The reviews a caller submitted, checked against the tool calls the interrupt is holding, before
@@ -72,15 +73,10 @@ module NitroIntelligence
     end
 
     def validate_message!(tool_call_id:, review:, required:)
-      message = review[:message]
-
-      if message.nil?
-        raise_error!("Review for tool call #{tool_call_id} must include a message") if required
-        return
+      case ReviewDecision.message_problem(review[:message], required:)
+      when :missing then raise_error!("Review for tool call #{tool_call_id} must include a message")
+      when :not_string then raise_error!("Message for tool call #{tool_call_id} must be a string")
       end
-
-      raise_error!("Message for tool call #{tool_call_id} must be a string") unless message.is_a?(String)
-      raise_error!("Review for tool call #{tool_call_id} must include a message") if required && message.blank?
     end
 
     def validate_completeness!(submitted_tool_call_ids:, tool_calls_under_review:)

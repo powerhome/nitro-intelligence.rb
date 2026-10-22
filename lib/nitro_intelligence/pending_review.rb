@@ -1,4 +1,5 @@
 require "active_support/core_ext/hash/indifferent_access"
+require "nitro_intelligence/review_decision"
 require "nitro_intelligence/tool_call_review_interrupt"
 require "nitro_intelligence/tool_call_review_validator"
 
@@ -255,20 +256,18 @@ module NitroIntelligence
 
       case action
       when "approve"
-        { "type" => "approve" }
+        ReviewDecision.approve
       when "retry"
         # A delivery's own decision; a reply config that listed it would mean nothing to Assistants.
         raise_error!("Unsupported review action `retry` for the #{kind}") unless delivery?
 
         { "type" => "retry" }
       when "edit"
-        content = required_text!(review, :content, "edit")
-        { "type" => "edit", "edited_action" => { "name" => action_name, "args" => { "content" => content } } }
+        ReviewDecision.edit(action_name, { "content" => text!(review, :content, action:, required: true) })
       when "reject"
-        message = optional_text!(review, :message)
-        message.nil? ? { "type" => "reject" } : { "type" => "reject", "message" => message }
+        ReviewDecision.reject(text!(review, :message, action:, required: false))
       when "respond"
-        { "type" => "respond", "message" => required_text!(review, :message, "respond") }
+        ReviewDecision.respond(text!(review, :message, action:, required: true))
       else
         # Allowed by the interrupt but not a decision this client knows how to send. Refused rather
         # than guessed at, for the reason ToolCallReviewInterrupt gives.
@@ -276,20 +275,15 @@ module NitroIntelligence
       end
     end
 
-    def required_text!(review, field, action)
+    # A required field given as anything but non-blank text is reported as missing; an optional one
+    # may be absent, but not something other than a String.
+    def text!(review, field, action:, required:)
       value = review[field]
-      unless value.is_a?(String) && value.present?
-        raise_error!("A `#{action}` review of the #{kind} must include a non-empty `#{field}`")
-      end
+      return value unless ReviewDecision.message_problem(value, required:)
 
-      value
-    end
+      raise_error!("A `#{action}` review of the #{kind} must include a non-empty `#{field}`") if required
 
-    def optional_text!(review, field)
-      value = review[field]
-      raise_error!("`#{field}` for the #{kind} review must be a string") unless value.nil? || value.is_a?(String)
-
-      value
+      raise_error!("`#{field}` for the #{kind} review must be a string")
     end
 
     def raise_error!(message)
