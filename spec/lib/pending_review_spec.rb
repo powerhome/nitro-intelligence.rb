@@ -227,6 +227,79 @@ RSpec.describe NitroIntelligence::PendingReview do
         expect(pending_review.decisions("action" => "retry")).to eq([{ "type" => "retry" }])
       end
     end
+
+    it "has no failure time and no retries when the held reply carries no delivery stamp" do
+      expect(pending_review.delivery).to have_attributes(failed_at: nil, retries: [])
+    end
+
+    context "when the held reply's delivery stamp records the failure and earlier retries" do
+      let(:retry_entry) do
+        {
+          "reviewer_id" => "ops@example.com",
+          "reviewed_at" => "2026-10-22T07:00:00Z",
+          "error" => "Gateway timeout",
+          "attempts" => 3,
+        }
+      end
+      let(:stamp) do
+        {
+          "status" => "failed",
+          "tool" => "send_sms",
+          "attempts" => 3,
+          "error" => "Quiet hours: messages can't be sent before 8am",
+          "failed_at" => "2026-10-22T07:58:02Z",
+          "retries" => [retry_entry],
+        }
+      end
+      let(:messages) do
+        [
+          { "type" => "human", "id" => "human-1", "content" => "Thursday works." },
+          { "type" => "ai", "id" => "ai-0", "content" => "Earlier reply",
+            "response_metadata" => { "delivery" => { "failed_at" => "2026-10-01T00:00:00Z" } } },
+          { "type" => "ai", "id" => "ai-1", "content" => "Great, see you Thursday at 9am!",
+            "response_metadata" => { "delivery" => stamp } },
+        ]
+      end
+
+      it "reads them from the message the pause names" do
+        expect(pending_review.delivery.failed_at).to eq("2026-10-22T07:58:02Z")
+        expect(pending_review.delivery.retries).to eq(
+          [
+            described_class::DeliveryRetry.new(
+              reviewer_id: "ops@example.com", reviewed_at: "2026-10-22T07:00:00Z",
+              error: "Gateway timeout", attempts: 3
+            ),
+          ]
+        )
+      end
+
+      context "with malformed entries in the history" do
+        let(:stamp) do
+          {
+            "failed_at" => 1_729_583_882,
+            "retries" => ["retried", nil, retry_entry.merge("attempts" => "3", "error" => nil), retry_entry],
+          }
+        end
+
+        it "skips what is not an entry, and leaves out fields of the wrong type" do
+          expect(pending_review.delivery.failed_at).to be_nil
+          expect(pending_review.delivery.retries.map(&:to_h)).to eq(
+            [
+              retry_entry.symbolize_keys.merge(attempts: nil, error: nil),
+              retry_entry.symbolize_keys,
+            ]
+          )
+        end
+      end
+
+      context "when the history is not a list" do
+        let(:stamp) { { "retries" => { "reviewer_id" => "ops@example.com" } } }
+
+        it "reports no retries" do
+          expect(pending_review.delivery.retries).to eq([])
+        end
+      end
+    end
   end
 
   context "when the pause is on tool calls" do

@@ -33,9 +33,17 @@ module NitroIntelligence
     # The draft reply a reviewer is asked to approve, edit, reject or replace.
     Reply = Struct.new(:content, :allowed_decisions, :description, :interrupt_id, keyword_init: true)
 
-    # A settled reply the delivery tool kept failing to send.
-    Delivery = Struct.new(:content, :message_id, :error, :attempts, :allowed_decisions, :description,
-                          :interrupt_id, keyword_init: true)
+    # A settled reply the delivery tool kept failing to send. `failed_at` and `retries` come from the
+    # reply's own `response_metadata.delivery` stamp, so that a retry job can decide when to give up:
+    # `failed_at` is when the latest round failed, nil when the stamp does not say, and `retries` the
+    # manual retries so far, oldest first, empty until someone has retried it.
+    Delivery = Struct.new(:content, :message_id, :error, :attempts, :failed_at, :retries, :allowed_decisions,
+                          :description, :interrupt_id, keyword_init: true)
+
+    # One manual retry of a failed delivery: who retried it and when, and the failure it answered --
+    # that round's `error` and `attempts`. A field the stamp does not carry, or carries as something
+    # else than a string (an integer, for `attempts`), is nil.
+    DeliveryRetry = Struct.new(:reviewer_id, :reviewed_at, :error, :attempts, keyword_init: true)
 
     # The pending review in a thread state, or nil when the thread is not paused.
     def self.from_thread_state(thread_state)
@@ -110,6 +118,8 @@ module NitroIntelligence
         message_id: action_args["message_id"],
         error: action_args["error"],
         attempts: action_args["attempts"],
+        failed_at: string_or_nil(delivery_stamp["failed_at"]),
+        retries: delivery_retries,
         allowed_decisions:,
         description: action_requests.first["description"],
         interrupt_id:
@@ -174,6 +184,39 @@ module NitroIntelligence
 
     def interrupt_value
       @interrupt["value"] || {}
+    end
+
+    # The held reply's `response_metadata.delivery`: the AI message the pause names by `message_id`,
+    # among the messages this was built with. Empty when it is not among them.
+    def delivery_stamp
+      @delivery_stamp ||= begin
+        message_id = action_args["message_id"]
+        message = @messages.find do |candidate|
+          candidate.is_a?(Hash) && candidate["id"] == message_id && candidate.fetch("type", "ai") == "ai"
+        end
+        stamp = message_id.present? ? message&.dig("response_metadata", "delivery") : nil
+        stamp.is_a?(Hash) ? stamp : {}
+      end
+    end
+
+    # A malformed entry -- anything but an object -- is skipped rather than raised: the history is
+    # the platform's audit record, and a retry job reading it should not fail on one bad entry.
+    def delivery_retries
+      retries = delivery_stamp["retries"]
+      return [] unless retries.is_a?(Array)
+
+      retries.grep(Hash).map do |entry|
+        DeliveryRetry.new(
+          reviewer_id: string_or_nil(entry["reviewer_id"]),
+          reviewed_at: string_or_nil(entry["reviewed_at"]),
+          error: string_or_nil(entry["error"]),
+          attempts: entry["attempts"].is_a?(Integer) ? entry["attempts"] : nil
+        )
+      end
+    end
+
+    def string_or_nil(value)
+      value.is_a?(String) ? value : nil
     end
 
     def action_requests

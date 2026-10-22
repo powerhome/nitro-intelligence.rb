@@ -1725,6 +1725,30 @@ RSpec.describe NitroIntelligence::Assistants do
           )
         end
       end
+
+      context "when the run pauses on a delivery that was already retried" do
+        let(:failed_message) do
+          draft_message.merge(
+            "response_metadata" => {
+              "delivery" => {
+                "status" => "failed",
+                "failed_at" => "2026-10-22T07:58:02Z",
+                "retries" => [{ "reviewer_id" => "delivery-retry-job", "reviewed_at" => "2026-10-22T07:58:00Z",
+                                "error" => "Gateway timeout", "attempts" => 3 }],
+              },
+            }
+          )
+        end
+        let(:run_response_body) { { "messages" => [human_message, failed_message], "__interrupt__" => [delivery_interrupt] } }
+
+        it "reports when it last failed and who retried it, from the run's messages" do
+          delivery = assistants.run(thread_id:, assistant_id:, messages:, context:).review.delivery
+
+          expect(delivery.failed_at).to eq("2026-10-22T07:58:02Z")
+          expect(delivery.retries.map(&:reviewer_id)).to eq(["delivery-retry-job"])
+          expect(delivery.retries.first.attempts).to eq(3)
+        end
+      end
     end
 
     describe "#under_review" do
@@ -1732,6 +1756,19 @@ RSpec.describe NitroIntelligence::Assistants do
         stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
 
         expect(assistants.under_review(thread_id:).reply.content).to eq(draft)
+      end
+
+      it "reads a delivery's failure time and retries from the thread's messages" do
+        failed_message = draft_message.merge(
+          "response_metadata" => {
+            "delivery" => { "status" => "failed", "failed_at" => "2026-10-22T07:58:02Z", "retries" => [] },
+          }
+        )
+        stub_paused_thread(messages: [human_message, failed_message], interrupt: delivery_interrupt)
+
+        expect(assistants.under_review(thread_id:).delivery).to have_attributes(
+          failed_at: "2026-10-22T07:58:02Z", retries: []
+        )
       end
 
       it "is nil when the thread is not paused" do
