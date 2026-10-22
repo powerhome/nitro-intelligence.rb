@@ -9,7 +9,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
   let(:base_handler) { NitroIntelligence::Client::Handlers::ImageHandler.new(client: fake_openai_client) }
 
   let(:fake_prompt_store) { double("PromptStore") }
-  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token") }
+  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token", mask_content?: false) }
   let(:fake_upload_handler) { double("UploadHandler", auth_token: "auth_token", upload: nil, replace_base64_with_media_references: nil) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
   let(:fake_observer) { double("LangfuseObserver", project_client: fake_project_client) }
@@ -80,6 +80,22 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
       image_generation_result = handler.create(message: "draw a cat")
 
       expect(image_generation_result).to eq(fake_image_generation)
+    end
+
+    context "when the project masks content" do
+      before { allow(fake_project).to receive(:mask_content?).and_return(true) }
+
+      it "uploads no images and still returns the generation" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        allow(fake_completions).to receive(:create).and_return(fake_completion_response)
+        allow(fake_image_generation).to receive(:trace_id=)
+        allow(fake_image_generation).to receive(:parse_file)
+
+        expect(fake_upload_handler).not_to receive(:upload)
+        expect(fake_upload_handler).not_to receive(:replace_base64_with_media_references)
+
+        expect(handler.create(message: "draw a cat")).to eq(fake_image_generation)
+      end
     end
 
     # #create returns the image generation rather than the observation payload, so the

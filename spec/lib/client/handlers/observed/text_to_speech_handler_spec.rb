@@ -9,7 +9,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
   let(:base_handler) { NitroIntelligence::Client::Handlers::TextToSpeechHandler.new(client: fake_openai_client) }
 
   let(:fake_prompt_store) { double("PromptStore") }
-  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token") }
+  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token", mask_content?: false) }
   let(:fake_uploaded_media) { double("UploadedMedia", mime_type: "audio/mp3", reference_id: "media-321") }
   let(:fake_upload_handler) { double("UploadHandler", upload: nil, uploaded_media: [fake_uploaded_media]) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
@@ -65,6 +65,22 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
       # The requested model and the input are set on the observation before the
       # request runs, so they are deliberately not repeated here.
       expect(trace_attributes.keys).to eq(%i[output cost_details])
+    end
+
+    context "when the project masks content" do
+      before { allow(fake_project).to receive(:mask_content?).and_return(true) }
+
+      it "uploads no audio and returns the speech to the caller" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        allow(fake_speech).to receive(:create).and_return(fake_tts_response)
+
+        expect(fake_upload_handler).not_to receive(:upload)
+
+        tts, trace_attributes = handler.create(message: "say hi")
+
+        expect(tts).to eq(fake_tts_response)
+        expect(trace_attributes[:output]).to eq("")
+      end
     end
 
     it "carries the cost the gateway reported into the trace attributes" do

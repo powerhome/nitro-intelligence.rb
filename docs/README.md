@@ -30,6 +30,7 @@ NitroIntelligence.configure do |config|
       "id"         => "project-id",
       "public_key" => "pk-...",
       "secret_key" => "sk-...",
+      # "mask_content" => true,                  # Optional: keep prompts and responses out of Cerebro, see "Masking Content"
     },
   ]
 
@@ -89,7 +90,7 @@ end
 | `inference_max_retries`  | `Integer`     | `0`                   | Retries the SDK makes itself after a failed request. Off by default — see [Retries and Timeouts](#retries-and-timeouts) |
 | `inference_timeout`      | `Numeric`     | `nil`                 | Request timeout in seconds. `nil` keeps openai-ruby's default of 600 |
 | `observability_base_url` | `String`      | `"https://cerebro.powerhome.ai"` | Base URL for the Langfuse observability service. Defaults to Cerebro, so only a host talking to a different one needs to set it                                                                             |
-| `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key)                                                                                                                                            |
+| `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key). Add `"mask_content" => true` to keep a project's prompts and responses out of Cerebro, see [Masking Content](#masking-content)                                                                                                                                            |
 | `observability_user_id`  | `String`      | `""`                  | User ID recorded on observed traces when a request passes no `user_id` parameter — see [Users](#users) |
 | `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String, default: `"https://assistants.powerhome.ai"`) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new`, which takes the same two defaults — see [Assistants](#assistants) |
 | `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
@@ -439,6 +440,23 @@ The exception is then re-raised, so this changes what is observed, not how calle
 handle failures. Image generation is the one exception to input recording: its
 input carries base64 payloads that are replaced with media references only on
 success, so it records no input up front.
+
+### Masking Content
+
+A project can opt in to recording what happened without recording what was said. Set `"mask_content" => true` on its entry in `observability_projects`; projects that do not set it are unchanged.
+
+For a masked project, every observed request (chat, image generation, audio transcription and text-to-speech) is still traced, with its model, usage, cost, prompt link, tags, user, session, metadata and gateway call ID, but:
+
+* The input and output of the generation and of the trace are recorded as `[masked]`. The whole value is replaced, so reasoning, tool calls and anything else in a response are masked however the provider shaped it.
+* A failed request records the error class (for example `OpenAI::Errors::BadRequestError`) as its status message, without the error's own message, which can quote the request or the response.
+* No media is uploaded. Generated images, generated speech and transcribed audio never reach Cerebro. Callers still receive them as usual.
+
+Masking is not applied to what you choose to put on a trace yourself. **Do not put prompt or response content in `metadata`, `tags`, `session_id`, `user_id` or trace names**; metadata is the place for the identifiers that join a trace to your application's logs, and none of it is masked.
+
+Two things this does not cover:
+
+* **The inference gateway keeps its own logs.** Masking here affects Cerebro only. See the gateway documentation for what it stores and how a team can opt out.
+* **Prompts you fetch from Cerebro are unaffected.** Masking applies to traces, not to prompt management.
 
 ### Scoring
 

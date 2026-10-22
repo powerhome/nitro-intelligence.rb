@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A Cerebro project can now opt in to content masking with `"mask_content" => true` in `observability_projects`. For a masked project the input and output of every observed request are recorded as `[masked]`, a failure records its error class without its message, and no media is uploaded; model, usage, cost, prompt link, metadata and the gateway call ID are still recorded. Masking is applied by the gem on every write rather than through langfuse-rb's `mask`, which is read from process-global configuration and so cannot differ between projects. Projects that do not set the flag are unchanged.
+
 ### Changed
 
 - The client no longer retries failed requests by default. openai-ruby retried each `429`, `408`, `409` and `5xx` twice within about two seconds, which turned every rate-limited request into three rejected calls on top of any retries the caller made. Retries and the request timeout can now be set for every client (`inference_max_retries`, `inference_timeout`), for one client (`NitroIntelligence::Client.new(inference_max_retries:, inference_timeout:)`) or for one request (`request_options: { max_retries:, timeout: }`); set `inference_max_retries` to restore retries for every client. `generate_image` now keeps its image configuration when the caller passes `request_options`; before, the caller's options replaced it, dropping the requested aspect ratio and resolution. (#157)

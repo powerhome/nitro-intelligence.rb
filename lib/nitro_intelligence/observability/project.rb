@@ -6,19 +6,37 @@ module NitroIntelligence
     class Project
       class NotFoundError < StandardError; end
 
+      # Recorded in place of anything a masked project would otherwise send to Cerebro.
+      MASKED_CONTENT = "[masked]".freeze
+
       attr_reader :slug, :id, :public_key, :secret_key, :auth_token, :prompt_store
 
-      def initialize(slug:, id:, public_key:, secret_key:, **_kwargs)
+      def initialize(slug:, id:, public_key:, secret_key:, mask_content: false, **_kwargs)
         @slug = slug
         @id = id
         @public_key = public_key
         @secret_key = secret_key
         @auth_token = Base64.strict_encode64("#{public_key}:#{secret_key}")
+        @mask_content = mask_content ? true : false
         @prompt_store = PromptStore.new(
           observability_project_slug: slug,
           observability_public_key: public_key,
           observability_secret_key: secret_key
         )
+      end
+
+      def mask_content?
+        @mask_content
+      end
+
+      # Replaces the whole value rather than fields within it: the shape of a response
+      # varies by provider, and redacting named fields is what let reasoning leak
+      # through the gateway's own redaction. Absence stays absence, so an observation
+      # that never had an output does not gain one.
+      def mask(value)
+        return value if !mask_content? || value.nil?
+
+        MASKED_CONTENT
       end
 
       def self.find_by_slug(slug:)
