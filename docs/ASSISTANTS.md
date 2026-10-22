@@ -34,7 +34,7 @@ This is the main entry point when the host application wants to continue a threa
 
 | `RunResult` | What it is |
 | --- | --- |
-| `reply` | The text of the run's final reply. `nil` whenever the run paused, and when it ended without one (a rejected reply, or a run whose last message is not the assistant's) |
+| `reply` | The text of the run's final reply, always a `String`: content given as a list of blocks is reduced to its text blocks, joined. `nil` whenever the run paused, and when it ended without one (a rejected reply, a run whose last message is not the assistant's, or a reply that is empty or only whitespace) |
 | `interrupted?` | Whether the run paused for review |
 | `review` | What the paused run is waiting on, a `NitroIntelligence::PendingReview`; `nil` when it did not pause |
 | `messages` | The run's messages as Assistants reports them |
@@ -48,9 +48,11 @@ A run pauses on one of three things, never more than one at a time, and `review`
 | --- | --- | --- |
 | `tool_calls` | Tool calls the assistant holds for review | As [`#tool_calls_under_review`](#tool_calls_under_review) reports them; `[]` otherwise |
 | `reply` | The reply, when the assistant reviews replies (`__reply__`) | `content` (the draft), `allowed_decisions`, `description`, `interrupt_id`; `nil` otherwise |
-| `delivery` | A settled reply its delivery tool kept failing to send (`__delivery__`) | `content`, `message_id`, `error`, `attempts`, `allowed_decisions` (always `["retry", "reject"]`), `description`, `interrupt_id`; `nil` otherwise |
+| `delivery` | A settled reply its delivery tool kept failing to send (`__delivery__`) | `content`, `message_id`, `error`, `attempts`, `failed_at`, `retries`, `allowed_decisions` (always `["retry", "reject"]`), `description`, `interrupt_id`; `nil` otherwise |
 
 `review.kind` is `:tool_calls`, `:reply` or `:delivery`, and `review.interrupt_id` identifies the pause; pass it back to [`#review`](#review) so a superseded review is refused.
+
+A delivery's `error` and `attempts` describe the latest round of attempts. `failed_at` and `retries` come from the held reply's own `response_metadata.delivery` stamp, the message the pause names by `message_id`, so an application's retry job can decide when to give up: `failed_at` is when the latest round failed (an ISO 8601 string, `nil` when the stamp doesn't say), and `retries` the manual retries so far, oldest first, empty until someone has retried it. Each is a `NitroIntelligence::PendingReview::DeliveryRetry` with `reviewer_id`, `reviewed_at`, and the `error` and `attempts` of the round it answered. An entry that isn't an object is skipped, and a field of the wrong type is `nil`, rather than failing the read.
 
 A model turn with both text and a held tool call pauses twice: on its tool calls first, with `review.reply` `nil` (the draft text is already in the thread's messages, for a reviewer to read), and then, once they are decided, on its text.
 
@@ -290,6 +292,8 @@ pending.kind                # => :delivery
 pending.delivery.content    # => "Great, see you Thursday at 9am!"
 pending.delivery.error      # => "Quiet hours: messages can't be sent before 8am"
 pending.delivery.attempts   # => 3
+pending.delivery.failed_at  # => "2026-10-22T07:58:02Z"
+pending.delivery.retries    # => [] until someone has retried it
 pending.interrupt_id        # => "6f1c..."
 ```
 
