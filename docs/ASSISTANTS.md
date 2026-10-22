@@ -309,9 +309,11 @@ Resumes a paused thread with a reviewer's decision on whatever it is paused on, 
 
 The action must be one of the pause's `allowed_decisions`. A reply allows what the assistant's prompt config lists for `__reply__`; a delivery always allows `retry` and `reject`, and nothing else: its text was settled before the first attempt, so a delivery cannot be approved, edited or responded to. To say something else, reject it and reach the customer another way. A review naming an action that is not allowed, or missing a field it needs, raises `ThreadResumptionError` before anything is sent.
 
-`reviewer_id` (required) and `reviewed_at` (optional, a `Time` or an ISO 8601 string; now by default) are sent in every decision, which is where the platform reads them. It records them on the reply's `response_metadata.review` and in Cerebro, and never checks them: who may review is the application's decision.
+`reviewer_id` (required) and `reviewed_at` (optional, a `Time` or an ISO 8601 string; now by default) are sent in every decision, which is where the platform reads them. For a reply or a delivery, it records them on the reply's `response_metadata.review` (or its delivery stamp) and in Cerebro, and never checks them: who may review is the application's decision. For tool calls they are sent too, but nothing records them: tool calls are reviewed by LangChain's `HumanInTheLoopMiddleware`, which ignores them, so an application that needs to know who reviewed a tool call has to keep that itself.
 
-Pass the `interrupt_id` of the review the reviewer was shown. If the thread has moved on since -- a new message superseded the review, or another reviewer decided it first -- it is no longer paused on that interrupt, and `#review` raises `ReviewSupersededError` (a `ThreadResumptionError`) rather than applying the decision to whatever the thread is waiting on now. It raises the same when the thread is not paused at all, or its run is under way again. Without `interrupt_id`, only the kind of pause is checked: a reply review sent to a thread paused on tool calls raises `ThreadResumptionError`, but a reply review would decide a newer draft. The check and the resume are separate requests, so two reviewers deciding at the same instant can both pass it. Assistants accepts the first resume and refuses any other while the thread is no longer paused, and `#review` reports that refusal as `ReviewSupersededError` too: the first resume wins.
+Pass the `interrupt_id` of the review the reviewer was shown. If the thread has moved on since -- a new message superseded the review, or another reviewer decided it first -- it is no longer paused on that interrupt, and `#review` raises `ReviewSupersededError` (a `ThreadResumptionError`) rather than applying the decision to whatever the thread is waiting on now. It raises the same when the thread is not paused at all, or its run is under way again. Without `interrupt_id`, only the kind of pause is checked before resuming: a reply review sent to a thread paused on tool calls raises `ThreadResumptionError`, but a reply review would decide a newer draft that was already pending when it was sent.
+
+The check and the resume are separate requests, so the thread can move on between them, and a pause can follow at once: a turn's reply right after its tool calls are decided, a delivery that fails again. To keep a decision from landing on a pause its reviewer never saw, `#review` keys the resume by the interrupt it read, `command.resume = {"<interrupt id>" => {"decisions" => [...]}}`. Assistants applies a keyed resume to that interrupt only; keyed by one that is no longer pending, it decides nothing and the thread stays paused on the newer one. That a stale decision is never applied is guaranteed. Reporting it is best-effort: when the resumed run comes back paused on a different interrupt that still sits on a checkpoint another run wrote, `#review` raises `ReviewSupersededError`; when it cannot tell (the response does not name its run, or the thread has moved on again by the time it is read), it returns the result, paused on the newer interrupt with nothing decided. A resume Assistants refuses because the thread is no longer paused at all is reported as `ReviewSupersededError` too. Either way, the first resume wins.
 
 The resumed run can pause again: a turn whose tool calls were just decided pauses on its text, and a reply whose delivery fails pauses on the delivery. Read the returned result as you would [`#run`](#run)'s.
 
@@ -348,14 +350,18 @@ assistant.review(
   context: context
 )
 
-# Retry a failed delivery from a background job once quiet hours are over.
-assistant.review(
-  thread_id: thread_id,
-  reviewer_id: "delivery-retry-job",
-  interrupt_id: pending.interrupt_id,
-  delivery: { "action" => "retry" },
-  context: context
-)
+# Later, retry a failed delivery from a background job once quiet hours are over.
+# Read the pause again: the one above was the reply's, and this is a new one.
+failed = assistant.under_review(thread_id: thread_id)
+if failed&.delivery?
+  assistant.review(
+    thread_id: thread_id,
+    reviewer_id: "delivery-retry-job",
+    interrupt_id: failed.interrupt_id,
+    delivery: { "action" => "retry" },
+    context: context
+  )
+end
 ```
 
 ## `#review_tool_calls`
@@ -405,7 +411,9 @@ assistants.review_tool_calls(
 
 `context` is optional and is sent with the resumed run, exactly as it is for `#await_run`. Pass the `prompt_variables` the assistant's prompt needs if the resumed run has to render it again.
 
-`reviewer_id` and `reviewed_at` are optional. Given a `reviewer_id`, each decision carries both, as [`#review`](#review) sends them (`reviewed_at` is now unless given); without one, the decisions carry neither. `#review` with `tool_calls:` takes the same reviews, requires a reviewer, refuses a superseded review and returns the resumed run's result; this method is a thin wrapper that returns `nil`.
+`reviewer_id` and `reviewed_at` are optional. Given a `reviewer_id`, each decision carries both, as [`#review`](#review) sends them (`reviewed_at` is now unless given); without one, the decisions carry neither. Assistants records nothing about who reviewed a tool call: LangChain's middleware, which reviews tool calls, ignores both, so an application that needs the attribution has to keep it itself.
+
+The resume is keyed by the interrupt read before it, as [`#review`](#review) keys its own, so it never decides a pause that appeared in between; when the run shows it decided nothing, this raises `ReviewSupersededError` (a `ThreadResumptionError`). `#review` with `tool_calls:` takes the same reviews, requires a reviewer, also checks an `interrupt_id` before resuming, and returns the resumed run's result; this method is a thin wrapper that returns `nil`.
 
 ### Response
 
