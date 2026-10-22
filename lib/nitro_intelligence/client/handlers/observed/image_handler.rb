@@ -18,7 +18,7 @@ module NitroIntelligence
 
             # Modifies parameters in place
             prompt = handle_prompt(parameters:)
-            trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
+            trace_name = parameters[:trace_name] || prompt&.name || project.slug
 
             @observer.observe(
               "image-generation",
@@ -35,6 +35,10 @@ module NitroIntelligence
 
         private
 
+          def project
+            @observer.project_client.project
+          end
+
           def build_image_generation(message:, target_image:, reference_images:, parameters:)
             NitroIntelligence::ImageGeneration.new(message:, target_image:, reference_images:) do |config|
               config.aspect_ratio = parameters[:aspect_ratio] if parameters.key?(:aspect_ratio)
@@ -44,9 +48,13 @@ module NitroIntelligence
           end
 
           def handle_image_generation_uploads(input, output, image_generation)
+            # Uploads go to Cerebro's media API directly, past any masking, and a masked
+            # project records no input or output for a media reference to sit in.
+            return if project.mask_content?
+
             # If we are doing image generation we should upload the media to observability manually
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(
-              auth_token: @observer.project_client.project.auth_token
+              auth_token: project.auth_token
             )
             upload_handler.upload(
               image_generation.trace_id,
@@ -60,7 +68,7 @@ module NitroIntelligence
 
           def handle_prompt(parameters:)
             prompt = NitroIntelligence::Observability::PromptResolver.for(
-              store: @observer.project_client.project.prompt_store,
+              store: project.prompt_store,
               parameters:
             )
             return nil if prompt.blank?

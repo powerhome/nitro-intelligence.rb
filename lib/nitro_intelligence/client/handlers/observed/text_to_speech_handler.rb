@@ -18,7 +18,7 @@ module NitroIntelligence
 
             @base_handler.validate_and_resolve!(parameters)
 
-            trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
+            trace_name = parameters[:trace_name] || prompt&.name || project.slug
 
             @observer.observe(
               "text-to-speech",
@@ -34,9 +34,13 @@ module NitroIntelligence
 
         private
 
+          def project
+            @observer.project_client.project
+          end
+
           def handle_prompt(parameters:)
             prompt = NitroIntelligence::Observability::PromptResolver.for(
-              store: @observer.project_client.project.prompt_store,
+              store: project.prompt_store,
               parameters:
             )
             return nil if prompt.blank?
@@ -55,8 +59,12 @@ module NitroIntelligence
           end
 
           def handle_text_to_speech_upload(tts_file, trace_id)
+            # Uploads go to Cerebro's media API directly, past any masking. A masked
+            # project has no media reference to record; the observer masks the output.
+            return "" if project.mask_content?
+
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(
-              auth_token: @observer.project_client.project.auth_token
+              auth_token: project.auth_token
             )
             upload_handler.upload(
               trace_id,
