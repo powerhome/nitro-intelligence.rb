@@ -48,7 +48,7 @@ A run pauses on one of three things, never more than one at a time, and `review`
 | --- | --- | --- |
 | `tool_calls` | Tool calls the assistant holds for review | As [`#tool_calls_under_review`](#tool_calls_under_review) reports them; `[]` otherwise |
 | `reply` | The reply, when the assistant reviews replies (`__reply__`) | `content` (the draft), `allowed_decisions`, `description`, `interrupt_id`; `nil` otherwise |
-| `delivery` | A settled reply its delivery tool kept failing to send (`__delivery__`) | `content`, `message_id`, `error`, `attempts`, `allowed_decisions`, `description`, `interrupt_id`; `nil` otherwise |
+| `delivery` | A settled reply its delivery tool kept failing to send (`__delivery__`) | `content`, `message_id`, `error`, `attempts`, `allowed_decisions` (always `["retry", "reject"]`), `description`, `interrupt_id`; `nil` otherwise |
 
 `review.kind` is `:tool_calls`, `:reply` or `:delivery`, and `review.interrupt_id` identifies the pause; pass it back to [`#review`](#review) so a superseded review is refused.
 
@@ -303,12 +303,11 @@ Resumes a paused thread with a reviewer's decision on whatever it is paused on, 
 | | | `edit` replaces it, same message id | `content`, required |
 | | | `respond` replaces it with a reply the reviewer wrote | `message`, required |
 | | | `reject` removes it; any tool calls left in the turn still run, otherwise the run ends with no reply | `message`, optional: a reason recorded in Cerebro, never shown to the model |
-| Delivery | `delivery:` | `approve` retries with the same text | — |
-| | | `edit` delivers the new text instead, under the same message id | `content`, required |
+| Delivery | `delivery:` | `retry` delivers the same text again, under the same message id | — |
 | | | `reject` gives up and removes the reply | `message`, optional reason |
 | Tool calls | `tool_calls:` | As [`#review_tool_calls`](#review_tool_calls) takes them, keyed by tool call id | |
 
-The action must be one of the pause's `allowed_decisions`. A reply allows what the assistant's prompt config lists for `__reply__`; a delivery always allows `approve`, `edit` and `reject`. A review naming an action that is not allowed, or missing a field it needs, raises `ThreadResumptionError` before anything is sent.
+The action must be one of the pause's `allowed_decisions`. A reply allows what the assistant's prompt config lists for `__reply__`; a delivery always allows `retry` and `reject`, and nothing else: its text was settled before the first attempt, so a delivery cannot be approved, edited or responded to. To say something else, reject it and reach the customer another way. A review naming an action that is not allowed, or missing a field it needs, raises `ThreadResumptionError` before anything is sent.
 
 `reviewer_id` (required) and `reviewed_at` (optional, a `Time` or an ISO 8601 string; now by default) are sent in every decision, which is where the platform reads them. It records them on the reply's `response_metadata.review` and in Cerebro, and never checks them: who may review is the application's decision.
 
@@ -354,7 +353,7 @@ assistant.review(
   thread_id: thread_id,
   reviewer_id: "delivery-retry-job",
   interrupt_id: pending.interrupt_id,
-  delivery: { "action" => "approve" },
+  delivery: { "action" => "retry" },
   context: context
 )
 ```
