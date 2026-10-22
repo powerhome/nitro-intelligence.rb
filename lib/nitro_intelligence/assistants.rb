@@ -157,9 +157,7 @@ module NitroIntelligence
 
       # Assistants refuses a resume once the thread is no longer paused, which is how the first of
       # two reviews deciding at once wins. The second is superseded, as the check above reports it.
-      raise ReviewSupersededError,
-            "Thread #{thread_id} is no longer paused on #{pending_review&.interrupt_id || 'a review'}: " \
-            "another review already resumed it, or a new message superseded it"
+      superseded!(thread_id, pending_review&.interrupt_id)
     end
 
     # Resumes an interrupted thread with one review per tool call the interrupt is holding. Each
@@ -307,9 +305,7 @@ module NitroIntelligence
                        PendingReview.from_thread_state(get_thread_state(thread_id:))
 
       if !pending_review || (interrupt_id.present? && pending_review.interrupt_id != interrupt_id)
-        raise ReviewSupersededError,
-              "Thread #{thread_id} is no longer paused on #{interrupt_id.presence || 'a review'}: " \
-              "a new message superseded it or another review already decided it"
+        superseded!(thread_id, interrupt_id)
       end
 
       if pending_review.kind != kind
@@ -334,10 +330,15 @@ module NitroIntelligence
       run, run_id = resume_run_with_id(thread_id:, assistant_id:, resume: pending_review.resume(decisions), context:)
       return run unless pending_review.unapplied_resume?(run:, run_id:) { get_thread_state(thread_id:) }
 
-      raise ReviewSupersededError,
-            "Thread #{thread_id} is no longer paused on #{pending_review.interrupt_id}: another review already " \
-            "resumed it, and it is now paused on #{PendingReview.from_run(run).interrupt_id}; " \
-            "the decision was not applied"
+      superseded!(thread_id, pending_review.interrupt_id, now_paused_on: PendingReview.from_run(run).interrupt_id)
+    end
+
+    def superseded!(thread_id, interrupt_id, now_paused_on: nil)
+      message = "Thread #{thread_id} is no longer paused on #{interrupt_id.presence || 'a review'}: " \
+                "another review already resumed it, or a new message superseded it"
+      message += "; it is now paused on #{now_paused_on}, and the decision was not applied" if now_paused_on
+
+      raise ReviewSupersededError, message
     end
 
     def review_time(reviewed_at)

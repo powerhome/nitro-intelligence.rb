@@ -2090,7 +2090,8 @@ RSpec.describe NitroIntelligence::Assistants do
           expect { review_tools }.to raise_error(
             NitroIntelligence::Assistants::ReviewSupersededError,
             "Thread #{thread_id} is no longer paused on interrupt-tools: another review already resumed it, " \
-            "and it is now paused on interrupt-mixed-reply; the decision was not applied"
+            "or a new message superseded it; it is now paused on interrupt-mixed-reply, and the decision was " \
+            "not applied"
           )
         end
 
