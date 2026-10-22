@@ -45,7 +45,7 @@ RSpec.describe NitroIntelligence::PendingReview do
           },
         ],
         "review_configs" => [
-          { "action_name" => "__delivery__", "allowed_decisions" => %w[approve edit reject] },
+          { "action_name" => "__delivery__", "allowed_decisions" => %w[retry reject] },
         ],
       },
     }
@@ -138,6 +138,15 @@ RSpec.describe NitroIntelligence::PendingReview do
         .to raise_error(resumption_error, "Invalid review action `respond` for the reply; allowed: approve, edit, reject")
     end
 
+    context "when the reply's config lists retry" do
+      let(:reply_allowed_decisions) { %w[approve retry] }
+
+      it "refuses it, as a delivery's decision only" do
+        expect { pending_review.decisions("action" => "retry") }
+          .to raise_error(resumption_error, "Unsupported review action `retry` for the reply")
+      end
+    end
+
     it "refuses an edit without content" do
       expect { pending_review.decisions("action" => "edit", "content" => " ") }
         .to raise_error(resumption_error, /`edit` review of the reply must include a non-empty `content`/)
@@ -164,38 +173,50 @@ RSpec.describe NitroIntelligence::PendingReview do
         message_id: "ai-1",
         error: "Quiet hours: messages can't be sent before 8am",
         attempts: 3,
-        allowed_decisions: %w[approve edit reject],
+        allowed_decisions: %w[retry reject],
         interrupt_id: "interrupt-delivery"
       )
       expect(pending_review.reply).to be_nil
       expect(pending_review.tool_calls).to eq([])
     end
 
-    it "edits under the __delivery__ action" do
-      expect(pending_review.decisions("action" => "edit", "content" => "See you Thursday!")).to eq(
-        [{ "type" => "edit", "edited_action" => { "name" => "__delivery__", "args" => { "content" => "See you Thursday!" } } }]
-      )
+    it "retries" do
+      expect(pending_review.decisions("action" => "retry")).to eq([{ "type" => "retry" }])
     end
 
-    it "refuses respond, which a delivery never allows" do
-      expect { pending_review.decisions("action" => "respond", "message" => "Hi") }
-        .to raise_error(resumption_error, /Invalid review action `respond` for the delivery/)
+    it "gives up, with or without a reason" do
+      expect(pending_review.decisions("action" => "reject", "message" => "Customer opted out")).to eq(
+        [{ "type" => "reject", "message" => "Customer opted out" }]
+      )
+      expect(pending_review.decisions("action" => "reject")).to eq([{ "type" => "reject" }])
+    end
+
+    it "refuses approve, edit and respond, which a delivery never allows" do
+      [
+        { "action" => "approve" },
+        { "action" => "edit", "content" => "See you Thursday!" },
+        { "action" => "respond", "message" => "Hi" },
+      ].each do |review|
+        expect { pending_review.decisions(review) }
+          .to raise_error(resumption_error,
+                          "Invalid review action `#{review['action']}` for the delivery; allowed: retry, reject")
+      end
     end
 
     context "when the interrupt lists other decisions than the fixed ones" do
       let(:interrupt) do
         delivery_interrupt.deep_merge(
           "value" => {
-            "review_configs" => [{ "action_name" => "__delivery__", "allowed_decisions" => %w[approve respond] }],
+            "review_configs" => [{ "action_name" => "__delivery__", "allowed_decisions" => %w[approve edit] }],
           }
         )
       end
 
-      it "still allows approve, edit and reject, and only those" do
-        expect(pending_review.delivery.allowed_decisions).to eq(%w[approve edit reject])
+      it "still allows retry and reject, and only those" do
+        expect(pending_review.delivery.allowed_decisions).to eq(%w[retry reject])
         expect(pending_review.decisions("action" => "reject")).to eq([{ "type" => "reject" }])
-        expect { pending_review.decisions("action" => "respond", "message" => "Hi") }
-          .to raise_error(resumption_error, /Invalid review action `respond` for the delivery/)
+        expect { pending_review.decisions("action" => "edit", "content" => "Hi") }
+          .to raise_error(resumption_error, /Invalid review action `edit` for the delivery/)
       end
     end
 
@@ -203,7 +224,7 @@ RSpec.describe NitroIntelligence::PendingReview do
       let(:interrupt) { delivery_interrupt.deep_merge("value" => { "review_configs" => [] }) }
 
       it "allows the fixed decisions" do
-        expect(pending_review.decisions("action" => "approve")).to eq([{ "type" => "approve" }])
+        expect(pending_review.decisions("action" => "retry")).to eq([{ "type" => "retry" }])
       end
     end
   end

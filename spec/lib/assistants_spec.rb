@@ -1619,7 +1619,7 @@ RSpec.describe NitroIntelligence::Assistants do
               "description" => "This reply couldn't be delivered.",
             },
           ],
-          "review_configs" => [{ "action_name" => "__delivery__", "allowed_decisions" => %w[approve edit reject] }],
+          "review_configs" => [{ "action_name" => "__delivery__", "allowed_decisions" => %w[retry reject] }],
         },
       }
     end
@@ -1705,7 +1705,8 @@ RSpec.describe NitroIntelligence::Assistants do
             content: draft,
             message_id: "ai-1",
             error: "Quiet hours: messages can't be sent before 8am",
-            attempts: 3
+            attempts: 3,
+            allowed_decisions: %w[retry reject]
           )
         end
       end
@@ -1845,7 +1846,7 @@ RSpec.describe NitroIntelligence::Assistants do
       end
 
       it "requires exactly one thing to review" do
-        expect { review(reply: { "action" => "approve" }, delivery: { "action" => "approve" }) }
+        expect { review(reply: { "action" => "approve" }, delivery: { "action" => "retry" }) }
           .to raise_error(ArgumentError, "pass exactly one of reply:, tool_calls: or delivery:")
         expect { review }.to raise_error(ArgumentError, "pass exactly one of reply:, tool_calls: or delivery:")
       end
@@ -1929,28 +1930,34 @@ RSpec.describe NitroIntelligence::Assistants do
       context "when the reply's delivery failed" do
         before { stub_paused_thread(messages: [human_message, draft_message], interrupt: delivery_interrupt) }
 
-        it "retries on approve" do
-          review(delivery: { "action" => "approve" }, interrupt_id: "interrupt-delivery")
+        it "retries" do
+          review(delivery: { "action" => "retry" }, interrupt_id: "interrupt-delivery")
 
           expect(WebMock).to have_requested(:post, run_url)
-            .with(body: resume_body([stamped("type" => "approve")]).to_json)
+            .with(body: resume_body([stamped("type" => "retry")]).to_json)
         end
 
-        it "delivers edited text under the __delivery__ action" do
-          review(delivery: { "action" => "edit", "content" => "See you Tuesday!" })
+        it "gives up with a reason" do
+          review(delivery: { "action" => "reject", "message" => "Customer opted out" })
 
-          expect(WebMock).to have_requested(:post, run_url).with(
-            body: resume_body(
-              [stamped("type" => "edit",
-                       "edited_action" => { "name" => "__delivery__", "args" => { "content" => "See you Tuesday!" } })]
-            ).to_json
-          )
+          expect(WebMock).to have_requested(:post, run_url)
+            .with(body: resume_body([stamped("type" => "reject", "message" => "Customer opted out")]).to_json)
+        end
+
+        it "refuses approve and edit before resuming" do
+          [{ "action" => "approve" }, { "action" => "edit", "content" => "See you Tuesday!" }].each do |delivery|
+            expect { review(delivery:) }.to raise_error(
+              NitroIntelligence::Assistants::ThreadResumptionError,
+              "Invalid review action `#{delivery['action']}` for the delivery; allowed: retry, reject"
+            )
+          end
+          expect(WebMock).not_to have_requested(:post, run_url)
         end
 
         it "reports a delivery that pauses again" do
           stub_json(:post, run_url, { "messages" => [human_message, draft_message], "__interrupt__" => [delivery_interrupt] })
 
-          result = review(delivery: { "action" => "approve" })
+          result = review(delivery: { "action" => "retry" })
 
           expect(result.reply).to be_nil
           expect(result.review.delivery.attempts).to eq(3)

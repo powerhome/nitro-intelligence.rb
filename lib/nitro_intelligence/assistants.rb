@@ -119,8 +119,8 @@ module NitroIntelligence
     # - `reply:`, a single review of the held draft: `{"action" => "approve"}`,
     #   `{"action" => "edit", "content" => "..."}`, `{"action" => "reject", "message" => "reason"}` or
     #   `{"action" => "respond", "message" => "..."}`;
-    # - `delivery:`, a single review of an undelivered reply: approve retries, edit delivers the new
-    #   `content` instead, reject gives up;
+    # - `delivery:`, a single review of an undelivered reply: `{"action" => "retry"}` delivers the
+    #   same text again, `{"action" => "reject", "message" => "reason"}` gives up;
     # - `tool_calls:`, reviews keyed by tool call id, as #review_tool_calls takes them.
     #
     # Every decision sent carries `reviewer_id` and `reviewed_at` (now, unless given), which the

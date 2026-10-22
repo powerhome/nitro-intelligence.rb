@@ -24,9 +24,11 @@ module NitroIntelligence
     DELIVERY_ACTION = "__delivery__".freeze
 
     # A failed delivery is not reviewed by policy but recovered from, so its decisions are fixed
-    # rather than configured: retry, retry with other text, or give up. `respond` would do the same
-    # as `edit` for a reply already written, and is never allowed.
-    DELIVERY_DECISIONS = %w[approve edit reject].freeze
+    # rather than configured: deliver the same text again, or give up. What the reply says was
+    # settled before the first attempt, so nothing here changes it: there is no `edit` or `respond`.
+    # `retry` is the pause's own decision rather than LangChain's `approve`, since nothing is
+    # approved by it.
+    DELIVERY_DECISIONS = %w[retry reject].freeze
 
     # The draft reply a reviewer is asked to approve, edit, reject or replace.
     Reply = Struct.new(:content, :allowed_decisions, :description, :interrupt_id, keyword_init: true)
@@ -177,6 +179,11 @@ module NitroIntelligence
       case action
       when "approve"
         { "type" => "approve" }
+      when "retry"
+        # A delivery's own decision; a reply config that listed it would mean nothing to Assistants.
+        raise_error!("Unsupported review action `retry` for the #{kind}") unless delivery?
+
+        { "type" => "retry" }
       when "edit"
         content = required_text!(review, :content, "edit")
         { "type" => "edit", "edited_action" => { "name" => action_name, "args" => { "content" => content } } }
