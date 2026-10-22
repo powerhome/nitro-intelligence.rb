@@ -181,6 +181,31 @@ RSpec.describe NitroIntelligence::PendingReview do
       expect { pending_review.decisions("action" => "respond", "message" => "Hi") }
         .to raise_error(resumption_error, /Invalid review action `respond` for the delivery/)
     end
+
+    context "when the interrupt lists other decisions than the fixed ones" do
+      let(:interrupt) do
+        delivery_interrupt.deep_merge(
+          "value" => {
+            "review_configs" => [{ "action_name" => "__delivery__", "allowed_decisions" => %w[approve respond] }],
+          }
+        )
+      end
+
+      it "still allows approve, edit and reject, and only those" do
+        expect(pending_review.delivery.allowed_decisions).to eq(%w[approve edit reject])
+        expect(pending_review.decisions("action" => "reject")).to eq([{ "type" => "reject" }])
+        expect { pending_review.decisions("action" => "respond", "message" => "Hi") }
+          .to raise_error(resumption_error, /Invalid review action `respond` for the delivery/)
+      end
+    end
+
+    context "when the interrupt carries no review config" do
+      let(:interrupt) { delivery_interrupt.deep_merge("value" => { "review_configs" => [] }) }
+
+      it "allows the fixed decisions" do
+        expect(pending_review.decisions("action" => "approve")).to eq([{ "type" => "approve" }])
+      end
+    end
   end
 
   context "when the pause is on tool calls" do

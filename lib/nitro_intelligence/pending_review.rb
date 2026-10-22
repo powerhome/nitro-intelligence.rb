@@ -23,6 +23,11 @@ module NitroIntelligence
     REPLY_ACTION = "__reply__".freeze
     DELIVERY_ACTION = "__delivery__".freeze
 
+    # A failed delivery is not reviewed by policy but recovered from, so its decisions are fixed
+    # rather than configured: retry, retry with other text, or give up. `respond` would do the same
+    # as `edit` for a reply already written, and is never allowed.
+    DELIVERY_DECISIONS = %w[approve edit reject].freeze
+
     # The draft reply a reviewer is asked to approve, edit, reject or replace.
     Reply = Struct.new(:content, :allowed_decisions, :description, :interrupt_id, keyword_init: true)
 
@@ -148,6 +153,8 @@ module NitroIntelligence
     end
 
     def allowed_decisions
+      return DELIVERY_DECISIONS if delivery?
+
       review_config = Array(interrupt_value["review_configs"]).find do |config|
         config["action_name"] == action_name
       end
