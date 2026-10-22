@@ -65,6 +65,38 @@ RSpec.describe NitroIntelligence::RunResult do
     end
   end
 
+  context "when the reply's content is a list of blocks" do
+    let(:blocks) do
+      [
+        { "type" => "reasoning", "reasoning" => "The customer wants Tuesday." },
+        { "type" => "text", "text" => "Sure! " },
+        "Tuesday at 10am works.",
+        { "type" => "tool_use", "id" => "c", "name" => "noop", "input" => {} },
+      ]
+    end
+    let(:run) { { "messages" => [human, draft.merge("content" => blocks)] } }
+
+    it "returns its text blocks joined, as a string" do
+      expect(result.reply).to eq("Sure! Tuesday at 10am works.")
+    end
+  end
+
+  context "when the reply's blocks carry no text" do
+    let(:run) { { "messages" => [human, draft.merge("content" => [{ "type" => "tool_use", "id" => "c" }])] } }
+
+    it "has no reply" do
+      expect(result.reply).to be_nil
+    end
+  end
+
+  context "when the reply is blank" do
+    let(:run) { { "messages" => [human, draft.merge("content" => "  \n")] } }
+
+    it "has no reply" do
+      expect(result.reply).to be_nil
+    end
+  end
+
   it "keeps the raw response" do
     expect(described_class.new("messages" => []).raw).to eq("messages" => [])
   end

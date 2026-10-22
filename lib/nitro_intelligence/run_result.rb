@@ -32,7 +32,8 @@ module NitroIntelligence
 
     # The text of the run's final reply. Nil when the run paused, and when it ended without one: a
     # rejected or abandoned draft is removed from the conversation, leaving the human's message (or
-    # a tool result) last, and an AI message that only calls tools says nothing to anyone.
+    # a tool result) last, and an AI message that only calls tools says nothing to anyone. Always a
+    # String: content given as blocks is reduced to its text, and blank text is no reply.
     def reply
       return nil if interrupted?
 
@@ -40,8 +41,23 @@ module NitroIntelligence
       return nil if message.nil?
       return nil if message["type"].present? && message["type"] != "ai"
 
-      content = message["content"]
-      content.presence
+      text(message["content"]).presence
+    end
+
+  private
+
+    # A message's content is a string, or a list of content blocks. Its text is the string, or the
+    # bare strings and `text` blocks joined, as the platform reads it (LangChain's `message.text`);
+    # other blocks -- tool use, reasoning, images -- are not part of the reply.
+    def text(content)
+      return content if content.is_a?(String)
+      return nil unless content.is_a?(Array)
+
+      content.filter_map do |block|
+        next block if block.is_a?(String)
+
+        block["text"] if block.is_a?(Hash) && block["type"] == "text" && block["text"].is_a?(String)
+      end.join
     end
   end
 end
