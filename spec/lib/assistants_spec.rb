@@ -1889,6 +1889,31 @@ RSpec.describe NitroIntelligence::Assistants do
         end
       end
 
+      context "when another review resumes the thread between the check and the resume" do
+        before do
+          stub_json(:post, run_url, { "detail" => "Cannot resume: thread is not in interrupted state" }, status: 400)
+        end
+
+        it "reports the review Assistants refused as superseded, since the first resume won" do
+          expect { review(reply: { "action" => "approve" }, interrupt_id: "interrupt-reply") }.to raise_error(
+            NitroIntelligence::Assistants::ReviewSupersededError,
+            /no longer paused on interrupt-reply: another review already resumed it/
+          )
+        end
+      end
+
+      context "when the resume fails for another reason" do
+        before { stub_json(:post, run_url, { "detail" => "boom" }, status: 500) }
+
+        it "raises the failure as a ThreadResumptionError, not as superseded" do
+          expect { review(reply: { "action" => "approve" }) }.to raise_error(
+            an_instance_of(NitroIntelligence::Assistants::ThreadResumptionError).and(
+              having_attributes(message: '{"detail":"boom"}')
+            )
+          )
+        end
+      end
+
       context "when the thread is paused on something else" do
         before { stub_paused_thread(messages: [human_message, mixed_message], interrupt: tool_interrupt) }
 

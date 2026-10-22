@@ -19,6 +19,9 @@ module NitroIntelligence
 
     PAUSE_NAMES = { tool_calls: "tool calls", reply: "a reply", delivery: "a delivery" }.freeze
 
+    # What Assistants answers, with a 400, to a resume of a thread that is no longer paused.
+    NOT_INTERRUPTED_REFUSAL = "thread is not in interrupted state".freeze
+
     # Assistants answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
     THREAD_CONFLICT_CODE = 409
 
@@ -140,6 +143,14 @@ module NitroIntelligence
       run = resume_review(thread_id:, assistant_id:, pending_review:, reviews:, reviewer_id:, reviewed_at:, context:)
 
       RunResult.new(run)
+    rescue ThreadResumptionError => e
+      raise unless e.message.include?(NOT_INTERRUPTED_REFUSAL)
+
+      # Assistants refuses a resume once the thread is no longer paused, which is how the first of
+      # two reviews deciding at once wins. The second is superseded, as the check above reports it.
+      raise ReviewSupersededError,
+            "Thread #{thread_id} is no longer paused on #{pending_review&.interrupt_id || 'a review'}: " \
+            "another review already resumed it, or a new message superseded it"
     end
 
     # Resumes an interrupted thread with one review per tool call the interrupt is holding. Each
