@@ -26,6 +26,12 @@ assistants = NitroIntelligence::Assistants.new(
 )
 ```
 
+## Upgrading to 4.0
+
+- `#await_run` returns `nil` while the run is paused for review, and when it ended without a reply, rather than the last message's content. Use [`#run`](#run) to see what a paused run is waiting on.
+- Pass `context:` to [`#review`](#review) and [`#review_tool_calls`](#review_tool_calls) when the resumed run has to render the assistant's prompt again: Assistants takes it from the caller, not from the interrupt.
+- Not every `ThreadResumptionError` message is a response body. `ReviewSupersededError` and validation failures carry plain text, so code that parses the message as JSON has to handle text too.
+
 ## `#run`
 
 Initializes a thread if needed, seeds it with the prior messages in the conversation, sends the latest message to the agent, and waits for the run to end or to pause for review. Returns a `NitroIntelligence::RunResult`.
