@@ -139,6 +139,13 @@ RSpec.describe NitroIntelligence::Assistant do
       assistant.review_tool_calls(thread_id: "t1", tool_calls: [], context: { a: 1 })
     end
 
+    it "forwards the reviewer on a tool call review" do
+      expect(client).to receive(:review_tool_calls)
+        .with(thread_id: "t1", assistant_id: "id-cc", tool_calls: [], reviewer_id: "jane", reviewed_at: "2026-10-21")
+
+      assistant.review_tool_calls(thread_id: "t1", tool_calls: [], reviewer_id: "jane", reviewed_at: "2026-10-21")
+    end
+
     it "passes thread-scoped calls straight through" do
       expect(client).to receive(:thread_state).with(thread_id: "t1")
 

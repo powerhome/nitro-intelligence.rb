@@ -1637,6 +1637,17 @@ RSpec.describe NitroIntelligence::Assistants do
         )
       end
 
+      it "stamps a reviewed_at given as a Time in UTC" do
+        assistants.review(thread_id:, assistant_id:, reviewer_id:, context:, reply: { "action" => "approve" },
+                          reviewed_at: Time.new(2026, 10, 21, 8, 0, 0, "-04:00"))
+
+        expect(WebMock).to have_requested(:post, run_url).with(
+          body: resume_body(
+            [{ "type" => "approve", "reviewer_id" => reviewer_id, "reviewed_at" => "2026-10-21T12:00:00Z" }]
+          ).to_json
+        )
+      end
+
       it "refuses a decision the interrupt does not allow, sending nothing" do
         expect { review(reply: { "action" => "respond", "message" => "Hi" }) }.to raise_error(
           NitroIntelligence::Assistants::ThreadResumptionError,
@@ -1721,6 +1732,18 @@ RSpec.describe NitroIntelligence::Assistants do
         end
       end
 
+      context "when the resumed run fails inside a successful response" do
+        before { stub_json(:post, run_url, { "__error__" => { "error" => "Error", "message" => "tool blew up" } }) }
+
+        it "raises the run's error as a ThreadResumptionError, not as superseded" do
+          expect { review(reply: { "action" => "approve" }) }.to raise_error(
+            an_instance_of(NitroIntelligence::Assistants::ThreadResumptionError).and(
+              having_attributes(message: "Error: tool blew up")
+            )
+          )
+        end
+      end
+
       context "when the thread is paused on something else" do
         before { stub_paused_thread(messages: [human_message, mixed_message], interrupt: tool_interrupt) }
 
@@ -1728,6 +1751,34 @@ RSpec.describe NitroIntelligence::Assistants do
           expect { review(reply: { "action" => "approve" }) }.to raise_error(
             NitroIntelligence::Assistants::ThreadResumptionError,
             "Thread #{thread_id} is awaiting review of tool calls, not of a reply"
+          )
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+      end
+
+      context "when a delivery review reaches a reply pause" do
+        it "refuses it before resuming" do
+          expect { review(delivery: { "action" => "retry" }) }.to raise_error(
+            NitroIntelligence::Assistants::ThreadResumptionError,
+            "Thread #{thread_id} is awaiting review of a reply, not of a delivery"
+          )
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+      end
+
+      context "when tool call reviews do not match the pause" do
+        before { stub_paused_thread(messages: [human_message, mixed_message], interrupt: tool_interrupt) }
+
+        it "refuses a review of a tool call the interrupt is not holding, sending nothing" do
+          expect { review(tool_calls: { "call-9" => { "action" => "approve" } }) }.to raise_error(
+            NitroIntelligence::Assistants::ThreadResumptionError, "Unknown tool call ids: call-9"
+          )
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+
+        it "refuses reviews that leave a held tool call undecided, sending nothing" do
+          expect { review(tool_calls: {}) }.to raise_error(
+            NitroIntelligence::Assistants::ThreadResumptionError, "Missing reviews for tool calls: call-1"
           )
           expect(WebMock).not_to have_requested(:post, run_url)
         end
