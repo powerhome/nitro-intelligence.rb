@@ -217,36 +217,13 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     before do
-      stub_request(:get, assistant_url)
-        .to_return(
-          status: 200,
-          body: { assistant_id:, name: graph_id, graph_id: }.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:get, assistant_url, { assistant_id:, name: graph_id, graph_id: })
 
-      stub_request(:post, thread_init_url)
-        .with(body: thread_init_request_body.to_json)
-        .to_return(
-          status: 200,
-          body: {}.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:post, thread_init_url, {}, request_body: thread_init_request_body)
 
-      stub_request(:post, thread_state_url)
-        .with(body: thread_state_request_body.to_json)
-        .to_return(
-          status: 200,
-          body: {}.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:post, thread_state_url, {}, request_body: thread_state_request_body)
 
-      stub_request(:post, run_url)
-        .with(body: run_request_body.to_json)
-        .to_return(
-          status: 200,
-          body: run_response_body.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:post, run_url, run_response_body, request_body: run_request_body)
     end
 
     it "creates the thread" do
@@ -285,12 +262,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when the assistant cannot be fetched" do
       before do
-        stub_request(:get, assistant_url)
-          .to_return(
-            status: 404,
-            body: { error: "not_found" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:get, assistant_url, { error: "not_found" }, status: 404)
       end
 
       it "raises ThreadInitializationError" do
@@ -310,12 +282,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when the assistant has no graph_id" do
       before do
-        stub_request(:get, assistant_url)
-          .to_return(
-            status: 200,
-            body: { assistant_id: }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:get, assistant_url, { assistant_id: })
       end
 
       it "raises ThreadInitializationError" do
@@ -344,12 +311,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when the thread already exists" do
       before do
-        stub_request(:post, thread_init_url)
-          .to_return(
-            status: 409,
-            body: { error: "Thread #{thread_id} already exists" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, thread_init_url, { error: "Thread #{thread_id} already exists" }, status: 409)
       end
 
       it "does not raise ThreadInitializationError" do
@@ -396,13 +358,7 @@ RSpec.describe NitroIntelligence::Assistants do
       end
 
       before do
-        stub_request(:post, run_url)
-          .with(body: run_request_body_without_context.to_json)
-          .to_return(
-            status: 200,
-            body: run_response_body.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, run_url, run_response_body, request_body: run_request_body_without_context)
       end
 
       it "uses an empty hash as default context" do
@@ -436,21 +392,9 @@ RSpec.describe NitroIntelligence::Assistants do
       end
 
       before do
-        stub_request(:post, thread_init_url)
-          .with(body: single_message_thread_init_body.to_json)
-          .to_return(
-            status: 200,
-            body: {}.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, thread_init_url, {}, request_body: single_message_thread_init_body)
 
-        stub_request(:post, run_url)
-          .with(body: single_message_run_body.to_json)
-          .to_return(
-            status: 200,
-            body: run_response_body.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, run_url, run_response_body, request_body: single_message_run_body)
       end
 
       it "creates the thread" do
@@ -476,12 +420,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when thread initialization fails" do
       before do
-        stub_request(:post, thread_init_url)
-          .to_return(
-            status: 500,
-            body: { error: "Internal Server Error" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, thread_init_url, { error: "Internal Server Error" }, status: 500)
       end
 
       it "raises ThreadInitializationError" do
@@ -502,12 +441,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when seeding the thread state fails" do
       before do
-        stub_request(:post, thread_state_url)
-          .to_return(
-            status: 500,
-            body: { error: "Internal Server Error" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, thread_state_url, { error: "Internal Server Error" }, status: 500)
 
         stub_request(:delete, thread_url).to_return(status: 200, body: {}.to_json)
       end
@@ -574,12 +508,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when run trigger fails" do
       before do
-        stub_request(:post, run_url)
-          .to_return(
-            status: 500,
-            body: { error: "Internal Server Error" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, run_url, { error: "Internal Server Error" }, status: 500)
       end
 
       it "raises RunError" do
@@ -649,13 +578,7 @@ RSpec.describe NitroIntelligence::Assistants do
       end
 
       before do
-        stub_request(:post, run_url)
-          .with(body: run_request_body.to_json)
-          .to_return(
-            status: 200,
-            body: multi_message_run_response_body.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, run_url, multi_message_run_response_body, request_body: run_request_body)
       end
 
       it "returns the content of the last message" do
@@ -683,12 +606,7 @@ RSpec.describe NitroIntelligence::Assistants do
       [400, 401, 403, 404, 422, 502, 503].each do |status_code|
         context "when thread initialization returns #{status_code}" do
           before do
-            stub_request(:post, thread_init_url)
-              .to_return(
-                status: status_code,
-                body: {}.to_json,
-                headers: { "Content-Type" => "application/json" }
-              )
+            stub_json(:post, thread_init_url, {}, status: status_code)
           end
 
           it "raises ThreadInitializationError" do
@@ -704,12 +622,7 @@ RSpec.describe NitroIntelligence::Assistants do
       [400, 401, 403, 404, 422, 502, 503].each do |status_code|
         context "when run trigger returns #{status_code}" do
           before do
-            stub_request(:post, run_url)
-              .to_return(
-                status: status_code,
-                body: {}.to_json,
-                headers: { "Content-Type" => "application/json" }
-              )
+            stub_json(:post, run_url, {}, status: status_code)
           end
 
           it "raises RunError" do
@@ -723,8 +636,8 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#tool_calls_under_review" do
-    let(:thread_id) { "thread-456" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    include_context "with an Assistants thread"
+
     let(:messages) do
       [
         {
@@ -743,28 +656,10 @@ RSpec.describe NitroIntelligence::Assistants do
         },
       ]
     end
-    let(:interrupts) do
-      [
-        {
-          "value" => {
-            "action_requests" => [
-              { "name" => "send_invoice", "args" => { "amount" => 100 } },
-            ],
-            "review_configs" => [
-              { "action_name" => "send_invoice", "allowed_decisions" => %w[approve reject] },
-            ],
-          },
-        },
-      ]
-    end
+    let(:interrupts) { [tool_interrupt_for("send_invoice", { "amount" => 100 }, id: nil)] }
 
     before do
-      stub_request(:get, state_url)
-        .to_return(
-          status: 200,
-          body: { "values" => { "messages" => messages }, "interrupts" => interrupts }.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:get, state_url, { "values" => { "messages" => messages }, "interrupts" => interrupts })
     end
 
     it "reports only the tool calls the interrupt is holding, with the decisions it allows" do
@@ -790,14 +685,7 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     context "when the thread state cannot be fetched" do
-      before do
-        stub_request(:get, state_url)
-          .to_return(
-            status: 500,
-            body: { error: "Internal Server Error" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
-      end
+      before { stub_json(:get, state_url, { error: "Internal Server Error" }, status: 500) }
 
       it "raises ThreadResumptionError" do
         expect do
@@ -811,11 +699,9 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#review_tool_calls" do
-    let(:thread_id) { "thread-456" }
+    include_context "with an Assistants thread"
+
     let(:assistant_id) { "assistant-789" }
-    let(:thread_url) { "#{base_url}/threads/#{thread_id}" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
-    let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
     let(:thread_status) { "interrupted" }
     let(:tool_calls) do
       {
@@ -933,27 +819,9 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     before do
-      stub_request(:get, thread_url)
-        .to_return(
-          status: 200,
-          body: thread.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
-
-      stub_request(:get, state_url)
-        .to_return(
-          status: 200,
-          body: thread_state.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
-
-      stub_request(:post, run_url)
-        .with(body: resume_request_body.to_json)
-        .to_return(
-          status: 200,
-          body: run_response_body.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:get, thread_url, thread)
+      stub_json(:get, state_url, thread_state)
+      stub_json(:post, run_url, run_response_body, request_body: resume_request_body)
     end
 
     it "fetches the thread and thread state before resuming reviewed tool calls" do
@@ -1030,14 +898,7 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     context "when the thread does not exist" do
-      before do
-        stub_request(:get, thread_url)
-          .to_return(
-            status: 404,
-            body: {}.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
-      end
+      before { stub_json(:get, thread_url, {}, status: 404) }
 
       it "raises ThreadResumptionError" do
         expect do
@@ -1178,13 +1039,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when resuming the thread fails" do
       before do
-        stub_request(:post, run_url)
-          .with(body: resume_request_body.to_json)
-          .to_return(
-            status: 500,
-            body: { error: "Internal Server Error" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, run_url, { error: "Internal Server Error" }, status: 500, request_body: resume_request_body)
       end
 
       it "raises ThreadResumptionError" do
@@ -1199,8 +1054,8 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#thread_state" do
-    let(:thread_id) { "thread-456" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    include_context "with an Assistants thread"
+
     let(:thread_state) do
       {
         "values" => {
@@ -1222,14 +1077,7 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     context "when the thread state is fetched successfully" do
-      before do
-        stub_request(:get, state_url)
-          .to_return(
-            status: 200,
-            body: thread_state.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
-      end
+      before { stub_json(:get, state_url, thread_state) }
 
       it "returns the thread state as reported by Assistants" do
         expect(assistants.thread_state(thread_id:)).to eq(thread_state)
@@ -1244,14 +1092,7 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     context "when the thread state cannot be fetched" do
-      before do
-        stub_request(:get, state_url)
-          .to_return(
-            status: 404,
-            body: { "detail" => "Thread not found" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
-      end
+      before { stub_json(:get, state_url, { "detail" => "Thread not found" }, status: 404) }
 
       it "raises ThreadStateError carrying the response body" do
         expect do
@@ -1265,8 +1106,8 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#thread_messages" do
-    let(:thread_id) { "thread-456" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    include_context "with an Assistants thread"
+
     let(:messages) do
       [
         {
@@ -1282,14 +1123,7 @@ RSpec.describe NitroIntelligence::Assistants do
       ]
     end
 
-    before do
-      stub_request(:get, state_url)
-        .to_return(
-          status: 200,
-          body: thread_state.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
-    end
+    before { stub_json(:get, state_url, thread_state) }
 
     context "when the thread has messages" do
       let(:thread_state) { { "values" => { "messages" => messages } } }
@@ -1336,8 +1170,8 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#tool_calls_pending_review" do
-    let(:thread_id) { "thread-456" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    include_context "with an Assistants thread"
+
     let(:thread_state) do
       {
         "values" => {
@@ -1346,14 +1180,7 @@ RSpec.describe NitroIntelligence::Assistants do
       }
     end
 
-    before do
-      stub_request(:get, state_url)
-        .to_return(
-          status: 200,
-          body: thread_state.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
-    end
+    before { stub_json(:get, state_url, thread_state) }
 
     context "when an AI message is the first message in the thread" do
       let(:messages) do
@@ -1554,11 +1381,9 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "reply review and delivery" do
-    let(:thread_id) { "thread-456" }
+    include_context "with an Assistants thread"
+
     let(:assistant_id) { "assistant-789" }
-    let(:thread_url) { "#{base_url}/threads/#{thread_id}" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
-    let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
     let(:reviewer_id) { "jane@example.com" }
     let(:reviewed_at) { "2026-10-18T14:03:00Z" }
     let(:context) { { "prompt_variables" => { "first_name" => "Casey" } } }
@@ -1573,85 +1398,13 @@ RSpec.describe NitroIntelligence::Assistants do
         "tool_calls" => [{ "id" => "call-1", "name" => "confirm_appointment", "args" => { "id" => 7 } }],
       }
     end
-    let(:reply_allowed_decisions) { %w[approve edit reject] }
-    let(:reply_interrupt) do
-      {
-        "id" => "interrupt-reply",
-        "value" => {
-          "action_requests" => [
-            { "name" => "__reply__", "args" => { "content" => draft }, "description" => "Review this SMS" },
-          ],
-          "review_configs" => [{ "action_name" => "__reply__", "allowed_decisions" => reply_allowed_decisions }],
-        },
-      }
-    end
-    let(:tool_interrupt) do
-      {
-        "id" => "interrupt-tools",
-        "value" => {
-          "action_requests" => [{ "name" => "confirm_appointment", "args" => { "id" => 7 } }],
-          "review_configs" => [{ "action_name" => "confirm_appointment", "allowed_decisions" => %w[approve reject] }],
-        },
-      }
-    end
-    let(:mixed_reply_interrupt) do
-      {
-        "id" => "interrupt-mixed-reply",
-        "value" => {
-          "action_requests" => [{ "name" => "__reply__", "args" => { "content" => mixed_message["content"] } }],
-          "review_configs" => [{ "action_name" => "__reply__", "allowed_decisions" => %w[approve edit reject] }],
-        },
-      }
-    end
-    let(:delivery_interrupt) do
-      {
-        "id" => "interrupt-delivery",
-        "value" => {
-          "action_requests" => [
-            {
-              "name" => "__delivery__",
-              "args" => {
-                "content" => draft,
-                "message_id" => "ai-1",
-                "error" => "Quiet hours: messages can't be sent before 8am",
-                "attempts" => 3,
-              },
-              "description" => "This reply couldn't be delivered.",
-            },
-          ],
-          "review_configs" => [{ "action_name" => "__delivery__", "allowed_decisions" => %w[retry reject] }],
-        },
-      }
-    end
-
-    def stub_json(method, url, body, status: 200)
-      stub_request(method, url).to_return(
-        status:, body: body.to_json, headers: { "Content-Type" => "application/json" }
-      )
-    end
-
-    def stub_paused_thread(messages:, interrupt:, status: "interrupted")
-      stub_json(:get, thread_url, { "thread_id" => thread_id, "status" => status })
-      stub_json(:get, state_url, { "values" => { "messages" => messages }, "interrupts" => [interrupt].compact })
-    end
+    let(:reply_interrupt) { reply_interrupt_for(draft, description: "Review this SMS") }
+    let(:tool_interrupt) { tool_interrupt_for("confirm_appointment", { "id" => 7 }) }
+    let(:mixed_reply_interrupt) { reply_interrupt_for(mixed_message["content"], id: "interrupt-mixed-reply") }
+    let(:delivery_interrupt) { delivery_interrupt_for(draft) }
 
     def resume_body(decisions, interrupt_id: "interrupt-reply", context: self.context)
       { assistant_id:, command: { resume: { interrupt_id => { decisions: } } }, context: }
-    end
-
-    # A resume Assistants accepted, with the run it created named in the wait's Content-Location.
-    def stub_resume(body, run_id: "run-mine")
-      stub_request(:post, run_url).to_return(
-        status: 200, body: body.to_json,
-        headers: { "Content-Type" => "application/json", "Content-Location" => "/threads/#{thread_id}/runs/#{run_id}" }
-      )
-    end
-
-    # The thread's state as it reads before the resume, then after it.
-    def stub_states(before, after)
-      stub_request(:get, state_url)
-        .to_return(status: 200, body: before.to_json, headers: { "Content-Type" => "application/json" })
-        .then.to_return(status: 200, body: after.to_json, headers: { "Content-Type" => "application/json" })
     end
 
     def stamped(decision)

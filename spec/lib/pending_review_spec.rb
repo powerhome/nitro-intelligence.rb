@@ -12,44 +12,11 @@ RSpec.describe NitroIntelligence::PendingReview do
   end
   let(:reply_allowed_decisions) { %w[approve edit reject] }
   let(:reply_interrupt) do
-    {
-      "id" => "interrupt-reply",
-      "value" => {
-        "action_requests" => [
-          {
-            "name" => "__reply__",
-            "args" => { "content" => "Sure! You're booked for Tuesday at 10am." },
-            "description" => "Review this SMS",
-          },
-        ],
-        "review_configs" => [
-          { "action_name" => "__reply__", "allowed_decisions" => reply_allowed_decisions },
-        ],
-      },
-    }
+    reply_interrupt_for(
+      "Sure! You're booked for Tuesday at 10am.", allowed: reply_allowed_decisions, description: "Review this SMS"
+    )
   end
-  let(:delivery_interrupt) do
-    {
-      "id" => "interrupt-delivery",
-      "value" => {
-        "action_requests" => [
-          {
-            "name" => "__delivery__",
-            "args" => {
-              "content" => "Great, see you Thursday at 9am!",
-              "message_id" => "ai-1",
-              "error" => "Quiet hours: messages can't be sent before 8am",
-              "attempts" => 3,
-            },
-            "description" => "This reply couldn't be delivered.",
-          },
-        ],
-        "review_configs" => [
-          { "action_name" => "__delivery__", "allowed_decisions" => %w[retry reject] },
-        ],
-      },
-    }
-  end
+  let(:delivery_interrupt) { delivery_interrupt_for("Great, see you Thursday at 9am!") }
   let(:interrupt) { reply_interrupt }
 
   def resumption_error
@@ -314,15 +281,7 @@ RSpec.describe NitroIntelligence::PendingReview do
         },
       ]
     end
-    let(:interrupt) do
-      {
-        "id" => "interrupt-tools",
-        "value" => {
-          "action_requests" => [{ "name" => "confirm_appointment", "args" => { "id" => 7 } }],
-          "review_configs" => [{ "action_name" => "confirm_appointment", "allowed_decisions" => %w[approve reject] }],
-        },
-      }
-    end
+    let(:interrupt) { tool_interrupt_for("confirm_appointment", { "id" => 7 }) }
 
     it "lists the held tool calls, and no reply even though the turn has text" do
       expect(pending_review.kind).to eq(:tool_calls)

@@ -19,18 +19,7 @@ RSpec.describe NitroIntelligence::RunResult do
 
   context "when the run paused on the reply" do
     let(:run) do
-      {
-        "messages" => [human, draft],
-        "__interrupt__" => [
-          {
-            "id" => "interrupt-1",
-            "value" => {
-              "action_requests" => [{ "name" => "__reply__", "args" => { "content" => draft["content"] } }],
-              "review_configs" => [{ "action_name" => "__reply__", "allowed_decisions" => %w[approve edit reject] }],
-            },
-          },
-        ],
-      }
+      { "messages" => [human, draft], "__interrupt__" => [reply_interrupt_for(draft["content"])] }
     end
 
     it "holds the draft back from the reply" do
