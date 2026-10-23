@@ -417,7 +417,7 @@ assistants.review_tool_calls(
 
 `reviewer_id` and `reviewed_at` are optional. Given a `reviewer_id`, each decision carries both, as [`#review`](#review) sends them (`reviewed_at` is now unless given); without one, the decisions carry neither. Assistants records nothing about who reviewed a tool call: LangChain's middleware, which reviews tool calls, ignores both, so an application that needs the attribution has to keep it itself.
 
-The resume is keyed by the interrupt read before it, as [`#review`](#review) keys its own, so it never decides a pause that appeared in between; when the run shows it decided nothing, this raises `ReviewSupersededError` (a `ThreadResumptionError`). `#review` with `tool_calls:` takes the same reviews, requires a reviewer, also checks an `interrupt_id` before resuming, and returns the resumed run's result; this method is a thin wrapper that returns `nil`.
+The resume is keyed by the interrupt read before it, as [`#review`](#review) keys its own, so it never decides a pause that appeared in between; when the run shows it decided nothing, this raises `ReviewSupersededError` (a `ThreadResumptionError`). Unlike `#review`, it does not translate Assistants refusing the resume because the thread is no longer paused: that is raised as before, a `ThreadResumptionError` whose message is the response body. `#review` with `tool_calls:` takes the same reviews, requires a reviewer, also checks an `interrupt_id` before resuming, and returns the resumed run's result; this method is a thin wrapper that returns `nil`.
 
 ### Response
 

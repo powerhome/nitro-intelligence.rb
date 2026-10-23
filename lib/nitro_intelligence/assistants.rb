@@ -167,10 +167,12 @@ module NitroIntelligence
     # model as the tool's result; `reject` may carry a `message` explaining the refusal.
     #
     # A thin wrapper over what #review sends for `tool_calls:`, keyed by the interrupt it read in the
-    # same way, and raising ReviewSupersededError on the same evidence that the decisions were not
-    # applied. `reviewer_id` and `reviewed_at` are optional here, and put in each decision when a
-    # reviewer is given; #review requires one, checks an `interrupt_id` before resuming and returns
-    # the resumed run's result, where this returns nil.
+    # same way, and raising ReviewSupersededError when the resumed run shows the decisions were not
+    # applied (see PendingReview#unapplied_resume?). Unlike #review, a resume Assistants refuses
+    # because the thread is no longer paused is raised as it always was, a ThreadResumptionError
+    # carrying the response body, which nitro-web parses. `reviewer_id` and `reviewed_at` are
+    # optional here, and put in each decision when a reviewer is given; #review requires one, checks
+    # an `interrupt_id` before resuming and returns the resumed run's result, where this returns nil.
     def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {}, reviewer_id: nil, reviewed_at: nil)
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)

@@ -1051,6 +1051,22 @@ RSpec.describe NitroIntelligence::Assistants do
         )
       end
     end
+
+    context "when Assistants refuses the resume because the thread is no longer paused" do
+      let(:refusal) { { "detail" => "Cannot resume: thread is not in interrupted state" } }
+
+      before { stub_json(:post, run_url, refusal, status: 400, request_body: resume_request_body) }
+
+      it "raises the response body as a ThreadResumptionError, not as superseded, for callers that parse it" do
+        expect do
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls:)
+        end.to raise_error(
+          an_instance_of(NitroIntelligence::Assistants::ThreadResumptionError).and(
+            having_attributes(message: refusal.to_json)
+          )
+        )
+      end
+    end
   end
 
   describe "#thread_state" do
