@@ -15,6 +15,9 @@ module NitroIntelligence
     # Assistants answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
     THREAD_CONFLICT_CODE = 409
 
+    # Where a `/runs/wait` response says which run it waited on.
+    RUN_LOCATION = %r{/runs/([^/]+)\z}
+
     # Every assistant this gem is built for is served by the same deployment, so a client told
     # nothing about where to reach one gets that deployment. A host talking to a different one
     # -- a review environment, a local server -- still says so.
@@ -132,7 +135,8 @@ module NitroIntelligence
       thread_response = create_thread(thread_id:, assistant_id:)
 
       return if thread_already_exists?(thread_response)
-      raise ThreadInitializationError, thread_response.body if thread_response.code.to_i != 200
+
+      check!(thread_response, ThreadInitializationError)
       return if initial_state.blank?
 
       seed_new_thread_state(thread_id:, initial_state:)
@@ -173,11 +177,7 @@ module NitroIntelligence
     end
 
     def fetch_graph_id(assistant_id)
-      assistant_response = get(path: "/assistants/#{assistant_id}")
-
-      raise ThreadInitializationError, assistant_response.body if assistant_response.code.to_i != 200
-
-      graph_id = JSON.parse(assistant_response.body)["graph_id"]
+      graph_id = parse!(get(path: "/assistants/#{assistant_id}"), ThreadInitializationError)["graph_id"]
 
       raise ThreadInitializationError, "Assistant #{assistant_id} has no graph_id" if graph_id.blank?
 
@@ -185,14 +185,8 @@ module NitroIntelligence
     end
 
     def seed_thread_state(thread_id:, initial_state:)
-      state_response = post(
-        path: "/threads/#{thread_id}/state",
-        body: { values: { messages: initial_state } }
-      )
-
-      raise ThreadInitializationError, state_response.body if state_response.code.to_i != 200
-
-      JSON.parse(state_response.body)
+      parse!(post(path: "/threads/#{thread_id}/state", body: { values: { messages: initial_state } }),
+             ThreadInitializationError)
     end
 
     def thread_already_exists?(response)
@@ -202,39 +196,28 @@ module NitroIntelligence
     # The review flows have always raised ThreadResumptionError when a state read fails, and consumers
     # rescue it as such. A plain read resumes nothing, so #thread_state asks for ThreadStateError.
     def get_thread_state(thread_id:, error: ThreadResumptionError)
-      state_response = get(path: "/threads/#{thread_id}/state")
-
-      raise error, state_response.body if state_response.code.to_i != 200
-
-      JSON.parse(state_response.body)
+      parse!(get(path: "/threads/#{thread_id}/state"), error)
     end
 
     def get_thread(thread_id:)
-      thread_response = get(path: "/threads/#{thread_id}")
-
-      raise ThreadResumptionError, thread_response.body if thread_response.code.to_i != 200
-
-      JSON.parse(thread_response.body)
+      parse!(get(path: "/threads/#{thread_id}"), ThreadResumptionError)
     end
 
     def trigger_run(thread_id:, assistant_id:, last_message:, context: {})
-      run_response = post(
-        path: "/threads/#{thread_id}/runs/wait",
-        body: {
-          assistant_id:,
-          context:,
-          input: {
-            messages: [last_message],
-          },
-        }
-      )
-
-      raise RunError, run_response.body if run_response.code.to_i != 200
-
-      run = JSON.parse(run_response.body)
-      raise_run_error!(run, RunError)
-
+      run, = wait_for_run(thread_id:, body: { assistant_id:, context:, input: { messages: [last_message] } },
+                          error: RunError)
       Array(run["messages"]).last&.dig("content")
+    end
+
+    # Waits on a run of the thread, raising `error` when the request fails or the run reports an
+    # `__error__`. Returns the run and the id Assistants gave it, which the wait reports in its
+    # `Content-Location` (`/threads/{thread_id}/runs/{run_id}`); nil without one.
+    def wait_for_run(thread_id:, body:, error:)
+      response = post(path: "/threads/#{thread_id}/runs/wait", body:)
+      run = parse!(response, error)
+      raise_run_error!(run, error)
+
+      [run, response["Content-Location"].to_s[RUN_LOCATION, 1]]
     end
 
     def raise_run_error!(run, error)
@@ -246,23 +229,8 @@ module NitroIntelligence
     end
 
     def resume_run(thread_id:, assistant_id:, resume:, context:)
-      run_response = post(
-        path: "/threads/#{thread_id}/runs/wait",
-        body: {
-          assistant_id:,
-          command: {
-            resume:,
-          },
-          context:,
-        }
-      )
-
-      raise ThreadResumptionError, run_response.body if run_response.code.to_i != 200
-
-      run = JSON.parse(run_response.body)
-      raise_run_error!(run, ThreadResumptionError)
-
-      run
+      wait_for_run(thread_id:, body: { assistant_id:, command: { resume: }, context: }, error: ThreadResumptionError)
+        .first
     end
 
     def interrupted?(thread)
@@ -284,37 +252,39 @@ module NitroIntelligence
     end
 
     def get(path:)
-      uri = URI("#{base_url}#{path}")
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = uri.scheme == "https"
-
-      request = Net::HTTP::Get.new(uri)
-      request_headers.each { |k, v| request[k] = v }
-
-      http.request(request)
+      request(Net::HTTP::Get, path:)
     end
 
     def delete(path:)
+      request(Net::HTTP::Delete, path:)
+    end
+
+    def post(path:, body:)
+      request(Net::HTTP::Post, path:, body:)
+    end
+
+    def request(verb, path:, body: nil)
       uri = URI("#{base_url}#{path}")
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = uri.scheme == "https"
 
-      request = Net::HTTP::Delete.new(uri)
+      request = verb.new(uri)
       request_headers.each { |k, v| request[k] = v }
+      request.body = body.to_json unless body.nil?
 
       http.request(request)
     end
 
-    def post(path:, body:)
-      uri = URI("#{base_url}#{path}")
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = uri.scheme == "https"
+    # Anything but a 200 is a failure, raised as `error` with the response body as its message.
+    # Thread creation tells a conflict apart before it gets here.
+    def check!(response, error)
+      raise error, response.body if response.code.to_i != 200
 
-      request = Net::HTTP::Post.new(uri)
-      request_headers.each { |k, v| request[k] = v }
-      request.body = body.to_json
+      response
+    end
 
-      http.request(request)
+    def parse!(response, error)
+      JSON.parse(check!(response, error).body)
     end
 
     def request_headers
