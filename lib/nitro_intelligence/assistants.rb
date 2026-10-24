@@ -11,6 +11,12 @@ module NitroIntelligence
     class RunError < StandardError; end
     class ThreadResumptionError < StandardError; end
     class ThreadStateError < StandardError; end
+    # The review being answered is no longer the one the thread is paused on. A subclass, so that
+    # callers rescuing ThreadResumptionError still catch it.
+    class ReviewSupersededError < ThreadResumptionError; end
+
+    # What Assistants answers, with a 400, to a resume of a thread that is no longer paused.
+    NOT_INTERRUPTED_REFUSAL = "thread is not in interrupted state".freeze
 
     # Assistants answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
     THREAD_CONFLICT_CODE = 409
@@ -106,15 +112,53 @@ module NitroIntelligence
       PendingReview.from_thread_state(get_thread_state(thread_id:, error: ThreadStateError))
     end
 
-    # Resumes an interrupted thread with one review per tool call the interrupt is holding. Each
-    # review is keyed by tool call id and names an `action` -- `approve`, `edit`, `reject` or
-    # `respond` -- from the decisions the interrupt allows for that tool. `edit` carries `args`,
-    # merged over the arguments the model asked for; `respond` carries the `message` returned to the
-    # model as the tool's result; `reject` may carry a `message` explaining the refusal.
+    # Resumes a paused thread with a reviewer's decision on whatever it is paused on, and returns the
+    # RunResult of the resumed run. Pass exactly one of:
     #
-    # Assistants records nothing about who reviewed a tool call, and the resume payload it accepts
-    # has nowhere to carry it, so there is no reviewer argument to pass.
-    def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {})
+    # - `reply:`, a single review of the held draft: `{"action" => "approve"}`,
+    #   `{"action" => "edit", "content" => "..."}` or `{"action" => "reject", "message" => "reason"}`;
+    # - `tool_calls:`, one review per held tool call, as #review_tool_calls takes them.
+    #
+    # `reviewer_id` and `reviewed_at` (now, unless given) are sent in each decision and in the resume
+    # run's `config.metadata`, where the platform reads them; it records them and never checks them.
+    #
+    # Pass the `interrupt_id` the reviewer was shown (`PendingReview#interrupt_id`): a thread no longer
+    # paused on it raises ReviewSupersededError instead of applying the decision to whatever the thread
+    # waits on now. The resume is keyed by the interrupt read here, so it never decides a pause that
+    # appeared since; reporting such a resume as ReviewSupersededError is best-effort (see
+    # PendingReview#unapplied_resume?), as is reporting one Assistants refuses because another review
+    # resumed the thread first.
+    def review(thread_id:, assistant_id:, reviewer_id:, reply: nil, tool_calls: nil, interrupt_id: nil, # rubocop:disable Metrics/ParameterLists
+               reviewed_at: nil, context: {})
+      kind, reviews = review_subject!(reply:, tool_calls:)
+      raise ArgumentError, "reviewer_id is required" if reviewer_id.blank?
+
+      pending_review = pending_review!(thread_id:, kind:, interrupt_id:)
+      stamp = reviewer_stamp(reviewer_id, reviewed_at)
+
+      RunResult.new(resume_review(thread_id:, assistant_id:, pending_review:, reviews:, stamp:, context:))
+    rescue ThreadResumptionError => e
+      raise unless e.message.include?(NOT_INTERRUPTED_REFUSAL)
+
+      # Assistants refuses a resume once the thread is no longer paused, which is how the first of
+      # two reviews deciding at once wins. The second is superseded.
+      superseded!(thread_id, pending_review&.interrupt_id)
+    end
+
+    # Resumes an interrupted thread with one review per tool call the interrupt is holding: a hash
+    # keyed by tool call id, or a list of reviews that each carry their tool call's `id`. Each names
+    # an `action` -- `approve`, `edit`, `reject` or `respond` -- from the decisions the interrupt
+    # allows for that tool. `edit` carries `args`, merged over the arguments the model asked for;
+    # `respond` carries the `message` returned to the model as the tool's result; `reject` may carry
+    # a `message`, recorded as the reason.
+    #
+    # A thin wrapper over what #review sends for `tool_calls:`: keyed by the interrupt it read, with
+    # `reviewer_id` and `reviewed_at` in each decision and in `config.metadata` when a reviewer is
+    # given, and raising ReviewSupersededError when the resumed run shows the decisions were not
+    # applied. Unlike #review, a resume Assistants refuses because the thread is no longer paused is
+    # raised as it always was, a ThreadResumptionError carrying the response body, which nitro-web
+    # parses. Returns nil.
+    def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {}, reviewer_id: nil, reviewed_at: nil)
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)
 
@@ -124,7 +168,8 @@ module NitroIntelligence
         raise ThreadResumptionError, "Thread #{thread_id} has no tool calls awaiting review"
       end
 
-      resume_run(thread_id:, assistant_id:, resume: { decisions: pending_review.decisions(tool_calls) }, context:)
+      stamp = reviewer_id.present? ? reviewer_stamp(reviewer_id, reviewed_at) : nil
+      resume_review(thread_id:, assistant_id:, pending_review:, reviews: tool_calls, stamp:, context:)
 
       nil
     end
@@ -239,6 +284,66 @@ module NitroIntelligence
     def resume_run(thread_id:, assistant_id:, resume:, context:)
       wait_for_run(thread_id:, body: { assistant_id:, command: { resume: }, context: }, error: ThreadResumptionError)
         .first
+    end
+
+    def review_subject!(reply:, tool_calls:)
+      subjects = { reply:, tool_calls: }.compact
+      return subjects.first if subjects.one?
+
+      raise ArgumentError, "pass exactly one of reply: or tool_calls:"
+    end
+
+    # The thread has to be paused, on the interrupt the reviewer was shown when they say which, and
+    # on the kind of review they are answering. A thread whose run is under way again is not
+    # paused, whatever its state still reports.
+    def pending_review!(thread_id:, kind:, interrupt_id:)
+      pending_review = interrupted?(get_thread(thread_id:)) &&
+                       PendingReview.from_thread_state(get_thread_state(thread_id:))
+
+      if !pending_review || (interrupt_id.present? && pending_review.interrupt_id != interrupt_id)
+        superseded!(thread_id, interrupt_id)
+      end
+
+      if pending_review.kind != kind
+        raise ThreadResumptionError,
+              "Thread #{thread_id} is awaiting review of #{PendingReview::KIND_NAMES[pending_review.kind]}, " \
+              "not of #{PendingReview::KIND_NAMES[kind]}"
+      end
+
+      pending_review
+    end
+
+    def reviewer_stamp(reviewer_id, reviewed_at)
+      reviewed_at = (reviewed_at || Time.now).utc.iso8601 unless reviewed_at.is_a?(String)
+
+      { "reviewer_id" => reviewer_id.to_s, "reviewed_at" => reviewed_at }
+    end
+
+    # Sends the decisions for `reviews`, validated against the pause, as the resume keyed by the
+    # pause's interrupt. A reviewer `stamp` goes in each decision, where the platform reads it for a
+    # reply, and in the run's `config.metadata`, where it reads it for tool calls: LangChain drops
+    # extra keys in a tool decision. Raises ReviewSupersededError when the run shows the decisions
+    # were not applied.
+    def resume_review(thread_id:, assistant_id:, pending_review:, reviews:, stamp:, context:)
+      decisions = pending_review.decisions(reviews)
+      decisions = decisions.map { |decision| decision.merge(stamp) } if stamp
+
+      body = { assistant_id:, command: { resume: pending_review.resume(decisions) } }
+      body[:config] = { metadata: stamp } if stamp
+      body[:context] = context
+
+      run, run_id = wait_for_run(thread_id:, body:, error: ThreadResumptionError)
+      return run unless pending_review.unapplied_resume?(run:, run_id:) { get_thread_state(thread_id:) }
+
+      superseded!(thread_id, pending_review.interrupt_id, now_paused_on: PendingReview.from_run(run).interrupt_id)
+    end
+
+    def superseded!(thread_id, interrupt_id, now_paused_on: nil)
+      message = "Thread #{thread_id} is no longer paused on #{interrupt_id.presence || 'a review'}: " \
+                "another review already resumed it, or a new message superseded it"
+      message += "; it is now paused on #{now_paused_on}, and the decision was not applied" if now_paused_on
+
+      raise ReviewSupersededError, message
     end
 
     def interrupted?(thread)

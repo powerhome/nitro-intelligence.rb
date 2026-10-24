@@ -53,6 +53,11 @@ module NitroIntelligence
       client.await_run(thread_id:, assistant_id:, messages:, **kwargs)
     end
 
+    def review(thread_id:, **kwargs)
+      reject_assistant_id!(kwargs)
+      client.review(thread_id:, assistant_id:, **kwargs)
+    end
+
     def review_tool_calls(thread_id:, tool_calls:, **kwargs)
       reject_assistant_id!(kwargs)
       client.review_tool_calls(thread_id:, assistant_id:, tool_calls:, **kwargs)
