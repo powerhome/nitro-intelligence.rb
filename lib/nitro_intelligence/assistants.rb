@@ -1,8 +1,8 @@
 require "json"
 require "net/http"
 require "uri"
-require "nitro_intelligence/tool_call_review_interrupt"
-require "nitro_intelligence/tool_call_review_validator"
+require "nitro_intelligence/pending_review"
+require "nitro_intelligence/run_result"
 
 module NitroIntelligence
   class Assistants
@@ -34,11 +34,13 @@ module NitroIntelligence
       @base_url = base_url.presence || DEFAULT_BASE_URL
       @api_key = api_key
       @user_id = user_id
-      @tool_call_review_validator = ToolCallReviewValidator.new
       @graph_ids = {}
     end
 
-    def await_run(thread_id:, assistant_id:, messages:, context: {})
+    # Runs the last of `messages` on the thread, seeding a new thread with the ones before it, and
+    # waits for the run to end or pause. Returns a RunResult: its `reply` is nil whenever the run
+    # paused, and its `review` says what the run is waiting on.
+    def run(thread_id:, assistant_id:, messages:, context: {})
       raise RunError, "messages cannot be empty" if messages.blank?
 
       initial_state = messages[0..-2]
@@ -46,6 +48,11 @@ module NitroIntelligence
 
       initialize_thread_if_needed(thread_id:, assistant_id:, initial_state:)
       trigger_run(thread_id:, assistant_id:, context:, last_message:)
+    end
+
+    # The run's reply, or nil when it paused for review or ended without one.
+    def await_run(thread_id:, assistant_id:, messages:, context: {})
+      run(thread_id:, assistant_id:, messages:, context:).reply
     end
 
     # The thread's state as Assistants reports it, unformatted. Callers that only want the
@@ -86,8 +93,17 @@ module NitroIntelligence
     # A tool the assistant is not configured to interrupt on runs without review, so an AI message
     # can mix calls under review with calls that are only waiting to be executed. This reports the
     # former; #tool_calls_pending_review reports both.
+    #
+    # Raises ThreadResumptionError when the state cannot be read, as it always has; #under_review is
+    # the plain read.
     def tool_calls_under_review(thread_id:)
-      ToolCallReviewInterrupt.new(get_thread_state(thread_id:)).tool_calls
+      PendingReview.from_thread_state(get_thread_state(thread_id:))&.tool_calls || []
+    end
+
+    # What the thread is paused on -- its tool calls or its reply -- or nil when it is not waiting
+    # on a review.
+    def under_review(thread_id:)
+      PendingReview.from_thread_state(get_thread_state(thread_id:, error: ThreadStateError))
     end
 
     # Resumes an interrupted thread with one review per tool call the interrupt is holding. Each
@@ -102,21 +118,13 @@ module NitroIntelligence
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)
 
-      interrupt = ToolCallReviewInterrupt.new(get_thread_state(thread_id:))
-      tool_calls_under_review = interrupt.tool_calls
+      pending_review = PendingReview.from_thread_state(get_thread_state(thread_id:))
 
-      if tool_calls_under_review.empty?
+      if pending_review.nil? || pending_review.tool_calls.empty?
         raise ThreadResumptionError, "Thread #{thread_id} has no tool calls awaiting review"
       end
 
-      @tool_call_review_validator.validate!(tool_calls:, tool_calls_under_review:)
-
-      resume_run(
-        thread_id:,
-        assistant_id:,
-        resume: { decisions: interrupt.decisions(tool_calls) },
-        context:
-      )
+      resume_run(thread_id:, assistant_id:, resume: { decisions: pending_review.decisions(tool_calls) }, context:)
 
       nil
     end
@@ -206,7 +214,7 @@ module NitroIntelligence
     def trigger_run(thread_id:, assistant_id:, last_message:, context: {})
       run, = wait_for_run(thread_id:, body: { assistant_id:, context:, input: { messages: [last_message] } },
                           error: RunError)
-      Array(run["messages"]).last&.dig("content")
+      RunResult.new(run)
     end
 
     # Waits on a run of the thread, raising `error` when the request fails or the run reports an

@@ -1405,4 +1405,146 @@ RSpec.describe NitroIntelligence::Assistants do
       end
     end
   end
+
+  describe "runs that pause for review" do
+    include_context "with an Assistants thread"
+
+    let(:assistant_id) { "assistant-789" }
+    let(:reviewer_id) { "jane@example.com" }
+    let(:reviewed_at) { "2026-10-18T14:03:00Z" }
+    let(:context) { { "prompt_variables" => { "first_name" => "Casey" } } }
+    let(:draft) { "Sure! You're booked for Tuesday at 10am." }
+    let(:human_message) { { "type" => "human", "id" => "human-1", "content" => "Can I move it to Tuesday?" } }
+    let(:draft_message) { { "type" => "ai", "id" => "ai-2", "content" => draft } }
+    let(:tool_message) do
+      {
+        "type" => "ai",
+        "id" => "ai-1",
+        "content" => "Let me cancel that.",
+        "tool_calls" => [{ "id" => "call-1", "name" => "cancel_appointment", "args" => { "id" => 7 } }],
+      }
+    end
+    let(:tool_result) { { "type" => "tool", "id" => "tool-1", "tool_call_id" => "call-1", "content" => "Cancelled" } }
+    let(:reply_interrupt) { reply_interrupt_for(draft, description: "Review this SMS") }
+    let(:tool_interrupt) { tool_interrupt_for("cancel_appointment", { "id" => 7 }) }
+
+    describe "#run" do
+      let(:messages) { [{ role: "user", content: "Can I move it to Tuesday?" }] }
+      let(:run_response_body) { { "messages" => [human_message, draft_message] } }
+
+      before do
+        stub_json(:get, "#{base_url}/assistants/#{assistant_id}", { "graph_id" => "confirmation-agent" })
+        stub_json(:post, "#{base_url}/threads", {}, status: 409)
+        stub_json(:post, run_url, run_response_body)
+      end
+
+      it "returns the reply of a run that ended" do
+        result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+        expect(result).to be_a(NitroIntelligence::RunResult)
+        expect(result).not_to be_interrupted
+        expect(result.reply).to eq(draft)
+      end
+
+      context "when the run pauses on its reply" do
+        let(:run_response_body) { { "messages" => [human_message, draft_message], "__interrupt__" => [reply_interrupt] } }
+
+        it "holds the draft back and reports it for review" do
+          result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+          expect(result).to be_interrupted
+          expect(result.reply).to be_nil
+          expect(result.review.reply).to have_attributes(
+            content: draft, allowed_decisions: %w[approve edit reject], description: "Review this SMS",
+            interrupt_id: "interrupt-reply"
+          )
+        end
+
+        it "makes #await_run return nil rather than the draft" do
+          expect(assistants.await_run(thread_id:, assistant_id:, messages:, context:)).to be_nil
+        end
+      end
+
+      context "when the run pauses on tool calls" do
+        let(:run_response_body) { { "messages" => [human_message, tool_message], "__interrupt__" => [tool_interrupt] } }
+
+        it "reports the tool calls, and makes #await_run return nil rather than the working text" do
+          result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+          expect(result.review.tool_calls.map { |tool_call| tool_call["id"] }).to eq(["call-1"])
+          expect(assistants.await_run(thread_id:, assistant_id:, messages:, context:)).to be_nil
+        end
+      end
+
+      context "when the reply was delivered" do
+        let(:delivered) do
+          draft_message.merge(
+            "response_metadata" => { "delivery" => { "status" => "delivered", "tool" => "send_sms", "attempts" => 1 } }
+          )
+        end
+        let(:run_response_body) { { "messages" => [human_message, delivered] } }
+
+        it "reports the delivery with the reply" do
+          result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+          expect(result.reply).to eq(draft)
+          expect(result.delivery).to have_attributes(status: "delivered", attempts: 1)
+        end
+      end
+    end
+
+    describe "#under_review" do
+      it "reads the pending review from the thread state" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+
+        expect(assistants.under_review(thread_id:).reply.content).to eq(draft)
+      end
+
+      it "is nil when the thread is not paused" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: nil, status: "idle")
+
+        expect(assistants.under_review(thread_id:)).to be_nil
+      end
+
+      it "raises ThreadStateError when the state cannot be read" do
+        stub_json(:get, state_url, { "error" => "boom" }, status: 500)
+
+        expect { assistants.under_review(thread_id:) }
+          .to raise_error(NitroIntelligence::Assistants::ThreadStateError, '{"error":"boom"}')
+      end
+    end
+
+    describe "#tool_calls_under_review on a reply pause" do
+      it "returns an empty array instead of failing to match __reply__ to a tool call" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+
+        expect(assistants.tool_calls_under_review(thread_id:)).to eq([])
+      end
+    end
+
+    describe "#review_tool_calls" do
+      it "refuses a reply pause, as it does any pause holding no tool calls" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+
+        expect do
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls: {})
+        end.to raise_error(
+          NitroIntelligence::Assistants::ThreadResumptionError,
+          "Thread #{thread_id} has no tool calls awaiting review"
+        )
+      end
+
+      it "takes a list of reviews that each carry their tool call's id" do
+        stub_paused_thread(messages: [human_message, tool_message], interrupt: tool_interrupt)
+        stub_json(:post, run_url, { "messages" => [human_message, tool_message, tool_result] })
+
+        assistants.review_tool_calls(thread_id:, assistant_id:, context:,
+                                     tool_calls: [{ "id" => "call-1", "action" => "reject", "message" => "No" }])
+
+        decisions = [{ "type" => "reject", "message" => "No" }]
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: hash_including("command" => { "resume" => { "decisions" => decisions } }))
+      end
+    end
+  end
 end
