@@ -32,6 +32,8 @@ assistants = NitroIntelligence::Assistants.new(
 - Resumes are keyed by the interrupt they answer, `command.resume = {"<interrupt id>" => {"decisions" => [...]}}`. Anything inspecting the resume payload sees the new shape.
 - [`#review`](#review) raises `ReviewSupersededError`, a `ThreadResumptionError`, for a review the thread has moved past. Its message, and the validation errors raised before anything is sent, are plain text, not a JSON response body, so code that parses `ThreadResumptionError` messages as JSON has to handle text too.
 - Pass `context:` to [`#review`](#review) and [`#review_tool_calls`](#review_tool_calls) when the resumed run has to render the assistant's prompt again.
+- A reply review passes the `interrupt_id` the reviewer was shown: [`#review`](#review) requires it for `reply:`.
+- When the assistant has a delivery tool, the platform sends the reply itself when the run ends. The reply [`#run`](#run), [`#await_run`](#await_run) and [`#review`](#review) return is then for display and records: do not send it again, or the customer gets it twice. Stop sending replies yourself before the assistant's delivery tool is turned on.
 
 ## `#run`
 
@@ -64,7 +66,7 @@ A run pauses on its tool calls or on its reply, never both at once, and `review`
 
 `review.kind` is `:tool_calls` or `:reply`, and `review.interrupt_id` identifies the pause; pass it back to [`#review`](#review) so a superseded review is refused.
 
-When the assistant has a delivery tool, the platform delivers the reply when the run ends, after any review, and stamps the reply's `response_metadata.delivery`. `delivery` reads that stamp:
+When the assistant has a delivery tool, the platform delivers the reply when the run ends, after any review, and stamps the reply's `response_metadata.delivery`. The platform has then already sent the reply, so `reply` is for display and records: do not send it again. `delivery` reads that stamp:
 
 | `delivery` | What it is |
 | --- | --- |
@@ -98,7 +100,7 @@ interrupt_id = result.review.interrupt_id  # keep it with the card the reviewer 
 
 [`#run`](#run)'s reply: initializes a thread if needed, seeds it with the prior messages in the conversation, sends the latest message to the agent, and waits for the run to end or pause.
 
-Use it when the host application only wants the assistant's reply. Returns `nil` whenever the run paused for review, never the draft awaiting it, and when the run ended without a reply.
+Use it when the host application only wants the assistant's reply. Returns `nil` whenever the run paused for review, never the draft awaiting it, and when the run ended without a reply. When the assistant has a delivery tool, the platform has already sent the reply it returns: do not send it again.
 
 ### Usage example
 
@@ -400,10 +402,13 @@ assistant.review(
   context: context,
 )
 
-# Superseded: a new customer message, or another reviewer, got there first.
+# Superseded: a reviewer opened a held reply, and before they decided, a new
+# customer message (or another reviewer) moved the thread on.
+held = assistant.under_review(thread_id: thread_id)  # held.reply is the draft
+# ...later, when the reviewer clicks Approve:
 begin
   assistant.review(thread_id: thread_id, reviewer_id: current_user.email,
-                   interrupt_id: pending.interrupt_id, reply: { "action" => "approve" },
+                   interrupt_id: held.interrupt_id, reply: { "action" => "approve" },
                    context: context)
 rescue NitroIntelligence::Assistants::ReviewSupersededError
   # Reload the thread and show the current pause, if any.
