@@ -162,9 +162,10 @@ RSpec.describe NitroIntelligence::Assistant do
 
     it "supplies the assistant id to a review" do
       expect(client).to receive(:review)
-        .with(thread_id: "t1", assistant_id: "id-cc", reviewer_id: "jane", reply: { "action" => "approve" })
+        .with(thread_id: "t1", assistant_id: "id-cc", reviewer_id: "jane", interrupt_id: "i1",
+              reply: { "action" => "approve" })
 
-      assistant.review(thread_id: "t1", reviewer_id: "jane", reply: { "action" => "approve" })
+      assistant.review(thread_id: "t1", reviewer_id: "jane", interrupt_id: "i1", reply: { "action" => "approve" })
     end
 
     it "refuses an assistant id from the caller on a review" do

@@ -124,14 +124,21 @@ module NitroIntelligence
     #
     # Pass the `interrupt_id` the reviewer was shown (`PendingReview#interrupt_id`): a thread no longer
     # paused on it raises ReviewSupersededError instead of applying the decision to whatever the thread
-    # waits on now. The resume is keyed by the interrupt read here, so it never decides a pause that
-    # appeared since; reporting such a resume as ReviewSupersededError is best-effort (see
-    # PendingReview#unapplied_resume?), as is reporting one Assistants refuses because another review
-    # resumed the thread first.
+    # waits on now. It is required for a reply, since a new message can replace the draft the
+    # reviewer read with another, which an approval without it would decide -- and, with a delivery
+    # tool, send unread. For tool calls it is optional. The resume is keyed by the interrupt read
+    # here, so it never decides a pause that appeared since; reporting such a resume as
+    # ReviewSupersededError is best-effort (see PendingReview#unapplied_resume?), as is reporting one
+    # Assistants refuses because another review resumed the thread first.
     def review(thread_id:, assistant_id:, reviewer_id:, reply: nil, tool_calls: nil, interrupt_id: nil, # rubocop:disable Metrics/ParameterLists
                reviewed_at: nil, context: {})
       kind, reviews = review_subject!(reply:, tool_calls:)
       raise ArgumentError, "reviewer_id is required" if reviewer_id.blank?
+
+      if kind == :reply && interrupt_id.blank?
+        raise ArgumentError, "interrupt_id is required to review a reply: pass the interrupt_id of the " \
+                             "review the reviewer was shown (PendingReview#interrupt_id)"
+      end
 
       pending_review = pending_review!(thread_id:, kind:, interrupt_id:)
       stamp = reviewer_stamp(reviewer_id, reviewed_at)

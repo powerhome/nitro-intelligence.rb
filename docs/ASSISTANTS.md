@@ -87,6 +87,7 @@ result.interrupted?                    # => true, the reply is held for review
 result.reply                           # => nil while held
 result.review.reply.content            # => "Sure! You're booked for Tuesday at 10am."
 result.review.reply.allowed_decisions  # => ["approve", "edit", "reject"]
+interrupt_id = result.review.interrupt_id  # keep it with the card the reviewer sees
 ```
 
 ## `#await_run`
@@ -311,7 +312,7 @@ pending.interrupt_id  # => "6f1c..."
 
 ## `#review`
 
-Resumes a paused thread with a reviewer's decision on whatever it is paused on, and returns the `RunResult` of the resumed run. Pass exactly one of `reply:` or `tool_calls:`, matching the pause, and a `reviewer_id`.
+Resumes a paused thread with a reviewer's decision on whatever it is paused on, and returns the `RunResult` of the resumed run. Pass exactly one of `reply:` or `tool_calls:`, matching the pause, a `reviewer_id`, and, for a reply, the `interrupt_id` of the review the reviewer was shown.
 
 | Pause | Argument | `action` | Fields |
 | --- | --- | --- | --- |
@@ -352,9 +353,9 @@ The resume is sent as:
 }
 ```
 
-Pass the `interrupt_id` of the review the reviewer was shown. If the thread has moved on since -- a new customer message superseded the review, or another reviewer decided it first -- it is no longer paused on that interrupt, and `#review` raises `ReviewSupersededError` (a `ThreadResumptionError`) rather than applying the decision to whatever the thread is waiting on now. It raises the same when the thread is not paused at all, or its run is under way again. Without `interrupt_id`, only the kind of pause is checked before resuming.
+Pass the `interrupt_id` of the review the reviewer was shown. It is required for a reply: a new customer message can replace the draft the reviewer read with a newer one, and an approval that did not name the review would decide that one instead -- and, with a delivery tool, send it unread. A reply review without it raises `ArgumentError` before any request. For tool calls it is optional. If the thread has moved on since -- a new customer message superseded the review, or another reviewer decided it first -- it is no longer paused on that interrupt, and `#review` raises `ReviewSupersededError` (a `ThreadResumptionError`) rather than applying the decision to whatever the thread is waiting on now. It raises the same when the thread is not paused at all, or its run is under way again. A tool-call review without `interrupt_id` checks only the kind of pause before resuming.
 
-The check and the resume are separate requests, so the thread can move on between them. `#review` keys the resume by the interrupt it read, and Assistants applies a keyed resume to that interrupt only: a stale decision is never applied. Reporting it is best-effort: when the resumed run comes back paused on a different interrupt that sits on a checkpoint another run wrote, `#review` raises `ReviewSupersededError`; when it cannot tell, it returns the result, paused on the newer interrupt with nothing decided. A resume Assistants refuses because another review resumed the thread first is reported as `ReviewSupersededError` too. An interrupt reported without an id is resumed unkeyed.
+The check and the resume are separate requests, so the thread can move on between them. `#review` keys the resume by the interrupt it read, and Assistants applies a keyed resume to that interrupt only: a stale decision is never applied. Reporting it is best-effort: when the resumed run comes back paused on a different interrupt that sits on a checkpoint another run wrote, `#review` raises `ReviewSupersededError`; when it cannot tell, it returns the result, paused on the newer interrupt with nothing decided. A resume Assistants refuses because another review resumed the thread first is reported as `ReviewSupersededError` too. A tool-call pause reported without an id is resumed unkeyed; a reply pause always has one.
 
 The resumed run can pause again: a run whose tool calls were just decided may go on to hold its reply. Read the returned result as you would [`#run`](#run)'s.
 
@@ -363,10 +364,11 @@ The resumed run can pause again: a run whose tool calls were just decided may go
 ### Usage example
 
 ```ruby
-# Later, from a reviewer's screen: edit the reply.
+# Later, from a reviewer's screen: edit the reply the reviewer was shown.
 result = assistant.review(
   thread_id: thread_id,
   reviewer_id: current_user.email,
+  interrupt_id: interrupt_id,
   reply: { "action" => "edit", "content" => "Sure! Tuesday at 10am works. Reply C to confirm." },
   context: context,
 )
@@ -379,6 +381,7 @@ result.delivery.error    # => nil, or the tool's error when it failed
 assistant.review(
   thread_id: thread_id,
   reviewer_id: current_user.email,
+  interrupt_id: interrupt_id,
   reply: { "action" => "reject", "message" => "Wrong appointment; I'll call the customer." },
   context: context,
 )

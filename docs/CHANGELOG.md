@@ -23,7 +23,7 @@ The next release is 4.0.0. See [Upgrading to 4.0](ASSISTANTS.md#upgrading-to-40)
 - `RunResult#delivery` reads the reply's `response_metadata.delivery` stamp: `status` (`"delivered"` or `"failed"`), `error`, `attempts`, `result`, `tool` and `delivered_at`; `nil` without a delivery tool.
 - `NitroIntelligence::PendingReview`, what a paused run waits on: `kind`, `interrupt_id`, and either `tool_calls` or `reply` (`content`, `allowed_decisions` from `approve`, `edit` and `reject`, `description`).
 - `#under_review` reads the pending review from the thread state.
-- `#review` resumes a pause with exactly one of `reply:` or `tool_calls:` and a required `reviewer_id`. It validates the decisions before sending, puts `reviewer_id` and `reviewed_at` in each decision and in the resume run's `config.metadata`, keys the resume by the interrupt it read, and returns the resumed run's `RunResult`.
+- `#review` resumes a pause with exactly one of `reply:` or `tool_calls:` and a required `reviewer_id`. A reply review also requires the `interrupt_id` the reviewer was shown, so an approval never decides a newer draft that replaced the one they read; for tool calls it is optional. It validates the decisions before sending, puts `reviewer_id` and `reviewed_at` in each decision and in the resume run's `config.metadata`, keys the resume by the interrupt it read, and returns the resumed run's `RunResult`.
 - `Assistants::ReviewSupersededError`, a `ThreadResumptionError`, raised by `#review` when the thread has moved past the review: it is no longer paused on the given `interrupt_id`, another review resumed it first, or the resumed run shows the decision was not applied.
 
 ## [3.1.0] - 2026-10-06

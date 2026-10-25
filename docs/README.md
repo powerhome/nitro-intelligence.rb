@@ -613,7 +613,8 @@ assistant = NitroIntelligence.assistants["candidate-concierge"]
 
 result = assistant.run(thread_id: thread.id, messages: messages)
 result.reply # => nil while the reply is held for review
-assistant.review(thread_id: thread.id, reviewer_id: user.email, reply: { "action" => "approve" })
+assistant.review(thread_id: thread.id, reviewer_id: user.email,
+                 interrupt_id: result.review.interrupt_id, reply: { "action" => "approve" })
 assistant.thread_state(thread_id: thread.id)
 ```
 

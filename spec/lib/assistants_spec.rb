@@ -1607,7 +1607,9 @@ RSpec.describe NitroIntelligence::Assistants do
         stub_json(:post, run_url, { "messages" => [human_message, draft_message] })
       end
 
+      # A reply review names the interrupt the reviewer was shown; a tool call review need not.
       def review(**kwargs)
+        kwargs = { interrupt_id: "interrupt-reply" }.merge(kwargs) if kwargs.key?(:reply)
         assistants.review(thread_id:, assistant_id:, reviewer_id:, reviewed_at:, context:, **kwargs)
       end
 
@@ -1653,7 +1655,8 @@ RSpec.describe NitroIntelligence::Assistants do
       it "stamps the current time when reviewed_at is not given" do
         allow(Time).to receive(:now).and_return(Time.utc(2026, 10, 21, 12, 0, 0))
 
-        assistants.review(thread_id:, assistant_id:, reviewer_id:, context:, reply: { "action" => "approve" })
+        assistants.review(thread_id:, assistant_id:, reviewer_id:, context:, interrupt_id: "interrupt-reply",
+                          reply: { "action" => "approve" })
 
         expect(WebMock).to have_requested(:post, run_url)
           .with(body: resume_body([{ "type" => "approve" }], reviewed_at: "2026-10-21T12:00:00Z").to_json)
@@ -1678,6 +1681,13 @@ RSpec.describe NitroIntelligence::Assistants do
         expect do
           assistants.review(thread_id:, assistant_id:, reviewer_id: "", reply: { "action" => "approve" })
         end.to raise_error(ArgumentError, "reviewer_id is required")
+      end
+
+      it "requires the interrupt the reviewer was shown for a reply, sending nothing" do
+        expect do
+          assistants.review(thread_id:, assistant_id:, reviewer_id:, context:, reply: { "action" => "approve" })
+        end.to raise_error(ArgumentError, /interrupt_id is required to review a reply/)
+        expect(WebMock).not_to have_requested(:any, /#{base_url}/)
       end
 
       it "requires exactly one thing to review" do
@@ -1722,7 +1732,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
         it "refuses as superseded without reading the stale interrupt" do
           expect { review(reply: { "action" => "approve" }) }
-            .to raise_error(NitroIntelligence::Assistants::ReviewSupersededError, /no longer paused on a review/)
+            .to raise_error(NitroIntelligence::Assistants::ReviewSupersededError, /no longer paused on interrupt-reply/)
         end
       end
 
@@ -1769,7 +1779,7 @@ RSpec.describe NitroIntelligence::Assistants do
         end
 
         it "refuses a reply review, sending nothing" do
-          expect { review(reply: { "action" => "approve" }) }.to raise_error(
+          expect { review(reply: { "action" => "approve" }, interrupt_id: "interrupt-tools") }.to raise_error(
             NitroIntelligence::Assistants::ThreadResumptionError,
             "Thread #{thread_id} is awaiting review of tool calls, not of a reply"
           )
@@ -1785,6 +1795,13 @@ RSpec.describe NitroIntelligence::Assistants do
                               interrupt_id: "interrupt-tools").to_json
           )
           expect(result.reply).to eq(draft)
+        end
+
+        it "takes them without the interrupt the reviewer was shown, keyed by the one it read" do
+          review(tool_calls: { "call-1" => { "action" => "approve" } })
+
+          expect(WebMock).to have_requested(:post, run_url)
+            .with(body: resume_body([{ "type" => "approve" }], interrupt_id: "interrupt-tools").to_json)
         end
 
         it "refuses a review of a tool call the interrupt is not holding, sending nothing" do
@@ -1886,14 +1903,13 @@ RSpec.describe NitroIntelligence::Assistants do
 
       context "when the interrupt reports no id" do
         before do
-          stub_states({ "values" => { "messages" => [human_message, draft_message] },
-                        "interrupts" => [reply_interrupt.except("id")] }, {})
-          stub_resume({ "messages" => [human_message, draft_message] })
+          stub_states({ "values" => { "messages" => [human_message, tool_message] },
+                        "interrupts" => [tool_interrupt.except("id")] }, {})
+          stub_resume({ "messages" => [human_message, tool_message, tool_result] })
         end
 
         it "resumes unkeyed, the only resume such a pause takes" do
-          assistants.review(thread_id:, assistant_id:, reviewer_id:, reviewed_at:, context:,
-                            reply: { "action" => "approve" })
+          review_tools
 
           stamp = { "reviewer_id" => reviewer_id, "reviewed_at" => reviewed_at }
           expect(WebMock).to have_requested(:post, run_url).with(
