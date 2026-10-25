@@ -10,10 +10,14 @@ module NitroIntelligence
   # only once a run ends without `__interrupt__`.
   class RunResult
     # How the platform delivered the reply through the assistant's delivery tool, read from the
-    # reply's `response_metadata.delivery` stamp. `status` is "delivered" or "failed"; `error` is
-    # the tool's error when it failed; `result` is what the tool returned when it succeeded. A field
-    # the stamp does not carry, or carries as the wrong type, is nil.
-    Delivery = Struct.new(:status, :tool, :attempts, :error, :result, :delivered_at, keyword_init: true) do
+    # reply's `response_metadata.delivery` stamp. `status` is "delivered" (with `result`, what the
+    # tool returned, and `delivered_at`), "failed" (with the tool's `error` and `failed_at`), or
+    # "pending": the platform stamps a settled reply "pending" just before it delivers it, so a
+    # finished run still showing it was cut off before delivery recorded an outcome. Treat a
+    # pending reply as not sent; the next customer message removes it and the model answers both. A
+    # field the stamp does not carry, or carries as the wrong type, is nil.
+    Delivery = Struct.new(:status, :tool, :attempts, :error, :result, :delivered_at, :failed_at,
+                          keyword_init: true) do
       def delivered?
         status == "delivered"
       end
@@ -21,7 +25,14 @@ module NitroIntelligence
       def failed?
         status == "failed"
       end
+
+      def pending?
+        status == "pending"
+      end
     end
+
+    # The `response_metadata.review` type the platform stamps on a draft when it pauses on it.
+    PENDING_REVIEW = "pending".freeze
 
     # The response exactly as Assistants returned it.
     attr_reader :raw
@@ -54,8 +65,8 @@ module NitroIntelligence
       reply_message && text(reply_message["content"]).presence
     end
 
-    # The reply's delivery, or nil when the platform did not deliver it: no reply, or no delivery
-    # tool configured for the assistant.
+    # The reply's delivery, or nil when the reply carries no delivery stamp: no reply, or no
+    # delivery tool configured for the assistant.
     def delivery
       return @delivery if defined?(@delivery)
 
@@ -66,7 +77,8 @@ module NitroIntelligence
   private
 
     # The run's last message, when the run ended and that message is the assistant's reply: an AI
-    # message with no tool calls.
+    # message with no tool calls. A draft still stamped as awaiting review is never the reply, even
+    # in a response that reports no pause.
     def reply_message
       return nil if interrupted?
 
@@ -74,8 +86,14 @@ module NitroIntelligence
       return nil unless message.is_a?(Hash)
       return nil if message["type"].present? && message["type"] != "ai"
       return nil if Array(message["tool_calls"]).any?
+      return nil if awaiting_review?(message)
 
       message
+    end
+
+    def awaiting_review?(message)
+      review = message.dig("response_metadata", "review")
+      review.is_a?(Hash) && review["type"] == PENDING_REVIEW
     end
 
     # A message's content is a string, or a list of content blocks. Its text is the string, or the
@@ -99,7 +117,8 @@ module NitroIntelligence
         attempts: stamp["attempts"].is_a?(Integer) ? stamp["attempts"] : nil,
         error: string_or_nil(stamp["error"]),
         result: stamp["result"],
-        delivered_at: string_or_nil(stamp["delivered_at"])
+        delivered_at: string_or_nil(stamp["delivered_at"]),
+        failed_at: string_or_nil(stamp["failed_at"])
       )
     end
 

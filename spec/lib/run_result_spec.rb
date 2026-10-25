@@ -35,6 +35,37 @@ RSpec.describe NitroIntelligence::RunResult do
     end
   end
 
+  context "when the run paused on the reply, which the platform stamped as awaiting review" do
+    let(:pending_draft) { draft.merge("response_metadata" => { "review" => { "type" => "pending" } }) }
+    let(:run) { { "messages" => [human, pending_draft], "__interrupt__" => [reply_interrupt_for(draft["content"])] } }
+
+    it "reads the pause as it does without the stamp" do
+      expect(result.reply).to be_nil
+      expect(result.review.reply.content).to eq("Sure! You're booked for Tuesday at 10am.")
+      expect(result.review.reply.allowed_decisions).to eq(%w[approve edit reject])
+    end
+  end
+
+  context "when a draft stamped as awaiting review comes back without a pause" do
+    let(:run) { { "messages" => [human, draft.merge("response_metadata" => { "review" => { "type" => "pending" } })] } }
+
+    it "has no reply, since nobody has reviewed it" do
+      expect(result.reply).to be_nil
+      expect(result.delivery).to be_nil
+    end
+  end
+
+  context "when the reply was reviewed" do
+    let(:reviewed) do
+      draft.merge("response_metadata" => { "review" => { "type" => "approve", "reviewer_id" => "jane" } })
+    end
+    let(:run) { { "messages" => [human, reviewed] } }
+
+    it "returns it" do
+      expect(result.reply).to eq("Sure! You're booked for Tuesday at 10am.")
+    end
+  end
+
   context "when the run paused on tool calls" do
     let(:run) do
       { "messages" => [human, tool_turn], "__interrupt__" => [tool_interrupt_for("lookup_appointment", {})] }
@@ -133,11 +164,30 @@ RSpec.describe NitroIntelligence::RunResult do
     end
 
     context "when every attempt failed" do
-      let(:stamp) { { "status" => "failed", "tool" => "send_sms", "attempts" => 3, "error" => "Number opted out" } }
+      let(:stamp) do
+        {
+          "status" => "failed", "tool" => "send_sms", "attempts" => 3, "error" => "Number opted out",
+          "failed_at" => "2026-10-18T14:03:09Z"
+        }
+      end
 
-      it "reports the failure and the tool's error" do
+      it "reports the failure, the tool's error and when it failed" do
         expect(result.delivery).to be_failed
-        expect(result.delivery).to have_attributes(status: "failed", attempts: 3, error: "Number opted out", result: nil)
+        expect(result.delivery).to have_attributes(
+          status: "failed", attempts: 3, error: "Number opted out", result: nil,
+          failed_at: "2026-10-18T14:03:09Z", delivered_at: nil
+        )
+      end
+    end
+
+    context "when delivery was cut off before it recorded an outcome" do
+      let(:stamp) { { "status" => "pending", "tool" => "send_sms" } }
+
+      it "reports it as pending, neither delivered nor failed" do
+        expect(result.reply).to eq("Sure! You're booked for Tuesday at 10am.")
+        expect(result.delivery).to be_pending
+        expect(result.delivery).not_to be_delivered
+        expect(result.delivery).not_to be_failed
       end
     end
 

@@ -44,7 +44,7 @@ This is the main entry point when the host application wants to continue a threa
 | `reply` | The text of the run's reply, always a `String`: content given as a list of blocks is reduced to its text blocks, joined. `nil` while the run is paused, and when it ended without one |
 | `interrupted?` | Whether the run paused for review |
 | `review` | What the paused run is waiting on, a `NitroIntelligence::PendingReview`; `nil` when it did not pause |
-| `delivery` | How the platform delivered the reply through the assistant's delivery tool; `nil` without a reply or without a delivery tool |
+| `delivery` | How the platform delivered the reply through the assistant's delivery tool; `nil` when the reply carries no delivery stamp: no reply, or no delivery tool. Read it with `&.` |
 | `messages` | The run's messages as Assistants reports them |
 | `raw` | The `/runs/wait` response, unformatted |
 
@@ -52,7 +52,8 @@ A run has at most one reply: its final message, an AI message with text and no t
 
 - while the run is paused: its last AI message is a draft awaiting review, or a turn whose tool calls are held. Do not send it;
 - after a reviewer rejects the reply: the draft is removed, leaving a tool result or the customer's message last, and an earlier turn's text is never returned in its place;
-- when the reply is empty or only whitespace.
+- when the reply is empty or only whitespace;
+- when the last message is still stamped as awaiting review (`response_metadata.review.type` is `"pending"`), even if the response reports no pause: nobody has reviewed it.
 
 A run pauses on its tool calls or on its reply, never both at once, and `review` exposes whichever it is:
 
@@ -67,13 +68,16 @@ When the assistant has a delivery tool, the platform delivers the reply when the
 
 | `delivery` | What it is |
 | --- | --- |
-| `status` | `"delivered"` or `"failed"`; `delivered?` and `failed?` test for each |
+| `status` | `"delivered"`, `"failed"` or `"pending"`; `delivered?`, `failed?` and `pending?` test for each |
 | `error` | The tool's error when it failed, otherwise `nil` |
 | `attempts` | How many times the platform called the tool |
 | `result` | What the tool returned when it succeeded |
-| `tool`, `delivered_at` | The delivery tool's name, and when the reply was delivered |
+| `tool` | The delivery tool's name |
+| `delivered_at`, `failed_at` | When the reply was delivered, or when delivery gave up |
 
 A failed delivery is not paused or retried by the client: the platform has already retried it. Alert someone, or let the customer's next message bring an answer to both.
+
+The platform stamps a settled reply `"pending"` just before it starts delivering it, and replaces the stamp with the outcome. A finished run whose reply is still `"pending"` was cut off before delivery recorded an outcome (a crash, a cancel or a timeout), so the reply may not have been sent: treat it as not sent, like a failed one. The next customer message removes it from the conversation, and the model answers both messages.
 
 ### Usage example
 
@@ -374,8 +378,8 @@ result = assistant.review(
 )
 
 result.reply             # => "Sure! Tuesday at 10am works. Reply C to confirm."
-result.delivery.status   # => "delivered" (or "failed"; delivery is nil without a delivery tool)
-result.delivery.error    # => nil, or the tool's error when it failed
+result.delivery&.status  # => "delivered" or "failed"; delivery is nil without a delivery tool
+result.delivery&.error   # => nil, or the tool's error when it failed
 
 # Or reject it: the run ends with no reply; the message is the reason, for Cerebro only.
 assistant.review(
