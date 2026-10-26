@@ -171,13 +171,16 @@ module NitroIntelligence
     def tool_call_reviews(reviews)
       return reviews unless reviews.is_a?(Array)
 
-      reviews.to_h do |review|
+      reviews.each_with_object({}) do |review, by_id|
         unless review.is_a?(Hash) && review.with_indifferent_access[:id].present?
           raise_error!("Each tool call review in a list must be a hash with the tool call's `id`")
         end
 
         review = review.with_indifferent_access
-        [review[:id].to_s, review.except(:id)]
+        id = review[:id].to_s
+        raise_error!("Tool call `#{id}` is reviewed more than once") if by_id.key?(id)
+
+        by_id[id] = review.except(:id)
       end
     end
 
@@ -200,15 +203,16 @@ module NitroIntelligence
       end
     end
 
-    # A required field given as anything but non-blank text is reported as missing; an optional one
-    # may be absent, but not something other than a String.
+    # A required field must be non-blank text; an optional one may be absent, but not something other
+    # than a String.
     def text!(review, field, action:, required:)
       value = review[field]
-      return value unless ReviewDecision.message_problem(value, required:)
+      case ReviewDecision.message_problem(value, required:)
+      when :missing then raise_error!("A `#{action}` review of the reply must include a non-empty `#{field}`")
+      when :not_string then raise_error!("`#{field}` for the reply review must be a string")
+      end
 
-      raise_error!("A `#{action}` review of the reply must include a non-empty `#{field}`") if required
-
-      raise_error!("`#{field}` for the reply review must be a string")
+      value
     end
 
     def raise_error!(message)

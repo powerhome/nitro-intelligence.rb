@@ -111,6 +111,11 @@ RSpec.describe NitroIntelligence::PendingReview do
         .to raise_error(resumption_error, /`edit` review of the reply must include a non-empty `content`/)
     end
 
+    it "refuses content that is not a string as mistyped, not missing" do
+      expect { pending_review.decisions("action" => "edit", "content" => 5) }
+        .to raise_error(resumption_error, /`content` for the reply review must be a string/)
+    end
+
     it "refuses a reason that is not a string" do
       expect { pending_review.decisions("action" => "reject", "message" => 1) }
         .to raise_error(resumption_error, /`message` for the reply review must be a string/)
@@ -174,6 +179,13 @@ RSpec.describe NitroIntelligence::PendingReview do
       expect(pending_review.decisions(reviews)).to eq(
         [{ "type" => "reject", "message" => "Customer called in" }, { "type" => "respond", "message" => "Done" }]
       )
+    end
+
+    it "refuses two reviews of the same tool call" do
+      reviews = [{ "id" => "call-1", "action" => "approve" }, { id: "call-1", "action" => "reject" }]
+
+      expect { pending_review.decisions(reviews) }
+        .to raise_error(resumption_error, "Tool call `call-1` is reviewed more than once")
     end
 
     it "refuses a list entry without an id" do
