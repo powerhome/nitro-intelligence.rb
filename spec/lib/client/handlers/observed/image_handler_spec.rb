@@ -96,6 +96,18 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
 
         expect(handler.create(message: "draw a cat")).to eq(fake_image_generation)
       end
+
+      it "asks the gateway to redact the request from its logs" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        allow(fake_image_generation).to receive(:trace_id=)
+        allow(fake_image_generation).to receive(:parse_file)
+        expect(fake_completions).to receive(:create) do |**kwargs|
+          expect(kwargs.dig(:request_options, :extra_headers, "x-litellm-enable-message-redaction")).to eq("true")
+          fake_completion_response
+        end
+
+        handler.create(message: "draw a cat")
+      end
     end
 
     # #create returns the image generation rather than the observation payload, so the

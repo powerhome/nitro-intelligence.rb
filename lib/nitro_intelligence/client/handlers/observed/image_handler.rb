@@ -84,7 +84,9 @@ module NitroIntelligence
           end
 
           def workflow(generation:, image_generation:, parameters:)
-            chat_completion = @base_handler.perform_request(parameters:, correlation_trace_id: generation.trace_id)
+            chat_completion = @base_handler.perform_request(
+              parameters:, correlation_trace_id: generation.trace_id, mask_content: project.mask_content?
+            )
 
             image_generation.trace_id = generation.trace_id
             image_generation.parse_file(chat_completion)
