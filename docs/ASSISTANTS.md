@@ -329,7 +329,7 @@ Resumes a paused thread with a reviewer's decision on whatever it is paused on, 
 
 The action must be one of the pause's `allowed_decisions`. A reply allows what the assistant's prompt config lists for `__reply__`, from `approve`, `edit` and `reject`; `respond` is never offered for a reply. A review naming an action that is not allowed, or missing a field it needs, raises `ThreadResumptionError` before anything is sent, as does a reply review sent to a thread paused on tool calls, and the other way round.
 
-`reviewer_id` (required) and `reviewed_at` (optional, a `Time` or an ISO 8601 string; now by default) are sent in every decision and in the resume run's `config.metadata`. The platform reads a reply's reviewer from the decision and records it on the reply's `response_metadata.review` and in Cerebro. LangChain drops extra keys in a tool decision, so for tool calls it reads the reviewer from `config.metadata`. It never checks either: who may review is the application's decision.
+`reviewer_id` (required) and `reviewed_at` (optional, a `Time` or an ISO 8601 string; now by default) are sent in the resume run's `config.metadata`, where the platform reads them for replies and tool calls alike (LangChain drops extra keys in a tool decision). It records a reply's reviewer on the reply's `response_metadata.review` and in Cerebro, and a tool call's in Cerebro, and never checks either: who may review is the application's decision.
 
 The resume is sent as:
 
@@ -462,7 +462,7 @@ assistants.review_tool_calls(
 
 `context` is optional and is sent with the resumed run, exactly as it is for `#await_run`. Pass the `prompt_variables` the assistant's prompt needs if the resumed run has to render it again.
 
-`reviewer_id` and `reviewed_at` are optional. Given a `reviewer_id`, each decision and the resume run's `config.metadata` carry both, as [`#review`](#review) sends them (`reviewed_at` is now unless given), and the platform records the reviewer from the metadata; without one, neither is sent.
+`reviewer_id` and `reviewed_at` are optional. Given a `reviewer_id`, the resume run's `config.metadata` carries both, as [`#review`](#review) sends them (`reviewed_at` is now unless given), and the platform records the reviewer from it; without one, neither is sent.
 
 This method is a thin wrapper over the resume [`#review`](#review) sends for `tool_calls:`. It keys the resume by the interrupt it read, so it never decides a pause that appeared in between, and when the resumed run shows it decided nothing it raises `ReviewSupersededError` (a `ThreadResumptionError`). Unlike `#review`, it does not translate Assistants refusing the resume because the thread is no longer paused: that is raised as before, a `ThreadResumptionError` whose message is the response body. `#review` with `tool_calls:` takes the same reviews, requires a reviewer, also checks an `interrupt_id` before resuming, and returns the resumed run's result.
 

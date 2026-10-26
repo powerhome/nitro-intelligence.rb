@@ -119,8 +119,8 @@ module NitroIntelligence
     #   `{"action" => "edit", "content" => "..."}` or `{"action" => "reject", "message" => "reason"}`;
     # - `tool_calls:`, one review per held tool call, as #review_tool_calls takes them.
     #
-    # `reviewer_id` and `reviewed_at` (now, unless given) are sent in each decision and in the resume
-    # run's `config.metadata`, where the platform reads them; it records them and never checks them.
+    # `reviewer_id` and `reviewed_at` (now, unless given) are sent in the resume run's `config.metadata`,
+    # where the platform reads them; it records them and never checks them.
     #
     # Pass the `interrupt_id` the reviewer was shown (`PendingReview#interrupt_id`): a thread no longer
     # paused on it raises ReviewSupersededError instead of applying the decision to whatever the thread
@@ -160,11 +160,10 @@ module NitroIntelligence
     # a `message`, recorded as the reason.
     #
     # A thin wrapper over what #review sends for `tool_calls:`: keyed by the interrupt it read, with
-    # `reviewer_id` and `reviewed_at` in each decision and in `config.metadata` when a reviewer is
-    # given, and raising ReviewSupersededError when the resumed run shows the decisions were not
-    # applied. Unlike #review, a resume Assistants refuses because the thread is no longer paused is
-    # raised as it always was, a ThreadResumptionError carrying the response body, which nitro-web
-    # parses. Returns nil.
+    # `reviewer_id` and `reviewed_at` in `config.metadata` when a reviewer is given, and raising
+    # ReviewSupersededError when the resumed run shows the decisions were not applied. Unlike #review,
+    # a resume Assistants refuses because the thread is no longer paused is raised as it always was, a
+    # ThreadResumptionError carrying the response body, which nitro-web parses. Returns nil.
     def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {}, reviewer_id: nil, reviewed_at: nil)
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)
@@ -327,13 +326,11 @@ module NitroIntelligence
     end
 
     # Sends the decisions for `reviews`, validated against the pause, as the resume keyed by the
-    # pause's interrupt. A reviewer `stamp` goes in each decision, where the platform reads it for a
-    # reply, and in the run's `config.metadata`, where it reads it for tool calls: LangChain drops
-    # extra keys in a tool decision. Raises ReviewSupersededError when the run shows the decisions
-    # were not applied.
+    # pause's interrupt. A reviewer `stamp` goes in the run's `config.metadata`, where the platform
+    # reads it for replies and tool calls alike (LangChain drops extra keys in a tool decision).
+    # Raises ReviewSupersededError when the run shows the decisions were not applied.
     def resume_review(thread_id:, assistant_id:, pending_review:, reviews:, stamp:, context:)
       decisions = pending_review.decisions(reviews)
-      decisions = decisions.map { |decision| decision.merge(stamp) } if stamp
 
       body = { assistant_id:, command: { resume: pending_review.resume(decisions) } }
       body[:config] = { metadata: stamp } if stamp

@@ -1547,13 +1547,13 @@ RSpec.describe NitroIntelligence::Assistants do
       end
     end
 
-    # The resume #review sends: decisions keyed by the interrupt, with the reviewer in each decision
-    # and in the run's config.metadata.
+    # The resume #review sends: decisions keyed by the interrupt, with the reviewer in the run's
+    # config.metadata.
     def resume_body(decisions, interrupt_id: "interrupt-reply", reviewed_at: self.reviewed_at)
       stamp = { "reviewer_id" => reviewer_id, "reviewed_at" => reviewed_at }
       {
         assistant_id:,
-        command: { resume: { interrupt_id => { decisions: decisions.map { |decision| decision.merge(stamp) } } } },
+        command: { resume: { interrupt_id => { decisions: } } },
         config: { metadata: stamp },
         context:,
       }
@@ -1565,7 +1565,7 @@ RSpec.describe NitroIntelligence::Assistants do
         stub_json(:post, run_url, { "messages" => [human_message, tool_message, tool_result] })
       end
 
-      it "puts the reviewer in each decision and in config.metadata, as #review does" do
+      it "puts the reviewer in config.metadata, as #review does" do
         result = assistants.review_tool_calls(
           thread_id:, assistant_id:, reviewer_id:, reviewed_at:, context:,
           tool_calls: { "call-1" => { "action" => "approve" } }
@@ -1786,7 +1786,7 @@ RSpec.describe NitroIntelligence::Assistants do
           expect(WebMock).not_to have_requested(:post, run_url)
         end
 
-        it "decides them from a list of reviews, with the reviewer in each decision and in config.metadata" do
+        it "decides them from a list of reviews, with the reviewer in config.metadata" do
           result = review(tool_calls: [{ "id" => "call-1", "action" => "reject", "message" => "Customer called in" }],
                           interrupt_id: "interrupt-tools")
 
@@ -1914,7 +1914,7 @@ RSpec.describe NitroIntelligence::Assistants do
           stamp = { "reviewer_id" => reviewer_id, "reviewed_at" => reviewed_at }
           expect(WebMock).to have_requested(:post, run_url).with(
             body: {
-              assistant_id:, command: { resume: { decisions: [{ "type" => "approve" }.merge(stamp)] } },
+              assistant_id:, command: { resume: { decisions: [{ "type" => "approve" }] } },
               config: { metadata: stamp }, context:
             }.to_json
           )
