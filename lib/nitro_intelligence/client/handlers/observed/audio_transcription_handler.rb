@@ -76,7 +76,8 @@ module NitroIntelligence
 
           def workflow(generation:, message:, audio_file:, parameters:)
             audio_transcription = @base_handler.perform_request(
-              audio_file:, message:, parameters:, correlation_trace_id: generation.trace_id
+              audio_file:, message:, parameters:,
+              correlation_trace_id: generation.trace_id, mask_content: project.mask_content?
             )
 
             upload_input_audio(audio_file, generation.trace_id)

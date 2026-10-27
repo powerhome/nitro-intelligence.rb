@@ -81,6 +81,16 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
         expect(tts).to eq(fake_tts_response)
         expect(trace_attributes[:output]).to eq("")
       end
+
+      it "asks the gateway to redact the request from its logs" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        expect(fake_speech).to receive(:create) do |**kwargs|
+          expect(kwargs.dig(:request_options, :extra_headers, "x-litellm-enable-message-redaction")).to eq("true")
+          fake_tts_response
+        end
+
+        handler.create(message: "say hi")
+      end
     end
 
     it "carries the cost the gateway reported into the trace attributes" do

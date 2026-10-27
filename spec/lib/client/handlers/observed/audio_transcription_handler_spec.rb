@@ -70,6 +70,16 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
 
         expect(audio_transcription).to eq(fake_transcription_response)
       end
+
+      it "asks the gateway to redact the request from its logs" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        expect(fake_transcriptions).to receive(:create) do |**kwargs|
+          expect(kwargs.dig(:request_options, :extra_headers, "x-litellm-enable-message-redaction")).to eq("true")
+          fake_transcription_response
+        end
+
+        handler.create(message: "transcribe", audio_file: fake_audio_file)
+      end
     end
 
     it "records the audio duration for models billed by duration" do

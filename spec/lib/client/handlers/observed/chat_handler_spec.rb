@@ -9,7 +9,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
   let(:base_handler) { NitroIntelligence::Client::Handlers::ChatHandler.new(client: fake_openai_client) }
 
   let(:fake_prompt_store) { double("PromptStore") }
-  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store) }
+  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, mask_content?: false) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
   let(:fake_observer) { double("LangfuseObserver", project_client: fake_project_client) }
   let(:fake_generation) { double("Generation", trace_id: "abcdef0123456789abcdef0123456789") }
@@ -79,6 +79,30 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
       _, trace_attributes = handler.create(message: "hello")
 
       expect(trace_attributes[:cost_details]).to be_nil
+    end
+
+    it "leaves the gateway's logs of an unmasked project unredacted" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_completions).to receive(:create) do |**kwargs|
+        expect(kwargs.dig(:request_options, :extra_headers)).not_to have_key("x-litellm-enable-message-redaction")
+        fake_completion_response
+      end
+
+      handler.create(message: "hello")
+    end
+
+    context "when the project masks content" do
+      before { allow(fake_project).to receive(:mask_content?).and_return(true) }
+
+      it "asks the gateway to redact the request from its logs" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        expect(fake_completions).to receive(:create) do |**kwargs|
+          expect(kwargs.dig(:request_options, :extra_headers, "x-litellm-enable-message-redaction")).to eq("true")
+          fake_completion_response
+        end
+
+        handler.create(message: "hello")
+      end
     end
 
     context "with custom metadata" do
