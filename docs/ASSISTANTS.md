@@ -26,7 +26,7 @@ An assistant can be set up so that a person checks its work before it takes effe
 | --- | --- |
 | [`#await_run`](#await_run) | [`#run`](#run)`(...).reply`; `#run` also reports a pause and the delivery |
 | [`#tool_calls_under_review`](#tool_calls_under_review) | [`#under_review`](#under_review)`(thread_id:)&.tool_calls.to_a` |
-| [`#tool_calls_pending_review`](#tool_calls_pending_review) | [`#under_review`](#under_review)`(thread_id:)&.tool_calls.to_a`: only the held calls, the ones a reviewer has to decide, without `previous_message_id` |
+| [`#tool_calls_pending_review`](#tool_calls_pending_review) | [`#under_review`](#under_review)`(thread_id:)&.tool_calls.to_a`: only the held calls, the ones a reviewer has to decide |
 | [`#review_tool_calls`](#review_tool_calls) | [`#review`](#review)`(tool_calls:, reviewer_id:, interrupt_id:)`, which returns the resumed run's `RunResult` |
 
 What to change depends on what the assistant is set up for:
