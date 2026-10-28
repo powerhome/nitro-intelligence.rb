@@ -145,6 +145,50 @@ RSpec.describe NitroIntelligence::Assistant do
       assistant.thread_state(thread_id: "t1")
     end
 
+    it "supplies the assistant id to a run that reports its result" do
+      expect(client).to receive(:run)
+        .with(thread_id: "t1", assistant_id: "id-cc", messages: ["hi"], context: { a: 1 })
+
+      assistant.run(thread_id: "t1", messages: ["hi"], context: { a: 1 })
+    end
+
+    it "refuses an assistant id from the caller on a run that reports its result" do
+      expect(client).not_to receive(:run)
+
+      expect do
+        assistant.run(thread_id: "t1", messages: ["hi"], assistant_id: "somebody-else")
+      end.to raise_error(ArgumentError, /"candidate-concierge" supplies its own assistant_id/)
+    end
+
+    it "supplies the assistant id to a review" do
+      expect(client).to receive(:review)
+        .with(thread_id: "t1", assistant_id: "id-cc", reviewer_id: "jane", interrupt_id: "i1",
+              reply: { "action" => "approve" })
+
+      assistant.review(thread_id: "t1", reviewer_id: "jane", interrupt_id: "i1", reply: { "action" => "approve" })
+    end
+
+    it "refuses an assistant id from the caller on a review" do
+      expect(client).not_to receive(:review)
+
+      expect do
+        assistant.review(thread_id: "t1", reviewer_id: "jane", reply: {}, assistant_id: "somebody-else")
+      end.to raise_error(ArgumentError, /"candidate-concierge" supplies its own assistant_id/)
+    end
+
+    it "forwards the reviewer on a tool call review" do
+      expect(client).to receive(:review_tool_calls)
+        .with(thread_id: "t1", assistant_id: "id-cc", tool_calls: [], reviewer_id: "jane", reviewed_at: "2026-10-21")
+
+      assistant.review_tool_calls(thread_id: "t1", tool_calls: [], reviewer_id: "jane", reviewed_at: "2026-10-21")
+    end
+
+    it "passes the pending review straight through" do
+      expect(client).to receive(:under_review).with(thread_id: "t1")
+
+      assistant.under_review(thread_id: "t1")
+    end
+
     it "passes the tool calls awaiting review straight through" do
       expect(client).to receive(:tool_calls_under_review).with(thread_id: "t1")
 
