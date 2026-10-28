@@ -18,6 +18,75 @@ An assistant can be set up so that a person checks its work before it takes effe
 - **Reply review.** With the reserved entry `"__reply__": true` in the same `interrupt_on`, the assistant also holds its final reply, the message a customer would read, as a draft. The run pauses with the draft in [`#run`](#run)'s `review.reply`, and `reply` is `nil` until a reviewer approves, edits or rejects it with [`#review`](#review). Turn it on when a person should read what the assistant says before a customer does. See [Reviewing replies](https://github.com/powerhome/nip-assistants/blob/main/docs/README.md#reviewing-replies).
 - **Delivery tool.** The assistant's `mcp-config.json` can name a tool, on a server the application runs, that sends a reply to the customer -- an SMS, a chat message. The platform calls it with every settled reply: one that was approved, edited, or never under review. A reply approved hours later from a reviewer's screen is then sent by the run that approved it, without the application tracking which drafts are still waiting. The outcome is stamped on the reply and read as [`#run`](#run)'s `delivery`. With a delivery tool the application no longer sends replies: the reply it gets back has already gone out. See [Delivering replies](https://github.com/powerhome/nip-assistants/blob/main/docs/README.md#delivering-replies).
 
+## Review flow walkthrough
+
+One conversation through every kind of review, for an assistant that holds calls to `reschedule_appointment`, holds its replies (`__reply__`), and delivers them through a `send_sms` delivery tool.
+
+```ruby
+assistant = NitroIntelligence.assistants["virtual-confirmation"]
+
+# 1. Run the customer's message and check whether it paused.
+result = assistant.run(thread_id:, messages: [{ role: "user", content: "Can I move my appointment to Tuesday?" }])
+result.interrupted?   # => true
+result.reply          # => nil: nothing to send while paused
+
+# What it is waiting on: its tool calls, or its reply, never both.
+review = result.review              # a NitroIntelligence::PendingReview
+review.kind                         # => :tool_calls (review.tool_calls? is true, review.reply? false)
+review.tool_calls
+# => [{ "previous_message_id" => "human-1",
+#       "id"                  => "call-1",
+#       "name"                => "reschedule_appointment",
+#       "args"                => { "appointment_id" => 42, "day" => "Tuesday", "time" => "10:00" },
+#       "allowed_decisions"   => ["approve", "edit", "reject", "respond"] }]
+review.interrupt_id                 # => "interrupt-1": keep it with what the reviewer is shown
+review.reply                        # => nil on a tool-call pause
+
+# 2. Later, away from the run (on the reviewer's screen, say), read the same pause again.
+pending = assistant.under_review(thread_id:)
+pending.tool_calls                  # => the same calls as review.tool_calls
+pending.interrupt_id                # => "interrupt-1"
+
+# 3. Approve the tool call. The resumed run pauses again, now on its reply.
+result = assistant.review(thread_id:, reviewer_id: "jane@example.com", interrupt_id: pending.interrupt_id,
+                          tool_calls: [{ "id" => "call-1", "action" => "approve" }])
+result.review.kind                  # => :reply
+result.review.tool_calls            # => [] on a reply pause
+draft = result.review.reply
+draft.content                       # => "Done! See you Tuesday at 10."
+draft.description                   # => "Review this SMS before it is sent"
+draft.allowed_decisions             # => ["approve", "edit", "reject"]
+
+# 4. Edit the reply. The run ends and the platform delivers it.
+result = assistant.review(thread_id:, reviewer_id: "jane@example.com", interrupt_id: draft.interrupt_id,
+                          reply: { "action" => "edit", "content" => "Done! You're booked for Tuesday at 10am. Reply STOP to cancel." })
+result.interrupted?                 # => false
+result.reply                        # => "Done! You're booked for Tuesday at 10am. Reply STOP to cancel."
+result.delivery.delivered?          # => true: already sent by the platform, so show and record it, never send it again
+assistant.under_review(thread_id:)  # => nil, nothing left to review
+```
+
+- Step 2 is only needed when the review happens away from the run, on another request or after a page load; otherwise step 1's `result.review` is the same pause.
+- A tool call's `edit` carries `args`, merged over the arguments the model asked for: `{ "id" => "call-1", "action" => "edit", "args" => { "time" => "11:00" } }`. A reply's `edit` carries the whole new `content`. See [`#review`](#review) for every action and its fields.
+- The text the model wrote alongside its tool calls (here "Let me move that for you.") is not part of the review and is never the reply. To show it to the reviewer, read the content of the last AI message with tool calls from `result.messages`, or from [`#thread_messages`](#thread_messages) later.
+
+A review the thread has moved past is refused. Had a second reviewer, still looking at the tool call, decided it after step 3:
+
+```ruby
+assistant.review(thread_id:, reviewer_id: "sam@example.com", interrupt_id: "interrupt-1",
+                 tool_calls: [{ "id" => "call-1", "action" => "reject" }])
+# => raises ReviewSupersededError: Thread thread-1 is no longer paused on interrupt-1: another review
+#    already resumed it, or a new message superseded it
+```
+
+Tell that reviewer their decision was not applied, and show them what the thread is waiting on now, if anything. A decision the pause does not allow is refused before anything is sent:
+
+```ruby
+assistant.review(thread_id:, reviewer_id: "jane@example.com", interrupt_id: draft.interrupt_id,
+                 reply: { "action" => "respond", "message" => "hi" })
+# => raises ThreadResumptionError: Invalid review action `respond` for the reply; allowed: approve, edit, reject
+```
+
 ## Upgrading to 4.0
 
 4.0 replaces the reply-only calls with ones that report what a run is waiting on. The old ones still work, warn through `NitroIntelligence.deprecator` (registered with a Rails application's deprecators, so `config.active_support` deprecation settings apply), and are removed in 5.0:
