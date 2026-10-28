@@ -1406,6 +1406,44 @@ RSpec.describe NitroIntelligence::Assistants do
     end
   end
 
+  describe "deprecated methods" do
+    include_context "with an Assistants thread"
+
+    let(:assistant_id) { "assistant-789" }
+
+    before do
+      allow(NitroIntelligence.deprecator).to receive(:warn)
+      stub_json(:get, thread_url, { error: "Internal Server Error" }, status: 500)
+      stub_json(:get, state_url, { error: "Internal Server Error" }, status: 500)
+    end
+
+    it "warns that #await_run is replaced by #run(...).reply" do
+      expect { assistants.await_run(thread_id:, assistant_id:, messages: []) }.to raise_error(described_class::RunError)
+
+      expect(NitroIntelligence.deprecator).to have_received(:warn).with(/#await_run is deprecated.*#run\(\.\.\.\)\.reply/)
+    end
+
+    it "warns that #review_tool_calls is replaced by #review" do
+      expect do
+        assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls: {})
+      end.to raise_error(described_class::ThreadResumptionError)
+
+      expect(NitroIntelligence.deprecator).to have_received(:warn).with(/#review_tool_calls is deprecated.*#review\(tool_calls:/)
+    end
+
+    it "warns that #tool_calls_under_review is replaced by #under_review" do
+      expect { assistants.tool_calls_under_review(thread_id:) }.to raise_error(described_class::ThreadResumptionError)
+
+      expect(NitroIntelligence.deprecator).to have_received(:warn).with(/#tool_calls_under_review is deprecated.*#under_review/)
+    end
+
+    it "warns that #tool_calls_pending_review is replaced by #under_review" do
+      expect { assistants.tool_calls_pending_review(thread_id:) }.to raise_error(described_class::ThreadResumptionError)
+
+      expect(NitroIntelligence.deprecator).to have_received(:warn).with(/#tool_calls_pending_review is deprecated.*#under_review/)
+    end
+  end
+
   describe "runs that pause for review" do
     include_context "with an Assistants thread"
 

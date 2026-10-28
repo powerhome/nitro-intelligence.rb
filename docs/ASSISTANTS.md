@@ -10,6 +10,33 @@ Most callers should build an instance through Nitro Intelligence configuration:
 assistants = NitroIntelligence.assistants
 ```
 
+## Reviews and delivery
+
+An assistant can be set up so that a person checks its work before it takes effect, and so that the platform sends its replies itself. All of it is configured on the assistant, not in this client; what changes for the caller is what a run returns and how a review is answered.
+
+- **Tool-call review.** The assistant holds the calls to tools listed in its prompt config's `interrupt_on`, and the run pauses until a reviewer approves, edits, rejects or answers each one. Nothing the held calls would do happens before then. See [Make it pause for review](https://github.com/powerhome/nip-assistants/blob/main/docs/tools-and-review.md#make-it-pause-for-review).
+- **Reply review.** With the reserved entry `"__reply__": true` in the same `interrupt_on`, the assistant also holds its final reply, the message a customer would read, as a draft. The run pauses with the draft in [`#run`](#run)'s `review.reply`, and `reply` is `nil` until a reviewer approves, edits or rejects it with [`#review`](#review). Turn it on when a person should read what the assistant says before a customer does. See [Reviewing replies](https://github.com/powerhome/nip-assistants/blob/main/docs/README.md#reviewing-replies).
+- **Delivery tool.** The assistant's `mcp-config.json` can name a tool, on a server the application runs, that sends a reply to the customer -- an SMS, a chat message. The platform calls it with every settled reply: one that was approved, edited, or never under review. A reply approved hours later from a reviewer's screen is then sent by the run that approved it, without the application tracking which drafts are still waiting. The outcome is stamped on the reply and read as [`#run`](#run)'s `delivery`. With a delivery tool the application no longer sends replies: the reply it gets back has already gone out. See [Delivering replies](https://github.com/powerhome/nip-assistants/blob/main/docs/README.md#delivering-replies).
+
+## Upgrading to 4.0
+
+4.0 replaces the reply-only calls with ones that report what a run is waiting on. The old ones still work, warn through `NitroIntelligence.deprecator` (registered with a Rails application's deprecators, so `config.active_support` deprecation settings apply), and are removed in 5.0:
+
+| Deprecated | Use instead |
+| --- | --- |
+| [`#await_run`](#await_run) | [`#run`](#run)`(...).reply`; `#run` also reports a pause and the delivery |
+| [`#tool_calls_under_review`](#tool_calls_under_review) | [`#under_review`](#under_review)`(thread_id:)&.tool_calls.to_a` |
+| [`#tool_calls_pending_review`](#tool_calls_pending_review) | [`#under_review`](#under_review)`(thread_id:)&.tool_calls.to_a`: only the held calls, the ones a reviewer has to decide, without `previous_message_id` |
+| [`#review_tool_calls`](#review_tool_calls) | [`#review`](#review)`(tool_calls:, reviewer_id:, interrupt_id:)`, which returns the resumed run's `RunResult` |
+
+What to change depends on what the assistant is set up for:
+
+- **Every caller.** `#await_run` (and so `run(...).reply`) returns `nil` when the run paused for review or ended without a reply, where it returned the last message's content: a draft awaiting review, a tool-calling turn's working text, or `""`. Handle `nil`, and do not send anything in its place. A reply given as content blocks is now its joined text, not the Array. `ThreadResumptionError` messages raised by [`#review`](#review), and its validation errors, are plain text, not a JSON response body: do not parse them as JSON. Then move to the replacements above.
+- **Before turning reply review on.** Call [`#run`](#run) and check `interrupted?`. Show the reviewer `review.reply.content` and keep `review.interrupt_id` with it, or read the pause later with [`#under_review`](#under_review). Resume with `#review(reply:, reviewer_id:, interrupt_id:)`, which requires the `interrupt_id` the reviewer was shown, and rescue `ReviewSupersededError`: the customer wrote again, or another reviewer decided first, and the draft the reviewer read is gone.
+- **Before turning a delivery tool on.** Stop sending the reply yourself, or the customer gets it twice: the reply `#run` and `#review` return is for display and records. Read `result.delivery&.status` and alert someone when it is `"failed"`, or `"pending"` on a finished run.
+- **Code that builds or inspects resume payloads.** Resumes are keyed by the interrupt they answer, `command.resume = {"<interrupt id>" => {"decisions" => [...]}}`.
+- **Calls that resume a run whose prompt needs variables.** Pass `context:` to [`#review`](#review), as to [`#run`](#run).
+
 ## `#initialize`
 
 Creates a configured `NitroIntelligence::Assistants` client.
@@ -26,20 +53,11 @@ assistants = NitroIntelligence::Assistants.new(
 )
 ```
 
-## Upgrading to 4.0
-
-- `#await_run` returns `nil` while the run is paused for review, and when it ended without a reply, rather than the last message's content. That content was a draft awaiting review, a tool-calling turn's working text, or `""`. A reply given as content blocks is returned as its joined text, not the Array. Use [`#run`](#run) to see what a paused run is waiting on.
-- Resumes are keyed by the interrupt they answer, `command.resume = {"<interrupt id>" => {"decisions" => [...]}}`. Anything inspecting the resume payload sees the new shape.
-- [`#review`](#review) raises `ReviewSupersededError`, a `ThreadResumptionError`, for a review the thread has moved past. Its message, and the validation errors raised before anything is sent, are plain text, not a JSON response body, so code that parses `ThreadResumptionError` messages as JSON has to handle text too.
-- Pass `context:` to [`#review`](#review) and [`#review_tool_calls`](#review_tool_calls) when the resumed run has to render the assistant's prompt again.
-- A reply review passes the `interrupt_id` the reviewer was shown: [`#review`](#review) requires it for `reply:`.
-- When the assistant has a delivery tool, the platform sends the reply itself when the run ends. The reply [`#run`](#run), [`#await_run`](#await_run) and [`#review`](#review) return is then for display and records: do not send it again, or the customer gets it twice. Stop sending replies yourself before the assistant's delivery tool is turned on.
-
 ## `#run`
 
 Initializes a thread if needed, seeds it with the prior messages in the conversation, sends the latest message to the agent, and waits for the run to end or to pause for review. Returns a `NitroIntelligence::RunResult`.
 
-This is the main entry point when the host application wants to continue a thread. Thread initialization and run errors are as described under [`#await_run`](#await_run), which is `run(...).reply`.
+This is the main entry point when the host application wants to continue a thread. It replaces [`#await_run`](#await_run), which is `run(...).reply`.
 
 | `RunResult` | What it is |
 | --- | --- |
@@ -96,7 +114,30 @@ result.review.reply.allowed_decisions  # => ["approve", "edit", "reject"]
 interrupt_id = result.review.interrupt_id  # keep it with the card the reviewer sees
 ```
 
+### Run errors
+
+Raises `RunError` when Assistants rejects the run request, and when the run itself fails. The message carries the failure Assistants reported:
+
+```
+Error: KeyError: missing variables {'first_name'}
+IncompleteRun: Wait ended before the run completed (status: running)
+```
+
+A run that pauses for review is not a failure: `interrupted?` is true, `reply` is `nil` whether or not it drafted text, and `review` reports what it is waiting on.
+
+### Thread initialization
+
+`#run` treats the last entry in `messages` as the message to run, and everything before it as the conversation the agent should already know about. Getting that history in front of the agent takes three requests, because Assistants accepts an `initial_state` on thread creation but never applies it:
+
+1. `GET /assistants/:assistant_id` resolves the assistant's `graph_id`. A `graph_id` is a graph's *name* (for example `confirmation-agent`), which is not the same as the assistant's id — Assistants fails the state update with `Graph not found` when given an id. The lookup is memoized per client, so it costs one request per assistant rather than one per run.
+2. `POST /threads` creates the thread with `ifExists: "raise"` and tags it with that `graph_id` in its metadata. Without the tag, the thread's state cannot be updated before its first run.
+3. `POST /threads/:thread_id/state` seeds the thread with the earlier messages.
+
+Because `ifExists` is `raise`, Assistants answers with a `409` when the thread is already there. That is not treated as an error — it means the thread is already under way, so the seeding step is skipped and the run proceeds against the state the thread's earlier runs have built up. Seeding only ever happens once, when the thread is first created; a thread whose conversation consists of a single message has nothing to seed and skips step 3 as well.
+
 ## `#await_run`
+
+> **Deprecated** in 4.0 and removed in 5.0. Use [`#run`](#run)`(...).reply`.
 
 [`#run`](#run)'s reply: initializes a thread if needed, seeds it with the prior messages in the conversation, sends the latest message to the agent, and waits for the run to end or pause.
 
@@ -126,27 +167,6 @@ content = assistants.await_run(
 ```json
 "I'm doing well, thank you!"
 ```
-
-### Run errors
-
-Raises `RunError` when Assistants rejects the run request, and when the run itself fails. The message carries the failure Assistants reported:
-
-```
-Error: KeyError: missing variables {'first_name'}
-IncompleteRun: Wait ended before the run completed (status: running)
-```
-
-Returns `nil` when a run pauses for review, whether or not it drafted text. That is an interruption awaiting human review, not a failure; [`#run`](#run) reports what it is waiting on.
-
-### Thread initialization
-
-`#await_run` treats the last entry in `messages` as the message to run, and everything before it as the conversation the agent should already know about. Getting that history in front of the agent takes three requests, because Assistants accepts an `initial_state` on thread creation but never applies it:
-
-1. `GET /assistants/:assistant_id` resolves the assistant's `graph_id`. A `graph_id` is a graph's *name* (for example `confirmation-agent`), which is not the same as the assistant's id — Assistants fails the state update with `Graph not found` when given an id. The lookup is memoized per client, so it costs one request per assistant rather than one per run.
-2. `POST /threads` creates the thread with `ifExists: "raise"` and tags it with that `graph_id` in its metadata. Without the tag, the thread's state cannot be updated before its first run.
-3. `POST /threads/:thread_id/state` seeds the thread with the earlier messages.
-
-Because `ifExists` is `raise`, Assistants answers with a `409` when the thread is already there. That is not treated as an error — it means the thread is already under way, so the seeding step is skipped and the run proceeds against the state the thread's earlier runs have built up. Seeding only ever happens once, when the thread is first created; a thread whose conversation consists of a single message has nothing to seed and skips step 3 as well.
 
 ## `#thread_state`
 
@@ -221,6 +241,8 @@ messages = assistants.thread_messages(thread_id: "thread-456")
 
 ## `#tool_calls_pending_review`
 
+> **Deprecated** in 4.0 and removed in 5.0. Use [`#under_review`](#under_review)`(thread_id:)&.tool_calls.to_a`, which reports only the calls a reviewer has to decide.
+
 Returns every tool call in a thread that has no result yet, across every AI message that made one.
 
 That is not the same as the set a reviewer may decide on. A tool the assistant is not configured to interrupt on is auto-approved and runs as soon as the thread resumes, so one AI message can mix calls the interrupt is holding with calls that are only waiting to be executed — and both are reported here. A review interface driven from this list offers decisions on calls the interrupt does not hold, and [`#review_tool_calls`](#review_tool_calls) then refuses the whole submission; [`#tool_calls_under_review`](#tool_calls_under_review) reports exactly what may be reviewed.
@@ -267,6 +289,8 @@ tool_calls = assistants.tool_calls_pending_review(
 ```
 
 ## `#tool_calls_under_review`
+
+> **Deprecated** in 4.0 and removed in 5.0. Use [`#under_review`](#under_review)`(thread_id:)&.tool_calls.to_a`.
 
 Returns the tool calls the thread's interrupt is holding, in the order the platform wants decisions for them, each with the `allowed_decisions` a reviewer may take on it. Empty when the thread is not waiting on a review, or is paused on its reply; [`#under_review`](#under_review) reports either. It reads the same as `under_review(...)&.tool_calls || []`, except that it raises `ThreadResumptionError` rather than `ThreadStateError`.
 
@@ -365,7 +389,7 @@ The check and the resume are separate requests, so the thread can move on betwee
 
 The resumed run can pause again: a run whose tool calls were just decided may go on to hold its reply. Read the returned result as you would [`#run`](#run)'s.
 
-`context` is sent with the resumed run, as for [`#await_run`](#await_run).
+`context` is sent with the resumed run, as for [`#run`](#run).
 
 ### Usage example
 
@@ -417,6 +441,8 @@ end
 
 ## `#review_tool_calls`
 
+> **Deprecated** in 4.0 and removed in 5.0. Use [`#review`](#review)`(tool_calls:, reviewer_id:, interrupt_id:)`.
+
 Resumes an interrupted thread after a human has reviewed the tool calls it is holding.
 
 This method fetches the thread to confirm its `status` is still `interrupted`, loads the current thread state, validates the reviews against the interrupt, and resumes the run with one decision per tool call awaiting review.
@@ -460,7 +486,7 @@ assistants.review_tool_calls(
 )
 ```
 
-`context` is optional and is sent with the resumed run, exactly as it is for `#await_run`. Pass the `prompt_variables` the assistant's prompt needs if the resumed run has to render it again.
+`context` is optional and is sent with the resumed run, exactly as it is for [`#run`](#run). Pass the `prompt_variables` the assistant's prompt needs if the resumed run has to render it again.
 
 `reviewer_id` and `reviewed_at` are optional. Given a `reviewer_id`, the resume run's `config.metadata` carries both, as [`#review`](#review) sends them (`reviewed_at` is now unless given), and the platform records the reviewer from it; without one, neither is sent.
 

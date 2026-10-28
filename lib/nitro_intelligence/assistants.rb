@@ -1,6 +1,7 @@
 require "json"
 require "net/http"
 require "uri"
+require "nitro_intelligence/deprecator"
 require "nitro_intelligence/pending_review"
 require "nitro_intelligence/run_result"
 
@@ -57,7 +58,13 @@ module NitroIntelligence
     end
 
     # The run's reply, or nil when it paused for review or ended without one.
+    #
+    # Deprecated: #run says why there is no reply, and how the platform delivered the one there is.
     def await_run(thread_id:, assistant_id:, messages:, context: {})
+      NitroIntelligence.deprecator.warn(
+        "#await_run is deprecated and is removed in 5.0; use #run(...).reply, and read #run's " \
+        "interrupted? and review for a run paused for review"
+      )
       run(thread_id:, assistant_id:, messages:, context:).reply
     end
 
@@ -73,7 +80,17 @@ module NitroIntelligence
       messages_in(thread_state(thread_id:))
     end
 
+    # Every tool call in the thread that has no result yet, whether or not it is held for review,
+    # with the id of the message before it.
+    #
+    # Deprecated: a reviewer decides only the calls the interrupt holds, which #under_review reports.
+    # nitro-web's VirtualConfirmationAgent::Client still reads this, since the VCA's interrupt is not
+    # in the platform's shape; it goes when the VCA moves onto the platform.
     def tool_calls_pending_review(thread_id:)
+      NitroIntelligence.deprecator.warn(
+        "#tool_calls_pending_review is deprecated and is removed in 5.0; use " \
+        "#under_review(thread_id:)&.tool_calls for the tool calls awaiting a reviewer's decision"
+      )
       thread_state = get_thread_state(thread_id:)
       messages = messages_in(thread_state)
       reviewed_tool_call_ids = tool_messages(messages).map { |message| message["tool_call_id"] }
@@ -102,7 +119,13 @@ module NitroIntelligence
     #
     # Raises ThreadResumptionError when the state cannot be read, as it always has; #under_review is
     # the plain read.
+    #
+    # Deprecated in favour of #under_review, which reports a pause on the reply as well.
     def tool_calls_under_review(thread_id:)
+      NitroIntelligence.deprecator.warn(
+        "#tool_calls_under_review is deprecated and is removed in 5.0; use " \
+        "#under_review(thread_id:)&.tool_calls.to_a"
+      )
       PendingReview.from_thread_state(get_thread_state(thread_id:))&.tool_calls || []
     end
 
@@ -164,7 +187,13 @@ module NitroIntelligence
     # ReviewSupersededError when the resumed run shows the decisions were not applied. Unlike #review,
     # a resume Assistants refuses because the thread is no longer paused is raised as it always was, a
     # ThreadResumptionError carrying the response body, which nitro-web parses. Returns nil.
+    #
+    # Deprecated in favour of #review, which requires the reviewer and returns the resumed run.
     def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {}, reviewer_id: nil, reviewed_at: nil)
+      NitroIntelligence.deprecator.warn(
+        "#review_tool_calls is deprecated and is removed in 5.0; use " \
+        "#review(tool_calls:, reviewer_id:, interrupt_id:), which returns the resumed run's RunResult"
+      )
       thread = get_thread(thread_id:)
       raise ThreadResumptionError, "Thread #{thread_id} is not in the interrupted state" unless interrupted?(thread)
 

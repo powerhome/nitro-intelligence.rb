@@ -618,7 +618,8 @@ assistant.review(thread_id: thread.id, reviewer_id: user.email,
 assistant.thread_state(thread_id: thread.id)
 ```
 
-`run`, `await_run`, `review` and `review_tool_calls` supply the assistant's own id, so a
+`run`, `review`, and the deprecated `await_run` and `review_tool_calls` (see
+[Upgrading to 4.0](ASSISTANTS.md#upgrading-to-40)), supply the assistant's own id, so a
 caller never passes it -- passing `assistant_id:` to any of them raises `ArgumentError` rather
 than quietly sending the call to a different assistant, which is what a migrated caller
 carrying its old argument would otherwise do. Everything else is thread-scoped and delegates to the client untouched. Reach

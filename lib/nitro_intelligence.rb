@@ -11,6 +11,7 @@ require "nitro_intelligence/assistants"
 require "nitro_intelligence/client/base"
 require "nitro_intelligence/client/client"
 require "nitro_intelligence/configuration"
+require "nitro_intelligence/deprecator"
 require "nitro_intelligence/media/image_generation"
 require "nitro_intelligence/models/model_catalog"
 require "nitro_intelligence/observability/project_client_registry"
@@ -48,3 +49,5 @@ module NitroIntelligence
     end
   end
 end
+
+require "nitro_intelligence/railtie" if defined?(Rails::Railtie)
