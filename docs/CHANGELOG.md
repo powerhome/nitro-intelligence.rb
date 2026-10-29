@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Text-to-speech uploads are labeled as output instead of input. (#173)
+- Image and audio uploads now include the generation's observation ID so Cerebro can display them in the correct observation preview. `Observability::UploadHandler#upload` now requires `observation_id:`. (#167)
 
 ## [4.0.0] - 2026-10-28
 

@@ -145,6 +145,8 @@ client.generate_image(message: "A bear installing a window", parameters: { reque
 
 Nitro Intelligence can be used to transcribe audio from a file into text.
 
+With observability enabled, the source audio is attached to the generation observation as input.
+
 Basic examples of usage:
 
 ```ruby
@@ -175,7 +177,7 @@ puts result
 
 Nitro Intelligence can be used to create spoken-word audio files from text.
 
-With observability enabled, generated audio uploads are labeled as output.
+With observability enabled, generated audio is labeled as output and attached to the generation observation.
 
 Basic example of usage:
 
@@ -222,6 +224,8 @@ result = client.generate_image(message: "Create an image of a bear installing a 
 
 `result` is a `NitroIntelligence::ImageGeneration` object, and the generated image can be accessed via `result.generated_image` which returns a `NitroIntelligence::Image`.
 
+With observability enabled, `result.trace_id` and `result.observation_id` identify the trace and generation observation. Both are `nil` without observability.
+
 You may write the file to disk:
 
 ```ruby
@@ -249,6 +253,8 @@ house = File.binread("./house.jpg")
 siding = File.binread("./siding.png")
 result = client.generate_image(target_image: house, reference_images: [siding], parameters: {prompt_name: "Sample Prompt Name"})
 ```
+
+With observability enabled, the input and generated images are attached to the generation observation. Cerebro's Formatted observation preview displays them together, including in the tracing list's preview panel.
 
 #### Image Configuration
 

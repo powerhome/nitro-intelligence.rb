@@ -50,6 +50,7 @@ module NitroIntelligence
             )
             upload_handler.upload(
               image_generation.trace_id,
+              observation_id: image_generation.observation_id,
               upload_queue: Queue.new(image_generation.files)
             )
 
@@ -79,6 +80,7 @@ module NitroIntelligence
             chat_completion = @base_handler.perform_request(parameters:, correlation_trace_id: generation.trace_id)
 
             image_generation.trace_id = generation.trace_id
+            image_generation.observation_id = generation.id
             image_generation.parse_file(chat_completion)
 
             input = parameters[:messages]

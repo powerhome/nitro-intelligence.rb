@@ -28,7 +28,7 @@ module NitroIntelligence
               prompt:,
               input: message
             ) do |generation|
-              workflow(message:, parameters:, trace_id: generation.trace_id)
+              workflow(generation:, message:, parameters:)
             end
           end
 
@@ -54,7 +54,7 @@ module NitroIntelligence
             prompt
           end
 
-          def handle_text_to_speech_upload(tts_file, trace_id)
+          def handle_text_to_speech_upload(tts_file, trace_id, observation_id:)
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(
               auth_token: @observer.project_client.project.auth_token
             )
@@ -63,6 +63,7 @@ module NitroIntelligence
 
             upload_handler.upload(
               trace_id,
+              observation_id:,
               upload_queue: Queue.new([audio])
             )
 
@@ -70,8 +71,8 @@ module NitroIntelligence
             "@@@langfuseMedia:type=#{uploaded_media.mime_type}|id=#{uploaded_media.reference_id}|source=bytes@@@"
           end
 
-          def workflow(message:, parameters:, trace_id:)
-            tts = @base_handler.perform_request(message:, parameters:, correlation_trace_id: trace_id)
+          def workflow(generation:, message:, parameters:)
+            tts = @base_handler.perform_request(message:, parameters:, correlation_trace_id: generation.trace_id)
             output = ""
 
             Tempfile.create(["tts", ".#{parameters[:response_format]}"]) do |tempfile|
@@ -79,7 +80,7 @@ module NitroIntelligence
               tempfile.write(tts.string)
               tempfile.rewind
 
-              output = handle_text_to_speech_upload(tempfile, trace_id)
+              output = handle_text_to_speech_upload(tempfile, generation.trace_id, observation_id: generation.id)
             end
 
             # Usage details and the resolved model are read off a response body, and

@@ -2,6 +2,7 @@ require "spec_helper"
 require "nitro_intelligence/langfuse_extension"
 require "nitro_intelligence/client/observers/langfuse_observer"
 require "nitro_intelligence/client/handlers/base_handler"
+require "webmock/rspec"
 
 RSpec.describe NitroIntelligence::LangfuseExtension do
   let(:packets) { [] }
@@ -66,6 +67,76 @@ RSpec.describe NitroIntelligence::LangfuseExtension do
 
   def attributes(span)
     span.attributes.to_h { |attribute| [attribute.key, attribute.value.string_value] }
+  end
+
+  context "when audio handlers upload media" do
+    let(:uploads) { [] }
+    let(:project) { double("Project", slug: "audio-test", auth_token: "synthetic-token", prompt_store: nil) }
+    let(:observer) do
+      NitroIntelligence::Client::Observers::LangfuseObserver.new(
+        project_client: Struct.new(:observability_client, :project).new(client, project)
+      )
+    end
+
+    before do
+      allow(NitroIntelligence).to receive(:config)
+        .and_return(double("Config", observability_base_url: "https://cerebro.example"))
+      stub_request(:post, "https://cerebro.example/api/public/media").to_return do |request|
+        uploads << JSON.parse(request.body)
+        { status: 201, body: { mediaId: "audio-media", uploadUrl: "https://storage.example/audio" }.to_json }
+      end
+      stub_request(:put, "https://storage.example/audio").with(body: "synthetic audio").to_return(status: 200)
+      stub_request(:patch, "https://cerebro.example/api/public/media/audio-media").to_return(status: 200)
+    end
+
+    def expect_audio_association(span)
+      expect(uploads.size).to eq(1)
+      expect(uploads.first).to include(
+        "traceId" => span.trace_id.unpack1("H*"),
+        "observationId" => span.span_id.unpack1("H*"),
+        "contentType" => "audio/wav"
+      )
+      expect(a_request(:put, "https://storage.example/audio").with(body: "synthetic audio")).to have_been_made.once
+    end
+
+    it "links transcription input to its exported generation" do
+      base_handler = instance_double(
+        NitroIntelligence::Client::Handlers::AudioTranscriptionHandler,
+        validate_and_resolve!: nil,
+        perform_request: OpenAI::Models::Audio::Transcription.new(text: "synthetic transcript"),
+        cost_details: nil
+      )
+      handler = NitroIntelligence::Client::Handlers::Observed::AudioTranscriptionHandler.new(base_handler:, observer:)
+
+      Tempfile.create(["transcription", ".wav"]) do |audio_file|
+        audio_file.write("synthetic audio")
+        audio_file.rewind
+        handler.create(audio_file:, message: "transcribe", parameters: { metadata: {}, model: "synthetic-model" })
+      end
+
+      span = wire_spans.fetch(0)
+      expect_audio_association(span)
+      expect(uploads.first["field"]).to eq("input")
+      expect(span.name).to eq("audio-transcription")
+      expect(attributes(span)["langfuse.observation.output"]).to eq('"synthetic transcript"')
+    end
+
+    it "links generated speech to its exported generation" do
+      base_handler = instance_double(
+        NitroIntelligence::Client::Handlers::TextToSpeechHandler,
+        validate_and_resolve!: nil,
+        perform_request: StringIO.new("synthetic audio"),
+        cost_details: nil
+      )
+      handler = NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandler.new(base_handler:, observer:)
+      handler.create(message: "speak", parameters: { metadata: {}, model: "synthetic-model", response_format: "wav" })
+
+      span = wire_spans.fetch(0)
+      expect_audio_association(span)
+      expect(span.name).to eq("text-to-speech")
+      expect(attributes(span)["langfuse.observation.output"])
+        .to eq('"@@@langfuseMedia:type=audio/wav|id=audio-media|source=bytes@@@"')
+    end
   end
 
   it "exports ordinary generations as roots with trace fields" do
