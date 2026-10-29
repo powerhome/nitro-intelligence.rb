@@ -224,6 +224,8 @@ result = client.generate_image(message: "Create an image of a bear installing a 
 
 `result` is a `NitroIntelligence::ImageGeneration` object, and the generated image can be accessed via `result.generated_image` which returns a `NitroIntelligence::Image`.
 
+With observability enabled, `result.trace_id` and `result.observation_id` identify the trace and generation observation. Both are `nil` without observability.
+
 You may write the file to disk:
 
 ```ruby

@@ -30,7 +30,9 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
       parse_file: nil,
       files: [fake_generated_file],
       :trace_id= => nil,
-      trace_id: "trace-999"
+      :observation_id= => nil,
+      trace_id: "trace-999",
+      observation_id: "f8ccff00e8b9e5bd"
     )
   end
 
@@ -71,6 +73,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
       ).and_return(fake_completion_response)
 
       expect(fake_image_generation).to receive(:trace_id=).with("trace-999")
+      expect(fake_image_generation).to receive(:observation_id=).with("f8ccff00e8b9e5bd")
       expect(fake_image_generation).to receive(:parse_file).with(fake_completion_response)
 
       expect(fake_upload_handler).to receive(:upload).with("trace-999", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
@@ -80,6 +83,23 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
       image_generation_result = handler.create(message: "draw a cat")
 
       expect(image_generation_result).to eq(fake_image_generation)
+    end
+
+    it "returns the trace and observation IDs on the image generation result" do
+      model = NitroIntelligence::ImageModel.new(name: "dall-e-3", aspect_ratios: ["1:1"], resolutions: ["1K"])
+      allow(NitroIntelligence.model_catalog).to receive_messages(default_image_model: model, lookup_by_name: model)
+      allow(NitroIntelligence::ImageGeneration).to receive(:new).and_call_original
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      allow(fake_completions).to receive(:create).and_return(fake_completion_response)
+
+      expect(fake_upload_handler).to receive(:upload).with(
+        "trace-999", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue)
+      )
+
+      result = handler.create(message: "draw a cat")
+
+      expect(result).to be_a(NitroIntelligence::ImageGeneration)
+      expect(result).to have_attributes(trace_id: "trace-999", observation_id: "f8ccff00e8b9e5bd")
     end
 
     # #create returns the image generation rather than the observation payload, so the

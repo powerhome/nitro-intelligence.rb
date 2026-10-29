@@ -75,6 +75,10 @@ RSpec.describe NitroIntelligence::ImageGeneration do
       it "uses default config values" do
         expect(generator.config.aspect_ratio).to eq("1:1")
       end
+
+      it "has no trace or observation ID before being observed" do
+        expect(generator).to have_attributes(trace_id: nil, observation_id: nil)
+      end
     end
 
     context "with a target image" do
