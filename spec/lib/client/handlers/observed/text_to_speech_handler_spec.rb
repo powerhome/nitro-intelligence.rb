@@ -38,10 +38,6 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
     allow(fake_catalog).to receive(:lookup_by_name).and_return(tts_model)
     allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_catalog)
 
-    allow(NitroIntelligence::Audio).to receive(:new).and_return(
-      double("NitroAudio", byte_string: "audio_bytes", mime_type: "audio/mp3", direction: "output", reference_id: nil)
-    )
-
     allow(NitroIntelligence::Observability::UploadHandler).to receive(:new).and_return(fake_upload_handler)
   end
 
@@ -65,6 +61,19 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
       # The requested model and the input are set on the observation before the
       # request runs, so they are deliberately not repeated here.
       expect(trace_attributes.keys).to eq(%i[output cost_details])
+    end
+
+    it "labels generated audio as output when uploading it" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      allow(fake_speech).to receive(:create).and_return(fake_tts_response)
+
+      expect(fake_upload_handler).to receive(:upload) do |_trace_id, upload_queue:, **|
+        expect(upload_queue.pop).to have_attributes(
+          byte_string: "fake_audio_bytes", mime_type: "audio/mp3", direction: "output"
+        )
+      end
+
+      handler.create(message: "say hi")
     end
 
     it "carries the cost the gateway reported into the trace attributes" do

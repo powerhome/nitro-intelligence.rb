@@ -175,6 +175,8 @@ puts result
 
 Nitro Intelligence can be used to create spoken-word audio files from text.
 
+With observability enabled, generated audio uploads are labeled as output.
+
 Basic example of usage:
 
 ```ruby

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Text-to-speech uploads are labeled as output instead of input.
+
 ## [4.0.0] - 2026-10-28
 
 See [Upgrading to 4.0](ASSISTANTS.md#upgrading-to-40).
