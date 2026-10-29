@@ -58,10 +58,13 @@ module NitroIntelligence
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(
               auth_token: @observer.project_client.project.auth_token
             )
+            audio = Audio.new(tts_file)
+            audio.direction = "output"
+
             upload_handler.upload(
               trace_id,
               observation_id:,
-              upload_queue: Queue.new([Audio.new(tts_file)])
+              upload_queue: Queue.new([audio])
             )
 
             uploaded_media = upload_handler.uploaded_media.first

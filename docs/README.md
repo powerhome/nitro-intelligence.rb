@@ -177,7 +177,7 @@ puts result
 
 Nitro Intelligence can be used to create spoken-word audio files from text.
 
-With observability enabled, the generated audio is attached to the generation observation.
+With observability enabled, generated audio is labeled as output and attached to the generation observation.
 
 Basic example of usage:
 
