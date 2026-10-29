@@ -11,10 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Image and audio uploads now include the generation's observation ID so Cerebro can display them in the correct observation preview. `Observability::UploadHandler#upload` now requires `observation_id:`. (#167)
 
-### Added
-
-- Image generation results expose `observation_id` alongside `trace_id` when observability is enabled. (#167)
-
 ## [4.0.0] - 2026-10-28
 
 See [Upgrading to 4.0](ASSISTANTS.md#upgrading-to-40).
