@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Text-to-speech uploads are labeled as output instead of input.
+- Text-to-speech uploads are labeled as output instead of input. (#173)
 
 ## [4.0.0] - 2026-10-28
 
