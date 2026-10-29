@@ -41,11 +41,21 @@ module NitroIntelligence
       @client ||= Assistants.new(base_url: @base_url, api_key: @api_key, user_id: @user_id)
     end
 
-    # The two calls that identify an assistant take it from here rather than from the caller.
+    # The calls that identify an assistant take it from here rather than from the caller.
     # Everything else is thread-scoped and delegates untouched.
+    def run(thread_id:, messages:, **kwargs)
+      reject_assistant_id!(kwargs)
+      client.run(thread_id:, assistant_id:, messages:, **kwargs)
+    end
+
     def await_run(thread_id:, messages:, **kwargs)
       reject_assistant_id!(kwargs)
       client.await_run(thread_id:, assistant_id:, messages:, **kwargs)
+    end
+
+    def review(thread_id:, **kwargs)
+      reject_assistant_id!(kwargs)
+      client.review(thread_id:, assistant_id:, **kwargs)
     end
 
     def review_tool_calls(thread_id:, tool_calls:, **kwargs)
@@ -54,7 +64,7 @@ module NitroIntelligence
     end
 
     delegate :thread_state, :thread_messages, :tool_calls_pending_review, :tool_calls_under_review,
-             to: :client
+             :under_review, to: :client
 
   private
 
