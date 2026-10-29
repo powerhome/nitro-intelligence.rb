@@ -4,7 +4,7 @@
 
 - **Inference Gateway** (LiteLLM, `https://inference.powerhome.ai`) through [`openai/openai-ruby`](https://github.com/openai/openai-ruby): chat, completions, image generation and editing, audio transcription and text-to-speech. The gem reads gateway-specific response headers (`x-litellm-response-cost`, `x-litellm-call-id`) and sends `x-litellm-trace-id` and `x-litellm-spend-logs-metadata`. The contract it relies on is the parent repository's [`docs/inference-gateway.md`](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md), [`docs/inference-pricing.md`](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-pricing.md) and [`docs/client-observability-policy.md`](https://github.com/powerhome/nitro-intelligence/blob/main/docs/client-observability-policy.md).
 - **Cerebro** (Langfuse, `https://cerebro.powerhome.ai`) through [`simplepractice/langfuse-rb`](https://github.com/simplepractice/langfuse-rb): tracing observed generations, prompt fetching with fallbacks, media upload and scoring. Cerebro is deployed from [`powerhome/cerebro`](https://github.com/powerhome/cerebro).
-- **NIP Assistants** (Aegra/LangGraph, `https://assistants.powerhome.ai`) over HTTP: running assistant threads and resuming human-in-the-loop tool-call reviews. Assistants are served by [`powerhome/nip-assistants`](https://github.com/powerhome/nip-assistants).
+- **NIP Assistants** (Aegra/LangGraph, `https://assistants.powerhome.ai`) over HTTP: running assistant threads and resuming human-in-the-loop reviews of tool calls and replies. Assistants are served by [`powerhome/nip-assistants`](https://github.com/powerhome/nip-assistants).
 
 User-facing documentation is `docs/README.md` (configuration and usage) and `docs/ASSISTANTS.md` (the Assistants API). Keep them in step with behaviour changes.
 
@@ -14,7 +14,7 @@ User-facing documentation is `docs/README.md` (configuration and usage) and `doc
 - `lib/nitro_intelligence/client/`: the inference client. `handlers/` holds one plain handler per modality (chat, image, audio transcription, text-to-speech) and `base_handler.rb` sets the gateway request headers; `handlers/observed/` holds the variants that trace to Cerebro; `observers/langfuse_observer.rb` records generations, cost and usage.
 - `lib/nitro_intelligence/observability/`: Cerebro projects, per-project Langfuse clients, prompt resolution and fallbacks, media upload.
 - `lib/nitro_intelligence/langfuse_extension.rb`, `langfuse_tracer_provider.rb`, `trace.rb`: extensions to langfuse-rb that allow several Langfuse clients (one per Cerebro project) in one process. Candidates for upstreaming to langfuse-rb.
-- `lib/nitro_intelligence/assistants.rb`, `assistant.rb`, `assistant_registry.rb`, `tool_call_review_interrupt.rb`, `tool_call_review_validator.rb`: the NIP Assistants client and the tool-call review protocol.
+- `lib/nitro_intelligence/assistants.rb`, `assistant.rb`, `assistant_registry.rb`, `run_result.rb`, `pending_review.rb`, `review_decision.rb`, `tool_call_review_interrupt.rb`, `tool_call_review_validator.rb`: the NIP Assistants client, run results (including the reply's delivery status) and the review protocol for tool calls and replies (`__reply__`).
 - `lib/nitro_intelligence/models/`: the model catalog built from `model_config` and the per-modality default models.
 - `lib/nitro_intelligence/media/`: image and audio inputs and image generation results.
 - `spec/`: RSpec suite, mirroring `lib/` under `spec/lib/`. HTTP is stubbed with WebMock.

@@ -11,9 +11,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Image uploads now include the generation's observation ID so Cerebro can display the generated result alongside the input images in the observation preview. Existing trace-only media associations are unchanged. ([powerhome/nitro-intelligence#791](https://github.com/powerhome/nitro-intelligence/issues/791))
 
+## [4.0.0] - 2026-10-28
+
+See [Upgrading to 4.0](ASSISTANTS.md#upgrading-to-40).
+
 ### Changed
 
+- **Breaking:** `Assistants#await_run` (and `Assistant#await_run`) returns `nil` when the run paused for review, and when it ended without an AI reply, where it returned the last message's content: a draft awaiting review, a tool-calling turn's text, or `""`. A caller that sent whatever it returned would send a draft nobody had reviewed. A reply given as content blocks is returned as its joined text, not the raw Array. The method keeps its name and arguments, and is now `run(...).reply`. Upgrade before any assistant turns reply review on. With a delivery tool configured, the platform sends the reply itself: the reply `#run`, `#await_run` and `#review` return is for display and records, and must not be sent again.
+- **Breaking:** resumes are keyed by the interrupt they answer, `command.resume = {"<interrupt id>" => {"decisions" => [...]}}`, so a resume never decides a pause that appeared after it was read. `#review_tool_calls` raises `Assistants::ReviewSupersededError`, a `ThreadResumptionError`, when the resumed run shows its decisions were not applied; a resume Assistants refuses is still raised with the response body as its message.
+- `#review_tool_calls` and `#tool_calls_under_review` read the pause through `PendingReview`. On a thread paused on its reply, `#tool_calls_under_review` returns `[]` and `#review_tool_calls` raises its usual "has no tool calls awaiting review", where both raised that no tool call matched `__reply__`. `#review_tool_calls` also takes a list of reviews that each carry their tool call's `id`, and optional `reviewer_id:` and `reviewed_at:`, sent in the resume run's `config.metadata`.
 - The client no longer retries failed requests by default. openai-ruby retried each `429`, `408`, `409` and `5xx` twice within about two seconds, which turned every rate-limited request into three rejected calls on top of any retries the caller made. Retries and the request timeout can now be set for every client (`inference_max_retries`, `inference_timeout`), for one client (`NitroIntelligence::Client.new(inference_max_retries:, inference_timeout:)`) or for one request (`request_options: { max_retries:, timeout: }`); set `inference_max_retries` to restore retries for every client. `generate_image` now keeps its image configuration when the caller passes `request_options`; before, the caller's options replaced it, dropping the requested aspect ratio and resolution. (#157)
+
+### Added
+
+- Reply review, for assistants that hold their final reply for review (`__reply__`), and the delivery status of replies the platform delivers through the assistant's delivery tool. See [ASSISTANTS.md](ASSISTANTS.md).
+- `Assistants#run` (and `Assistant#run`) returns a `NitroIntelligence::RunResult`: `reply` (the run's final AI message with text and no tool calls; `nil` while paused or after a rejected reply), `interrupted?`, `review`, `delivery`, `messages` and `raw`.
+- `RunResult#delivery` reads the reply's `response_metadata.delivery` stamp: `status` (`"delivered"`, `"failed"`, or `"pending"` when delivery was cut off before it recorded an outcome), `error`, `attempts`, `result`, `tool`, `delivered_at` and `failed_at`; `nil` when the reply carries no stamp, as without a delivery tool, so read it with `&.`. A draft still stamped `review: {"type": "pending"}` is never returned as `reply`.
+- `NitroIntelligence::PendingReview`, what a paused run waits on: `kind`, `interrupt_id`, and either `tool_calls` or `reply` (`content`, `allowed_decisions` from `approve`, `edit` and `reject`, `description`).
+- `#under_review` reads the pending review from the thread state.
+- `#review` resumes a pause with exactly one of `reply:` or `tool_calls:` and a required `reviewer_id`. A reply review also requires the `interrupt_id` the reviewer was shown, so an approval never decides a newer draft that replaced the one they read; for tool calls it is optional. It validates the decisions before sending, puts `reviewer_id` and `reviewed_at` in the resume run's `config.metadata`, keys the resume by the interrupt it read, and returns the resumed run's `RunResult`.
+- `NitroIntelligence.deprecator`, an `ActiveSupport::Deprecation` that a Railtie registers with the Rails application's deprecators, so the host's deprecation settings apply to this gem's warnings.
+- `Assistants::ReviewSupersededError`, a `ThreadResumptionError`, raised by `#review` when the thread has moved past the review: it is no longer paused on the given `interrupt_id`, another review resumed it first, or the resumed run shows the decision was not applied.
+
+### Deprecated
+
+Each warns through `NitroIntelligence.deprecator`, and is removed in 5.0. See [Upgrading to 4.0](ASSISTANTS.md#upgrading-to-40).
+
+- `#await_run`: use `#run(...).reply`.
+- `#review_tool_calls`: use `#review(tool_calls:, reviewer_id:, interrupt_id:)`.
+- `#tool_calls_under_review`: use `#under_review(thread_id:)&.tool_calls.to_a`.
+- `#tool_calls_pending_review`: use `#under_review(thread_id:)&.tool_calls.to_a`, which reports only the calls a reviewer has to decide. nitro-web's `VirtualConfirmationAgent::Client` still needs it until the VCA moves onto the platform.
 
 ## [3.1.0] - 2026-10-06
 
@@ -186,7 +213,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.1.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v4.0.0-nitro_intelligence...HEAD
+[4.0.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.1.0-nitro_intelligence...v4.0.0-nitro_intelligence
 [3.1.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.2-nitro_intelligence...v3.1.0-nitro_intelligence
 [3.0.2]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...v3.0.2-nitro_intelligence
 [3.0.1]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...v3.0.1-nitro_intelligence
