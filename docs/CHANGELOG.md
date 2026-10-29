@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Image uploads now include the generation's observation ID so Cerebro can display the generated result alongside the input images in the observation preview. Existing trace-only media associations are unchanged. (#167)
+- Image and audio uploads now include the generation's observation ID so Cerebro can display them in the correct observation preview. `Observability::UploadHandler#upload` now requires `observation_id:`. (#167)
 
 ## [4.0.0] - 2026-10-28
 

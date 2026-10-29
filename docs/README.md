@@ -145,6 +145,8 @@ client.generate_image(message: "A bear installing a window", parameters: { reque
 
 Nitro Intelligence can be used to transcribe audio from a file into text.
 
+With observability enabled, the source audio is attached to the generation observation as input.
+
 Basic examples of usage:
 
 ```ruby
@@ -174,6 +176,8 @@ puts result
 ### Text-to-Speech
 
 Nitro Intelligence can be used to create spoken-word audio files from text.
+
+With observability enabled, the generated audio is attached to the generation observation.
 
 Basic example of usage:
 

@@ -32,7 +32,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
   end
 
   let(:fake_tts_response) { StringIO.new("fake_audio_bytes") }
-  let(:fake_generation) { double("Generation", trace_id: "trace-321") }
+  let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-321", id: "f8ccff00e8b9e5bd") }
 
   before do
     allow(fake_catalog).to receive(:lookup_by_name).and_return(tts_model)
@@ -56,7 +56,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
         hash_including(input: "say hi", model: "tts-1", voice: "alloy", response_format: "mp3")
       ).and_return(fake_tts_response)
 
-      expect(fake_upload_handler).to receive(:upload).with("trace-321", upload_queue: instance_of(Queue))
+      expect(fake_upload_handler).to receive(:upload).with("trace-321", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
 
       tts, trace_attributes = handler.create(message: "say hi")
 

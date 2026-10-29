@@ -14,6 +14,7 @@ RSpec.describe NitroIntelligence::Observability::UploadHandler do
   let(:host) { "https://api.observability.example" }
   let(:auth_token) { "secret_token_123" }
   let(:trace_id) { "trace-98765" }
+  let(:observation_id) { "f8ccff00e8b9e5bd" }
 
   subject(:handler) { described_class.new(auth_token:) }
 
@@ -68,16 +69,24 @@ RSpec.describe NitroIntelligence::Observability::UploadHandler do
         .to_return(status: 200, body: "", headers: {})
     end
 
+    it "requires an observation ID before uploading media" do
+      expect { handler.upload(trace_id, upload_queue: queue) }
+        .to raise_error(ArgumentError, /missing keyword: :observation_id/)
+
+      expect(a_request(:post, "#{host}/api/public/media")).not_to have_been_made
+    end
+
     it "processes the queue, uploads the media, and assigns a reference_id" do
       expected_post_body = {
         traceId: trace_id,
+        observationId: observation_id,
         contentType: "image/png",
         contentLength: media_bytes.bytesize,
         sha256Hash: media_sha256,
         field: "input",
       }.to_json
 
-      results = handler.upload(trace_id, upload_queue: queue)
+      results = handler.upload(trace_id, observation_id:, upload_queue: queue)
 
       expect(
         a_request(:post, "#{host}/api/public/media")
@@ -94,42 +103,21 @@ RSpec.describe NitroIntelligence::Observability::UploadHandler do
     end
 
     it "exposes the uploaded media via the #uploaded_media reader" do
-      handler.upload(trace_id, upload_queue: queue)
+      handler.upload(trace_id, observation_id:, upload_queue: queue)
 
       expect(handler.uploaded_media).to contain_exactly(mock_media)
     end
 
-    context "when an observation ID is provided" do
-      let(:observation_id) { "f8ccff00e8b9e5bd" }
+    %w[input output].each do |field|
+      it "associates #{field} media with the observation" do
+        allow(mock_media).to receive(:direction).and_return(field)
 
-      %w[input output].each do |field|
-        it "associates #{field} media with the observation" do
-          allow(mock_media).to receive(:direction).and_return(field)
+        handler.upload(trace_id, observation_id:, upload_queue: queue)
 
-          handler.upload(trace_id, observation_id:, upload_queue: queue)
-
-          expect(
-            a_request(:post, "#{host}/api/public/media")
-              .with(body: hash_including(traceId: trace_id, observationId: observation_id, field:))
-          ).to have_been_made.once
-        end
-      end
-
-      context "when the media already exists in Langfuse" do
-        let(:upload_url_response_body) do
-          { "mediaId" => "media-123", "uploadUrl" => nil }.to_json
-        end
-
-        it "still requests the observation association without uploading the bytes again" do
-          handler.upload(trace_id, observation_id:, upload_queue: queue)
-
-          expect(
-            a_request(:post, "#{host}/api/public/media")
-              .with(body: hash_including(traceId: trace_id, observationId: observation_id, field: "input"))
-          ).to have_been_made.once
-          expect(a_request(:put, "https://s3.example/upload")).not_to have_been_made
-          expect(mock_media).to have_received(:reference_id=).with("media-123")
-        end
+        expect(
+          a_request(:post, "#{host}/api/public/media")
+            .with(body: hash_including(traceId: trace_id, observationId: observation_id, field:))
+        ).to have_been_made.once
       end
     end
 
@@ -139,8 +127,12 @@ RSpec.describe NitroIntelligence::Observability::UploadHandler do
       end
 
       it "skips the PUT and PATCH requests but still assigns the reference_id" do
-        handler.upload(trace_id, upload_queue: queue)
+        handler.upload(trace_id, observation_id:, upload_queue: queue)
 
+        expect(
+          a_request(:post, "#{host}/api/public/media")
+            .with(body: hash_including(traceId: trace_id, observationId: observation_id, field: "input"))
+        ).to have_been_made.once
         expect(a_request(:put, "https://s3.example/upload")).not_to have_been_made
         expect(a_request(:patch, "#{host}/api/public/media/media-123")).not_to have_been_made
         expect(mock_media).to have_received(:reference_id=).with("media-123")
@@ -160,7 +152,7 @@ RSpec.describe NitroIntelligence::Observability::UploadHandler do
           uploadHttpError: "Server Error",
         }.to_json
 
-        handler.upload(trace_id, upload_queue: queue)
+        handler.upload(trace_id, observation_id:, upload_queue: queue)
 
         expect(
           a_request(:patch, "#{host}/api/public/media/media-123")

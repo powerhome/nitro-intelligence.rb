@@ -58,7 +58,7 @@ module NitroIntelligence
         payload
       end
 
-      def upload(trace_id, observation_id: nil, upload_queue: Queue.new)
+      def upload(trace_id, observation_id:, upload_queue: Queue.new)
         until upload_queue.empty?
           media = upload_queue.pop
 
@@ -66,14 +66,14 @@ module NitroIntelligence
           content_sha256 = Base64.strict_encode64(Digest::SHA256.digest(media.byte_string))
 
           # returns {"mediaId" -> "", "uploadUrl" => ""}
-          upload_url_response = get_upload_url({
+          upload_url_response = get_upload_url(
             traceId: trace_id,
             observationId: observation_id,
             contentType: media.mime_type,
             contentLength: content_length,
             sha256Hash: content_sha256,
-            field: media.direction,
-          }.compact)
+            field: media.direction
+          )
 
           # NOTE: uploadUrl is None if the file is stored in Langfuse already
           # there is no need to upload it again.

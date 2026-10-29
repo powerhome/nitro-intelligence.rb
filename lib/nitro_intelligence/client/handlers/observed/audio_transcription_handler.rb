@@ -66,6 +66,7 @@ module NitroIntelligence
             )
             upload_handler.upload(
               generation.trace_id,
+              observation_id: generation.id,
               upload_queue: Queue.new([NitroIntelligence::Audio.new(audio_file)])
             )
 
