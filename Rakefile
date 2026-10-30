@@ -12,6 +12,7 @@ desc "Check that the public API is fully documented"
 task :yard do
   output = `yard stats --list-undoc 2>&1`
   puts output
+  abort "yard: stats failed" unless Process.last_status.success?
   abort "yard: the public API has undocumented objects" unless output.include?("100.00% documented")
   abort "yard: fix the warnings above" if output.include?("[warn]")
 end

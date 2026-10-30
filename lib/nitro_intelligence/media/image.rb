@@ -5,6 +5,13 @@ require "nitro_intelligence/media/media"
 
 module NitroIntelligence
   # An image, such as {ImageGeneration#generated_image}.
+  #
+  # @!attribute [r] byte_string
+  #   @return [String] the image's contents, as a byte string
+  # @!attribute [r] file_extension
+  #   @return [String] the image's extension, such as `"png"`, without a dot
+  # @!attribute [r] mime_type
+  #   @return [String] the image's MIME type, such as `"image/png"`
   class Image < Media
     # @return [Integer] in pixels
     attr_reader :height
