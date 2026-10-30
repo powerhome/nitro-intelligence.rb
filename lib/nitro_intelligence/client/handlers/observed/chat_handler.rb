@@ -18,7 +18,7 @@ module NitroIntelligence
             prompt = handle_prompt(parameters:)
             validate_message_shape!(parameters:, prompt:)
 
-            trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
+            trace_name = parameters[:trace_name] || prompt&.name || project.slug
 
             @observer.observe(
               "chat-completion",
@@ -33,6 +33,10 @@ module NitroIntelligence
           end
 
         private
+
+          def project
+            @observer.project_client.project
+          end
 
           # A chat completion needs a turn for the model to answer, and it is the model's own
           # chat template that insists on one: Qwen's raises "No user query found in
@@ -76,7 +80,7 @@ module NitroIntelligence
 
           def handle_prompt(parameters:)
             prompt = NitroIntelligence::Observability::PromptResolver.for(
-              store: @observer.project_client.project.prompt_store,
+              store: project.prompt_store,
               parameters:
             )
             return nil if prompt.blank?
@@ -92,7 +96,9 @@ module NitroIntelligence
           end
 
           def workflow(generation:, parameters:)
-            chat_completion = @base_handler.perform_request(parameters:, correlation_trace_id: generation.trace_id)
+            chat_completion = @base_handler.perform_request(
+              parameters:, correlation_trace_id: generation.trace_id, mask_content: project.mask_content?
+            )
             output = chat_completion.choices.first.message.to_h
 
             trace_attributes = {
