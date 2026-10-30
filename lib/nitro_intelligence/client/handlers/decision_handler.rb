@@ -46,6 +46,11 @@ module NitroIntelligence
 
           parameters.replace(default_parameters.merge(parameters))
           Client.validate_model(parameters[:model])
+          return if NitroIntelligence.model_catalog.lookup_by_name(parameters[:model]).is_a?(DecisionModel)
+
+          # A decision request has nothing in common with a chat one, so a model of another type
+          # would fail at the gateway with an error that does not say why.
+          raise ArgumentError, "Model '#{parameters[:model]}' is not a decision model"
         end
       end
     end

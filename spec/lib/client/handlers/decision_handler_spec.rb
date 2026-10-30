@@ -11,7 +11,11 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
   let(:model_config) do
     {
       default_decision_model: "typesafe/jev-1.14",
-      models: [{ name: "typesafe/jev-1.14", type: "decision" }, { name: "other/decider", type: "decision" }],
+      models: [
+        { name: "typesafe/jev-1.14", type: "decision" },
+        { name: "other/decider", type: "decision" },
+        { name: "Qwen/Qwen3.6-35B-A3B", type: "text" },
+      ],
     }
   end
 
@@ -120,6 +124,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
       decision = handler.create(state:, questions:)
 
       expect(decision.answers[:spot]).to include(type: "box", box: { top: 0.2 })
+      expect(decision.answers["spot"]["box"]["top"]).to eq(0.2)
     end
 
     it "reaches the gateway's cost headers through the decision" do
@@ -148,6 +153,23 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
     it "raises when the requested model is not in the catalog" do
       expect { handler.create(state:, questions:, parameters: { model: "ghost" }) }
         .to raise_error(ArgumentError, /Unsupported model: 'ghost'/)
+      expect(systemone).not_to have_been_requested
+    end
+
+    it "keeps a score level that is not a number as it came" do
+      response_body[:answers] = {
+        urgency: { type: "score", score: 0.5, confidence: 0.1, legend: { "0" => "Low", "x" => "?" },
+                   probabilities: { "0" => 0.5, "x" => 0.5 } },
+      }
+      stub_request(:post, "https://gateway.example/systemone")
+        .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      expect(handler.create(state:, questions:).answers[:urgency].legend).to eq(0 => "Low", "x" => "?")
+    end
+
+    it "raises when the requested model is not a decision model" do
+      expect { handler.create(state:, questions:, parameters: { model: "Qwen/Qwen3.6-35B-A3B" }) }
+        .to raise_error(ArgumentError, "Model 'Qwen/Qwen3.6-35B-A3B' is not a decision model")
       expect(systemone).not_to have_been_requested
     end
 

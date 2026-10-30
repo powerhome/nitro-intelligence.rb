@@ -55,9 +55,14 @@ module NitroIntelligence
       end
     end
 
-    # Levels arrive as JSON object keys, so "0", "1" and so on.
+    # Levels arrive as JSON object keys, so "0", "1" and so on. A key that is not a number is
+    # kept as it came rather than failing every other answer in the response.
     def levels(hash)
-      hash.to_h.transform_keys { |level| Integer(level.to_s) }
+      hash.to_h.transform_keys do |level|
+        Integer(level.to_s)
+      rescue ArgumentError
+        level.to_s
+      end
     end
   end
 end
