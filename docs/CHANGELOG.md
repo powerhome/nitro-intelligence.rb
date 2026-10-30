@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Every request checks that its model is of the type the request needs, and a model of another type raises `ArgumentError` naming that type (`Model 'gpt-4' is not an image model`) before anything is sent. Chat and audio transcription take only `text` and `audio_transcription` models, which the catalog cannot tell apart. Image generation and text-to-speech used to fail with a `NoMethodError` from their own option validation, and chat and transcription used to send the request. `ModelCatalog#fetch(name, type:)` performs the check and `Client.validate_model` takes the same `type:`.
+- Every request checks that its model is of the type the request needs, and a model of another type raises `ArgumentError` naming that type (`Model 'gpt-4' is not an image model`) before anything is sent. Chat and audio transcription take only `text` and `audio_transcription` models, which the catalog cannot tell apart. Image generation and text-to-speech used to fail with a `NoMethodError` from their own option validation, and chat and transcription used to send the request. `ModelCatalog#fetch(name, type:)` performs the check and `Client.validate_model` takes the same `type:`. (#181)
 
 ### Fixed
 
