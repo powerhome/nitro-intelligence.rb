@@ -32,15 +32,11 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
   end
 
   let(:fake_tts_response) { StringIO.new("fake_audio_bytes") }
-  let(:fake_generation) { double("Generation", trace_id: "trace-321") }
+  let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-321", id: "f8ccff00e8b9e5bd") }
 
   before do
     allow(fake_catalog).to receive(:lookup_by_name).and_return(tts_model)
     allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_catalog)
-
-    allow(NitroIntelligence::Audio).to receive(:new).and_return(
-      double("NitroAudio", byte_string: "audio_bytes", mime_type: "audio/mp3", direction: "output", reference_id: nil)
-    )
 
     allow(NitroIntelligence::Observability::UploadHandler).to receive(:new).and_return(fake_upload_handler)
   end
@@ -56,7 +52,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
         hash_including(input: "say hi", model: "tts-1", voice: "alloy", response_format: "mp3")
       ).and_return(fake_tts_response)
 
-      expect(fake_upload_handler).to receive(:upload).with("trace-321", upload_queue: instance_of(Queue))
+      expect(fake_upload_handler).to receive(:upload).with("trace-321", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
 
       tts, trace_attributes = handler.create(message: "say hi")
 
@@ -91,6 +87,19 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
 
         handler.create(message: "say hi")
       end
+    end
+
+    it "labels generated audio as output when uploading it" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      allow(fake_speech).to receive(:create).and_return(fake_tts_response)
+
+      expect(fake_upload_handler).to receive(:upload) do |_trace_id, upload_queue:, **|
+        expect(upload_queue.pop).to have_attributes(
+          byte_string: "fake_audio_bytes", mime_type: "audio/mp3", direction: "output"
+        )
+      end
+
+      handler.create(message: "say hi")
     end
 
     it "carries the cost the gateway reported into the trace attributes" do

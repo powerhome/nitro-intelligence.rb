@@ -39,7 +39,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
     let(:fake_transcription_response) do
       double("TranscriptionResponse", text: "transcribed text", usage: token_usage)
     end
-    let(:fake_generation) { double("Generation", trace_id: "trace-123") }
+    let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-123", id: "f8ccff00e8b9e5bd") }
 
     it "observes the request, uploads the file, and builds trace attributes" do
       expect(fake_observer).to receive(:observe).and_yield(fake_generation)
@@ -48,7 +48,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
         hash_including(prompt: "transcribe", model: "whisper-1", file: fake_audio_file)
       ).and_return(fake_transcription_response)
 
-      expect(fake_upload_handler).to receive(:upload).with("trace-123", upload_queue: instance_of(Queue))
+      expect(fake_upload_handler).to receive(:upload).with("trace-123", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
 
       audio_transcription, trace_attributes = handler.create(message: "transcribe", audio_file: fake_audio_file)
 
@@ -155,7 +155,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
           hash_including(prompt: "transcribe", model: "whisper-1", file: fake_audio_file)
         ).and_return(fake_transcription_response)
 
-        expect(fake_upload_handler).to receive(:upload).with("trace-123", upload_queue: instance_of(Queue))
+        expect(fake_upload_handler).to receive(:upload).with("trace-123", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
 
         handler.create(message: "transcribe", audio_file: fake_audio_file, parameters: { metadata: { custom_key: "custom_value" } })
       end
@@ -172,7 +172,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
           hash_including(prompt: "System instruction: transcribe")
         ).and_return(fake_transcription_response)
 
-        expect(fake_upload_handler).to receive(:upload).with("trace-123", upload_queue: instance_of(Queue))
+        expect(fake_upload_handler).to receive(:upload).with("trace-123", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
 
         handler.create(message: "transcribe", audio_file: fake_audio_file, parameters: { prompt_name: "test-prompt" })
       end

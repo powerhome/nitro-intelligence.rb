@@ -23,7 +23,7 @@ module NitroIntelligence
 
     attr_reader :byte_string, :config, :file_type, :file_extension, :generated_image, :messages, :reference_images,
                 :target_image
-    attr_accessor :trace_id
+    attr_accessor :trace_id, :observation_id
 
     def initialize(
       message: "",
@@ -35,6 +35,7 @@ module NitroIntelligence
       @model = NitroIntelligence.model_catalog.lookup_by_name(@config.model)
       @reference_images = reference_images.map { |img| Image.new(img) }
       @trace_id = nil
+      @observation_id = nil
 
       # Overrides
       yield(@config) if block_given?

@@ -61,7 +61,7 @@ module NitroIntelligence
 
           # Uploads go to Cerebro's media API directly, past any masking, so a masked
           # project does not send the audio at all.
-          def upload_input_audio(audio_file, trace_id)
+          def upload_input_audio(audio_file, generation)
             return if project.mask_content?
 
             audio_file.rewind
@@ -69,7 +69,8 @@ module NitroIntelligence
               auth_token: project.auth_token
             )
             upload_handler.upload(
-              trace_id,
+              generation.trace_id,
+              observation_id: generation.id,
               upload_queue: Queue.new([NitroIntelligence::Audio.new(audio_file)])
             )
           end
@@ -80,7 +81,7 @@ module NitroIntelligence
               correlation_trace_id: generation.trace_id, mask_content: project.mask_content?
             )
 
-            upload_input_audio(audio_file, generation.trace_id)
+            upload_input_audio(audio_file, generation)
 
             # The model and input are already recorded on the observation before the
             # request runs, and the response carries no model of its own
