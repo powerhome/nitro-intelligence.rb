@@ -6,7 +6,7 @@ This component aims to consolidate and standardize AI features implemented in th
 
 ## Public API
 
-What this README and [ASSISTANTS.md](ASSISTANTS.md) document is the gem's public API, and follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html): it changes incompatibly only in a major release. Everything else is private, may change in any release, and is marked `@api private` in the source. The API reference is generated from the source with [YARD](https://yardoc.org): run `bundle exec yard doc` and open `doc/api/index.html`, or browse it for any released version on [RubyDoc.info](https://www.rubydoc.info/gems/nitro_intelligence).
+The gem's public API is what its API reference documents, and follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html): it changes incompatibly only in a major release. The reference is generated from the source with [YARD](https://yardoc.org): run `bundle exec yard doc` and open `doc/api/index.html`, or browse it for any released version on [RubyDoc.info](https://www.rubydoc.info/gems/nitro_intelligence). Anything marked `@api private` in the source is left out of it, may change in any release, and is not for callers. This README and [ASSISTANTS.md](ASSISTANTS.md) are guides to using the gem, not a list of everything public.
 
 ## Configuration
 

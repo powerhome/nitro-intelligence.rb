@@ -42,8 +42,7 @@ module NitroIntelligence
     #   The current configuration.
     #   @return [ActiveSupport::Configurable::Configuration] the settings that {Configuration} lists
     # @!method logger
-    #   The configured logger.
-    #   @return [Logger]
+    #   @api private
     # @!method environment
     #   @api private
     delegate :configure, :config, :logger, :environment, to: :configuration
