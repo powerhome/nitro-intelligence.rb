@@ -152,7 +152,7 @@ mergers() {
     gh api "repos/{owner}/{repo}/commits/$sha/pulls" --jq '.[] | select(.merged_at) | .number'
   done | awk '!seen[$0]++' | while read -r number; do
     gh api "repos/{owner}/{repo}/pulls/$number" --jq 'select(.merged_by.type == "User") | .merged_by.login'
-  done | awk '!seen[$0]++' | head -n 10
+  done | awk '!seen[$0]++ && count++ < 10'
 }
 
 # Opens the release PR, or refreshes the open one, from the changelog on main.
