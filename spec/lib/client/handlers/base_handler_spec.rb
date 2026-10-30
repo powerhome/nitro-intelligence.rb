@@ -80,6 +80,50 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
       expect(parameters.dig(:request_options, :extra_headers, "x-litellm-trace-id")).to eq(trace_id)
     end
 
+    it "sends the tags naming the feature behind the request" do
+      parameters = { gateway_tags: ["cerebro_observability_project_id:proj-1", "cerebro_prompt_name:onboarding"] }
+
+      handler.send(:add_correlation_headers, parameters, trace_id:)
+
+      expect(parameters.dig(:request_options, :extra_headers, "x-litellm-tags"))
+        .to eq("cerebro_observability_project_id:proj-1,cerebro_prompt_name:onboarding")
+    end
+
+    it "omits the tags header when there are no tags" do
+      parameters = { gateway_tags: [] }
+
+      handler.send(:add_correlation_headers, parameters, trace_id:)
+
+      expect(parameters[:request_options][:extra_headers]).not_to have_key("x-litellm-tags")
+    end
+
+    it "collapses commas in a tag, which the gateway would otherwise read as two tags" do
+      parameters = { gateway_tags: ["cerebro_prompt_name:onboarding,welcome"] }
+
+      handler.send(:add_correlation_headers, parameters, trace_id:)
+
+      expect(parameters.dig(:request_options, :extra_headers, "x-litellm-tags"))
+        .to eq("cerebro_prompt_name:onboarding welcome")
+    end
+
+    it "collapses newlines in a tag, which an HTTP client would reject outright" do
+      parameters = { gateway_tags: ["cerebro_prompt_name:onboarding\r\n  welcome"] }
+
+      handler.send(:add_correlation_headers, parameters, trace_id:)
+
+      expect(parameters.dig(:request_options, :extra_headers, "x-litellm-tags"))
+        .to eq("cerebro_prompt_name:onboarding welcome")
+    end
+
+    it "drops a tag that is blank rather than sending an empty one" do
+      parameters = { gateway_tags: ["cerebro_observability_project_id:proj-1", "  "] }
+
+      handler.send(:add_correlation_headers, parameters, trace_id:)
+
+      expect(parameters.dig(:request_options, :extra_headers, "x-litellm-tags"))
+        .to eq("cerebro_observability_project_id:proj-1")
+    end
+
     it "preserves headers added by the caller" do
       parameters = {}
       handler.send(:add_request_headers, parameters, "nip-modality" => "image")
@@ -105,6 +149,14 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
 
         expect(parameters.dig(:request_options, :extra_headers, "x-litellm-spend-logs-metadata"))
           .to eq('{"source":"MyJob"}')
+      end
+
+      it "sends no tags, since nothing knows the project or prompt behind the request" do
+        parameters = { metadata: { source: "MyJob" } }
+
+        handler.send(:add_correlation_headers, parameters, trace_id: nil)
+
+        expect(parameters[:request_options][:extra_headers]).not_to have_key("x-litellm-tags")
       end
 
       it "adds nothing at all when there is no metadata either" do
