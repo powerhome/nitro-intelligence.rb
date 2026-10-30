@@ -29,7 +29,7 @@ module NitroIntelligence
     # @return [Net::HTTPSuccess] the response
     # @raise [DatasetItemError] when Cerebro does not store the item
     # @example
-    #   reporter.create_dataset_item(datasetName: "sms-screening", input: { message: }, expectedOutput: "yes")
+    #   reporter.create_dataset_item({ datasetName: "sms-screening", input: { message: }, expectedOutput: "yes" })
     def create_dataset_item(attributes)
       uri = URI("#{@host}/api/public/dataset-items")
       http = Net::HTTP.new(uri.host, uri.port)

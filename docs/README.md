@@ -495,12 +495,12 @@ Numeric data is helpful for scores that happen on a sliding scale, like success 
 
 ```ruby
 reporter = NitroIntelligence::Reporter.new(observability_project_slug: "fake-feature-project")
-reporter.create_dataset_item(
+reporter.create_dataset_item({
   datasetName: "call-categorization",
   input: { transcript: },
   expectedOutput: "Rescheduled",
-  sourceTraceId: trace_id
-)
+  sourceTraceId: trace_id,
+})
 ```
 
 ### Reaching Cerebro Directly
