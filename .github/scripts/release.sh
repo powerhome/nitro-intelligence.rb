@@ -155,6 +155,12 @@ propose() {
     return
   fi
 
+  # Looked up before anything is pushed, so a failed lookup leaves no unassigned PR.
+  assignees=$(mergers "$(tag_for "$old")" | paste -sd, -)
+  if [[ -z $assignees && $GITHUB_ACTOR != *"[bot]" ]]; then
+    assignees=$GITHUB_ACTOR
+  fi
+
   bot_id=$(gh api "users/${APP_SLUG}%5Bbot%5D" --jq .id)
   git -c user.name="${APP_SLUG}[bot]" -c user.email="${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com" \
     commit -q -am "Release $version"
@@ -172,10 +178,6 @@ propose() {
     open=$(gh pr create --head "$BRANCH" --base main --title "Release $version" --body "$body" | sed 's|.*/||')
   fi
 
-  assignees=$(mergers "$(tag_for "$old")" | paste -sd, -)
-  if [[ -z $assignees && $GITHUB_ACTOR != *"[bot]" ]]; then
-    assignees=$GITHUB_ACTOR
-  fi
   if [[ -n $assignees ]]; then
     gh pr edit "$open" --add-assignee "$assignees"
   fi
