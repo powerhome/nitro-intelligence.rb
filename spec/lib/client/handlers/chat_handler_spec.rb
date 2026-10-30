@@ -13,7 +13,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::ChatHandler do
   before do
     fake_model = double("Model", name: "default-text-model")
     fake_catalog = double("ModelCatalog", default_text_model: fake_model)
-    allow(fake_catalog).to receive(:exists?).and_return(true)
+    allow(fake_catalog).to receive(:fetch) { |name, **| double("Model", name:) }
     allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_catalog)
   end
 
@@ -112,6 +112,14 @@ RSpec.describe NitroIntelligence::Client::Handlers::ChatHandler do
 
       expect(chat_completion.choices.first.message.content).to eq("hi")
       expect(handler.cost_details(chat_completion)).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
+    end
+
+    it "raises when the requested model is not a text model" do
+      allow(NitroIntelligence).to receive(:model_catalog)
+        .and_return(NitroIntelligence::ModelCatalog.new(models: [{ name: "jev", type: "decision" }]))
+
+      expect { handler.create(message: "hi", parameters: { model: "jev" }) }
+        .to raise_error(ArgumentError, "Model 'jev' is not a text model")
     end
   end
 end

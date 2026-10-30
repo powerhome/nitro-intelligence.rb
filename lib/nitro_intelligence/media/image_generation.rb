@@ -112,8 +112,7 @@ module NitroIntelligence
 
     def validate_config!
       # Check model supported
-      @model = NitroIntelligence.model_catalog.lookup_by_name(@config.model)
-      raise ArgumentError, "Unsupported model: '#{@config.model}'" unless @model
+      @model = NitroIntelligence.model_catalog.fetch(@config.model, type: ImageModel)
 
       # Check aspect_ratio supported
       unless @model.aspect_ratios.include?(@config.aspect_ratio)

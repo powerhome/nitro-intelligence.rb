@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Cerebro project can now opt in to content masking with `"mask_content" => true` in `observability_projects`. For a masked project the input and output of every observed request are recorded as `[masked]`, a failure records its error class without its message, and no media is uploaded; model, usage, cost, prompt link, metadata and the gateway call ID are still recorded. Masking is applied by the gem on every write rather than through langfuse-rb's `mask`, which is read from process-global configuration and so cannot differ between projects. A masked project's requests also send `x-litellm-enable-message-redaction`, so the inference gateway redacts their messages and responses from its own logs. Projects that do not set the flag are unchanged. (#169)
 - `Client#decide` asks a decision model `noul`, `choice` and `score` questions over the gateway's System One route (`POST /v1/systemone`) and returns a `NitroIntelligence::Decision` of typed answers keyed by question name. With observability, each call is recorded in Cerebro as a generation with its cost. Decision models are configured in `model_config` with the type `decision` and a `default_decision_model`. (#178)
 
+### Changed
+
+- Every request checks that its model is of the type the request needs, and a model of another type raises `ArgumentError` naming that type (`Model 'gpt-4' is not an image model`) before anything is sent. Chat and audio transcription take only `text` and `audio_transcription` models, which the catalog cannot tell apart. Image generation and text-to-speech used to fail with a `NoMethodError` from their own option validation, and chat and transcription used to send the request. `ModelCatalog#fetch(name, type:)` performs the check and `Client.validate_model` takes the same `type:`. (#181)
+
 ### Fixed
 
 - Text-to-speech uploads are labeled as output instead of input. (#173)

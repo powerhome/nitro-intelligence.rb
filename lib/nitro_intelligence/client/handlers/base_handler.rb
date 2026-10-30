@@ -114,6 +114,15 @@ module NitroIntelligence
           )
         end
 
+        # Every request to the gateway names the model asked for, and the modality where the
+        # route alone does not, carries the correlation headers and, for a project that masks
+        # content, asks the gateway to redact it from its logs.
+        def add_gateway_headers(parameters, correlation_trace_id:, mask_content:, modality: nil)
+          add_request_headers(parameters, MODALITY_HEADER => modality, REQUESTED_MODEL_HEADER => parameters[:model])
+          add_correlation_headers(parameters, trace_id: correlation_trace_id)
+          add_message_redaction_header(parameters, mask_content:)
+        end
+
         # A project that masks content in Cerebro keeps it out of the gateway's logs
         # too, so one setting decides where a request's content is recorded.
         def add_message_redaction_header(parameters, mask_content:)

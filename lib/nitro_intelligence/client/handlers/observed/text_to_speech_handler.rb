@@ -1,3 +1,4 @@
+require "nitro_intelligence/client/handlers/observed/base_handler"
 require "nitro_intelligence/media/audio"
 require "nitro_intelligence/observability/prompt_resolver"
 
@@ -5,13 +6,8 @@ module NitroIntelligence
   module Client
     module Handlers
       module Observed
-        class TextToSpeechHandler
+        class TextToSpeechHandler < BaseHandler
           class ObservedTextToSpeechPromptError < StandardError; end
-
-          def initialize(base_handler:, observer:)
-            @base_handler = base_handler
-            @observer = observer
-          end
 
           def create(message: "", parameters: {})
             prompt = handle_prompt(parameters:)
@@ -33,10 +29,6 @@ module NitroIntelligence
           end
 
         private
-
-          def project
-            @observer.project_client.project
-          end
 
           def handle_prompt(parameters:)
             prompt = NitroIntelligence::Observability::PromptResolver.for(

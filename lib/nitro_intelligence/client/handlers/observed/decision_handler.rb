@@ -1,3 +1,5 @@
+require "nitro_intelligence/client/handlers/observed/base_handler"
+
 module NitroIntelligence
   module Client
     module Handlers
@@ -5,12 +7,7 @@ module NitroIntelligence
         # Recorded as a generation, the closest observation type Langfuse has to a decision: it
         # carries the model, usage and cost. How a decision should be recorded is still open in
         # powerhome/cerebro#128.
-        class DecisionHandler
-          def initialize(base_handler:, observer:)
-            @base_handler = base_handler
-            @observer = observer
-          end
-
+        class DecisionHandler < BaseHandler
           def create(state:, questions:, parameters: {})
             @base_handler.validate_and_resolve!(parameters)
 
@@ -30,10 +27,6 @@ module NitroIntelligence
           end
 
         private
-
-          def project
-            @observer.project_client.project
-          end
 
           def workflow(generation:, state:, questions:, parameters:)
             decision = @base_handler.perform_request(

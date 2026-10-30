@@ -21,10 +21,9 @@ RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
   end
 
   let(:fake_catalog) do
-    instance_double(
-      NitroIntelligence::ModelCatalog,
-      default_text_to_speech_model: tts_model
-    )
+    NitroIntelligence::ModelCatalog.new({}).tap do |catalog|
+      allow(catalog).to receive(:default_text_to_speech_model).and_return(tts_model)
+    end
   end
 
   before do
@@ -133,6 +132,14 @@ RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
       expect(tts).to be_a(StringIO)
       expect(tts.string).to eq("fake_audio_bytes")
       expect(handler.cost_details(tts)).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
+    end
+
+    it "raises when the requested model is not a text-to-speech model" do
+      allow(NitroIntelligence).to receive(:model_catalog)
+        .and_return(NitroIntelligence::ModelCatalog.new(models: [{ name: "gpt-4", type: "text" }]))
+
+      expect { handler.create(message: "hi", parameters: { model: "gpt-4" }) }
+        .to raise_error(ArgumentError, "Model 'gpt-4' is not a text-to-speech model")
     end
   end
 end

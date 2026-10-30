@@ -23,6 +23,19 @@ module NitroIntelligence
       @models.find { |model| model.name == name }
     end
 
+    # The named model, checked to be of the type a request needs. A model of another type
+    # would fail at the gateway, or deep in a handler's own validation, with an error that
+    # does not say why.
+    def fetch(name, type: Model)
+      model = lookup_by_name(name)
+      raise ArgumentError, "Unsupported model: '#{name}'" unless model
+
+      return model if model.is_a?(type)
+
+      article = type.kind.start_with?(/[aeiou]/) ? "an" : "a"
+      raise ArgumentError, "Model '#{name}' is not #{article} #{type.kind} model"
+    end
+
     def exists?(name)
       lookup_by_name(name).present?
     end

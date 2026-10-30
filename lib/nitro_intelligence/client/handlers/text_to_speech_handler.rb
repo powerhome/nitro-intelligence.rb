@@ -13,9 +13,7 @@ module NitroIntelligence
         end
 
         def perform_request(message: "", parameters: {}, correlation_trace_id: nil, mask_content: false)
-          add_request_headers(parameters, MODALITY_HEADER => "audio", REQUESTED_MODEL_HEADER => parameters[:model])
-          add_correlation_headers(parameters, trace_id: correlation_trace_id)
-          add_message_redaction_header(parameters, mask_content:)
+          add_gateway_headers(parameters, correlation_trace_id:, mask_content:, modality: "audio")
           @client.audio.speech.create(
             input: message,
             **parameters.slice(*ALLOWED_EXTRA_PARAMETERS)
@@ -24,8 +22,7 @@ module NitroIntelligence
 
         def validate_and_resolve!(parameters)
           model_name = parameters[:model] || NitroIntelligence.model_catalog.default_text_to_speech_model&.name
-          model = NitroIntelligence.model_catalog.lookup_by_name(model_name)
-          raise ArgumentError, "Unsupported model: '#{model_name}'" unless model
+          model = Client.validate_model(model_name, type: TextToSpeechModel)
 
           default_parameters = {
             metadata: {},
