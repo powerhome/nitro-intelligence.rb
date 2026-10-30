@@ -15,7 +15,9 @@ module NitroIntelligence
         PATH = "systemone".freeze
 
         # Declaring a model, rather than taking the decoded hash, is what gets the response its
-        # `last_response`, and with it the gateway's cost headers.
+        # `last_response`, and with it the gateway's cost headers. Only `model` is declared:
+        # `Decision` reads `answers` and `usage` raw through `BaseModel#[]`, which openai-ruby
+        # documents as public API for keys outside a model's spec, from 0.86 through 0.99 at least.
         class Response < OpenAI::BaseModel
           required :model, String
         end
@@ -40,14 +42,12 @@ module NitroIntelligence
         end
 
         def validate_and_resolve!(parameters)
-          default_parameters = {
-            metadata: {},
-            model: NitroIntelligence.model_catalog.default_decision_model&.name,
-          }
+          model_name = parameters[:model] || NitroIntelligence.model_catalog.default_decision_model&.name
+          model = NitroIntelligence.model_catalog.lookup_by_name(model_name)
+          raise ArgumentError, "Unsupported model: '#{model_name}'" unless model
 
-          parameters.replace(default_parameters.merge(parameters))
-          Client.validate_model(parameters[:model])
-          return if NitroIntelligence.model_catalog.lookup_by_name(parameters[:model]).is_a?(DecisionModel)
+          parameters.replace({ metadata: {}, model: model.name }.merge(parameters))
+          return if model.is_a?(DecisionModel)
 
           # A decision request has nothing in common with a chat one, so a model of another type
           # would fail at the gateway with an error that does not say why.

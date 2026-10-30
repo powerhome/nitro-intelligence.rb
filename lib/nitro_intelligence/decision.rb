@@ -13,20 +13,17 @@ module NitroIntelligence
     # are, and the probability and description of every level, keyed by level number.
     ScoreAnswer = Data.define(:score, :confidence, :probabilities, :legend)
 
-    attr_reader :model, :answers, :usage, :response
+    # `raw_answers` are the answers as the gateway returned them, for recording.
+    attr_reader :model, :answers, :raw_answers, :usage, :response
 
     delegate :last_response, to: :response
 
     def initialize(response)
       @response = response
       @model = response.model
-      @answers = response[:answers].to_h { |name, answer| [name.to_s, build_answer(answer)] }.with_indifferent_access
+      @raw_answers = response[:answers].to_h
+      @answers = raw_answers.to_h { |name, answer| [name.to_s, build_answer(answer)] }.with_indifferent_access
       @usage = response[:usage].to_h
-    end
-
-    # The answers as the gateway returned them, for recording.
-    def raw_answers
-      response[:answers].to_h
     end
 
   private
