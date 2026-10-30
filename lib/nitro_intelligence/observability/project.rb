@@ -17,7 +17,7 @@ module NitroIntelligence
         @public_key = public_key
         @secret_key = secret_key
         @auth_token = Base64.strict_encode64("#{public_key}:#{secret_key}")
-        @mask_content = mask_content ? true : false
+        @mask_content = mask_content == true
         @prompt_store = PromptStore.new(
           observability_project_slug: slug,
           observability_public_key: public_key,
