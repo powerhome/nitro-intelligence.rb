@@ -24,7 +24,7 @@ module NitroIntelligence
 
             # Modifies message in place
             prompt = handle_prompt(message:, parameters:)
-            trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
+            trace_name = parameters[:trace_name] || prompt&.name || project.slug
 
             @observer.observe(
               "audio-transcription",
@@ -40,9 +40,13 @@ module NitroIntelligence
 
         private
 
+          def project
+            @observer.project_client.project
+          end
+
           def handle_prompt(message:, parameters:)
             prompt = NitroIntelligence::Observability::PromptResolver.for(
-              store: @observer.project_client.project.prompt_store,
+              store: project.prompt_store,
               parameters:
             )
             return nil if prompt.blank?
@@ -60,20 +64,29 @@ module NitroIntelligence
             prompt
           end
 
-          def workflow(generation:, message:, audio_file:, parameters:)
-            audio_transcription = @base_handler.perform_request(
-              audio_file:, message:, parameters:, correlation_trace_id: generation.trace_id
-            )
+          # Uploads go to Cerebro's media API directly, past any masking, so a masked
+          # project does not send the audio at all.
+          def upload_input_audio(audio_file, generation)
+            return if project.mask_content?
 
             audio_file.rewind
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(
-              auth_token: @observer.project_client.project.auth_token
+              auth_token: project.auth_token
             )
             upload_handler.upload(
               generation.trace_id,
               observation_id: generation.id,
               upload_queue: Queue.new([NitroIntelligence::Audio.new(audio_file)])
             )
+          end
+
+          def workflow(generation:, message:, audio_file:, parameters:)
+            audio_transcription = @base_handler.perform_request(
+              audio_file:, message:, parameters:,
+              correlation_trace_id: generation.trace_id, mask_content: project.mask_content?
+            )
+
+            upload_input_audio(audio_file, generation)
 
             # The model and input are already recorded on the observation before the
             # request runs, and the response carries no model of its own

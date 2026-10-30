@@ -57,6 +57,10 @@ module NitroIntelligence
 
       private
 
+        def project
+          @project_client.project
+        end
+
         # Applied once the response is in hand, so the observation reflects what came
         # back rather than what was asked for. Each attribute is set only when the
         # handler supplied it: an observation that records nothing is better than one
@@ -67,7 +71,12 @@ module NitroIntelligence
         def record_result(generation, trace_attributes)
           return unless trace_attributes
 
-          handle_truncation(trace_attributes[:input], trace_attributes[:output], trace_attributes[:model])
+          trace_attributes = masked(trace_attributes)
+
+          # Truncation trims fields out of an output that a masked project does not record.
+          unless project.mask_content?
+            handle_truncation(trace_attributes[:input], trace_attributes[:output], trace_attributes[:model])
+          end
 
           RECORDED_ATTRIBUTES.each do |name|
             value = trace_attributes[name]
@@ -77,6 +86,15 @@ module NitroIntelligence
           record_status(generation, trace_attributes)
 
           generation.update_trace(input: trace_attributes[:input], output: trace_attributes[:output])
+        end
+
+        def masked(trace_attributes)
+          return trace_attributes unless project.mask_content?
+
+          trace_attributes.merge(
+            input: project.mask(trace_attributes[:input]),
+            output: project.mask(trace_attributes[:output])
+          )
         end
 
         # A response the endpoint answered but did not finish -- a generation cut off at its
@@ -99,6 +117,8 @@ module NitroIntelligence
         # references on success) pass no input and rely on the failure record alone.
         def record_input(generation, input)
           return if input.blank?
+
+          input = project.mask(input)
 
           generation.input = input
           generation.update_trace(input:)
@@ -128,13 +148,18 @@ module NitroIntelligence
         end
 
         def record_failure(generation, error)
-          generation.update(
-            level: "ERROR",
-            status_message: "#{error.class}: #{error.message}".truncate(MAX_STATUS_MESSAGE_LENGTH)
-          )
+          generation.update(level: "ERROR", status_message: failure_message(error))
 
           call_id = litellm_call_id(error)
           generation.metadata = { litellm_call_id: call_id } if call_id
+        end
+
+        # The message of a gateway error can quote the request or the response, so a
+        # masked project records which error occurred and nothing it said.
+        def failure_message(error)
+          return error.class.to_s if project.mask_content?
+
+          "#{error.class}: #{error.message}".truncate(MAX_STATUS_MESSAGE_LENGTH)
         end
 
         def litellm_call_id(error)

@@ -17,9 +17,10 @@ RSpec.describe NitroIntelligence::LangfuseExtension do
       config.logger = Logger.new(File::NULL)
     end
   end
+  let(:project) { double("Project", mask_content?: false, mask: nil).tap { |p| allow(p).to receive(:mask) { |v| v } } }
   let(:observer) do
     NitroIntelligence::Client::Observers::LangfuseObserver.new(
-      project_client: Struct.new(:observability_client).new(client)
+      project_client: Struct.new(:observability_client, :project).new(client, project)
     )
   end
   let(:seed) { "synthetic-root-seed" }
@@ -71,7 +72,9 @@ RSpec.describe NitroIntelligence::LangfuseExtension do
 
   context "when audio handlers upload media" do
     let(:uploads) { [] }
-    let(:project) { double("Project", slug: "audio-test", auth_token: "synthetic-token", prompt_store: nil) }
+    let(:project) do
+      double("Project", slug: "audio-test", auth_token: "synthetic-token", prompt_store: nil, mask_content?: false, mask: nil)
+    end
     let(:observer) do
       NitroIntelligence::Client::Observers::LangfuseObserver.new(
         project_client: Struct.new(:observability_client, :project).new(client, project)

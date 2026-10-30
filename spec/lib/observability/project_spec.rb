@@ -33,6 +33,34 @@ RSpec.describe NitroIntelligence::Observability::Project do
     end
   end
 
+  describe "content masking" do
+    def build(**options)
+      described_class.new(slug: "s", id: "i", public_key: "pk", secret_key: "sk", **options)
+    end
+
+    it "is off unless the project asks for it" do
+      expect(build).not_to be_mask_content
+    end
+
+    it "passes values through when off" do
+      value = [{ role: "user", content: "hi" }]
+
+      expect(build.mask(value)).to equal(value)
+    end
+
+    it "replaces the whole value when on, whatever its shape" do
+      project = build(mask_content: true)
+
+      expect(project.mask("text")).to eq("[masked]")
+      expect(project.mask({ content: "hi", reasoning_content: "hmm" })).to eq("[masked]")
+      expect(project.mask([{ role: "user", content: "hi" }])).to eq("[masked]")
+    end
+
+    it "keeps absence as absence when on" do
+      expect(build(mask_content: true).mask(nil)).to be_nil
+    end
+  end
+
   describe ".find_by_slug" do
     let(:fake_config) { double("Configuration") }
     let(:configured_projects) do
@@ -56,6 +84,16 @@ RSpec.describe NitroIntelligence::Observability::Project do
         expect(project.id).to eq("id_b")
         expect(project.public_key).to eq("pk_b")
         expect(project.auth_token).to eq(Base64.strict_encode64("pk_b:sk_b"))
+      end
+    end
+
+    context "when the project's config turns content masking on" do
+      let(:configured_projects) do
+        [{ "slug" => "private", "id" => "id_p", "public_key" => "pk_p", "secret_key" => "sk_p", "mask_content" => true }]
+      end
+
+      it "reads the flag" do
+        expect(described_class.find_by_slug(slug: "private")).to be_mask_content
       end
     end
 
