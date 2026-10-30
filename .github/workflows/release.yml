@@ -1,0 +1,45 @@
+# Releases from the changelog. After every push to main, publishes a GitHub release for a
+# version that has none yet (the release PR just merged), then opens or refreshes the one
+# "Release X.Y.Z" PR for the Unreleased changelog entries. See .github/scripts/release.sh.
+#
+# It runs as the release GitHub App, not GITHUB_TOKEN: a PR or tag GITHUB_TOKEN creates
+# starts no workflows, so the release PR would never get its required checks and the
+# release tag would never run the gem release job.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint release App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Release and propose the next release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: .github/scripts/release.sh
