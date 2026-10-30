@@ -18,6 +18,8 @@ module NitroIntelligence
     end
   end
 
+  class DecisionModel < Model; end
+
   class TextModel < Model; end
 
   class TextToSpeechModel < Model

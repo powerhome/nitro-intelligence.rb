@@ -49,6 +49,7 @@ NitroIntelligence.configure do |config|
     "default_text_model" => "Qwen/Qwen3.6-35B-A3B",
     "default_image_model" => "google/gemini-3.1-flash-image",
     "default_text_to_speech_model" => "openai/gpt-4o-mini-tts",
+    "default_decision_model" => "typesafe/jev-1.14",
     "models" => [
       {
         "name" => "Qwen/Qwen3.6-35B-A3B",
@@ -72,6 +73,10 @@ NitroIntelligence.configure do |config|
         "default_response_format" => "mp3",
         "voices" => ["echo", "nova", "marin", "cedar"],
         "response_formats" => ["mp3", "wav"]
+      },
+      {
+        "name" => "typesafe/jev-1.14",
+        "type" => "decision"
       }
     ]
   }
@@ -93,7 +98,7 @@ end
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key). Add `"mask_content" => true` to keep a project's prompts and responses out of Cerebro and the gateway logs, see [Masking Content](#masking-content)                                                                                                                                            |
 | `observability_user_id`  | `String`      | `""`                  | User ID recorded on observed traces when a request passes no `user_id` parameter — see [Users](#users) |
 | `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String, default: `"https://assistants.powerhome.ai"`) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new`, which takes the same two defaults — see [Assistants](#assistants) |
-| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
+| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, `default_decision_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
 
 ## Basic Usage
 
@@ -209,6 +214,48 @@ File.binwrite('tts.mp3', tts.string)
 ```
 
 For a full list of supported parameters, see the [API reference here](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create ). Note that `voice` and `response_format` are further constrained to the `voices` and `response_formats` listed for the chosen model in `config.model_config`.
+
+### Decisions
+
+A decision model answers questions about some content with a probability for each answer you allow, rather than generated text. `decide` sends the content as `state` (a string, hash or array) and a hash of named questions to the gateway's System One route, `POST /v1/systemone`. Each question is `noul` (yes or no), `choice` (one of the options in `criteria`) or `score` (one of the ordered levels in `criteria`, the first being 0). See the [Inference Gateway's decision model docs](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md#decision-models) for when to use one and how far to trust its probabilities.
+
+```ruby
+client = NitroIntelligence::Client.new
+decision = client.decide(
+  state: { subject: "Duplicate charge", message: "I was charged twice. Please help." },
+  questions: {
+    billing: { type: "noul", instructions: "Is this message about billing?" },
+    team: {
+      type: "choice",
+      instructions: "Which team should handle this message?",
+      criteria: {
+        payments: "Charges, refunds and invoices",
+        scheduling: "Appointments and visits",
+        other: "Anything else, or not enough information to tell",
+      },
+    },
+    urgency: {
+      type: "score",
+      instructions: "How urgent is this message?",
+      criteria: ["Can wait", "Needs attention this week", "Needs attention today"],
+    },
+  }
+)
+
+decision.answers[:billing].noul          # => 0.98, the probability of yes
+decision.answers[:team].choice           # => "payments"
+decision.answers[:team].confidence       # => 0.91
+decision.answers[:team].probabilities    # => {"payments" => 0.95, "scheduling" => 0.01, "other" => 0.04}
+decision.answers[:urgency].score         # => 1.7, the expected level, which may fall between levels
+decision.answers[:urgency].legend        # => {0 => "Can wait", 1 => "Needs attention this week", 2 => "Needs attention today"}
+decision.answers[:urgency].probabilities # => {0 => 0.1, 1 => 0.1, 2 => 0.8}
+```
+
+`answers` is keyed by question name and accepts strings or symbols. Each answer is a `NitroIntelligence::Decision::NoulAnswer`, `ChoiceAnswer` or `ScoreAnswer`; an answer of any other type is returned as the hash the gateway sent. `decision.usage` holds the token counts and `decision.last_response` the HTTP response, including the gateway's headers.
+
+The model defaults to `default_decision_model` and must be listed in `config.model_config` with the type `decision`. `parameters` takes `model`, `metadata`, `request_options` and, with observability, the trace options described under [Observability](#observability). With observability enabled, each call is recorded in Cerebro as a generation with the state and questions as input, the answers as output, and the gateway's cost.
+
+The client does not limit the request. To keep a feature portable to models NIP hosts itself, stay within the gateway's [portable subset](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md#stay-within-what-every-backend-supports): up to 64 questions, 26 options per `choice` question and 10 levels per `score` question, with text `state`.
 
 ### Image Editing and Generation
 
@@ -453,7 +500,7 @@ success, so it records no input up front.
 
 A project can opt in to recording what happened without recording what was said. Set `"mask_content" => true` on its entry in `observability_projects`; projects that do not set it are unchanged.
 
-For a masked project, every observed request (chat, image generation, audio transcription and text-to-speech) is still traced, with its model, usage, cost, prompt link, tags, user, session, metadata and gateway call ID, but:
+For a masked project, every observed request (chat, image generation, audio transcription, text-to-speech and decisions) is still traced, with its model, usage, cost, prompt link, tags, user, session, metadata and gateway call ID, but:
 
 * The input and output of the generation and of the trace are recorded as `[masked]`. The whole value is replaced, so reasoning, tool calls and anything else in a response are masked however the provider shaped it.
 * A failed request records the error class (for example `OpenAI::Errors::BadRequestError`) as its status message, without the error's own message, which can quote the request or the response.

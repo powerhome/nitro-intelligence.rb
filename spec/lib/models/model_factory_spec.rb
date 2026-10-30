@@ -45,6 +45,11 @@ RSpec.describe NitroIntelligence::ModelFactory do
       expect(model).to be_an_instance_of(NitroIntelligence::TextToSpeechModel)
     end
 
+    it "builds a DecisionModel when type is 'decision'" do
+      model = described_class.build({ type: "decision", name: "typesafe/jev-1.14" })
+      expect(model).to be_an_instance_of(NitroIntelligence::DecisionModel)
+    end
+
     it "raises ArgumentError when type is unknown" do
       expect { described_class.build({ type: "audio_synthesis", name: "x" }) }
         .to raise_error(ArgumentError, /Unknown model type: "audio_synthesis"/)
