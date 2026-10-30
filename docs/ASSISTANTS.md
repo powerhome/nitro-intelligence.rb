@@ -566,3 +566,29 @@ This method is a thin wrapper over the resume [`#review`](#review) sends for `to
 Returns `nil` when the thread is resumed successfully.
 
 Raises `ThreadResumptionError` when the resumed run fails.
+
+## Errors
+
+Every error is a `StandardError` raised by the call that hits it.
+
+| Error | Raised when |
+| --- | --- |
+| `Assistants::ConfigurationError` | [`#initialize`](#initialize) is given no `api_key` or `user_id` |
+| `Assistants::ThreadInitializationError` | [`#run`](#run) cannot create or seed a new thread, or the assistant has no graph; the message is the response body |
+| `Assistants::RunError` | [`#run`](#run) is given no messages, Assistants rejects the run, or the run fails (see [Run errors](#run-errors)) |
+| `Assistants::ThreadStateError` | A thread's state cannot be read by [`#thread_state`](#thread_state), [`#thread_messages`](#thread_messages) or [`#under_review`](#under_review); the message is the response body |
+| `Assistants::ThreadResumptionError` | A review cannot be applied (see [`#review`](#review) and [`#review_tool_calls`](#review_tool_calls)) |
+| `Assistants::ReviewSupersededError` | A `ThreadResumptionError`: the thread is no longer paused on the review answered |
+| `AssistantRegistry::UnknownAssistantError` | `NitroIntelligence.assistants[key]` names a key `definitions` does not configure |
+| `Assistant::ConfigurationError` | An assistant's entry lacks its `api_key` or `assistant_id` |
+
+## Subclassing
+
+A host that speaks its own review protocol can subclass `NitroIntelligence::Assistants`. `super` into [`#initialize`](#initialize) takes the same arguments, and `Assistants::DEFAULT_USER_ID` is the `user_id` a client given none uses. A subclass may call four private methods, which are part of the public API for subclasses:
+
+| Method | What it does |
+| --- | --- |
+| `get_thread(thread_id:)` | Reads the thread (`GET /threads/{id}`), raising `ThreadResumptionError` with the response body when it cannot |
+| `interrupted?(thread)` | Whether a thread `get_thread` read is paused |
+| `get_thread_state(thread_id:, error: ThreadResumptionError)` | Reads the thread's state, raising `error` with the response body when it cannot |
+| `resume_run(thread_id:, assistant_id:, resume:, context:)` | Resumes the thread with `resume` as its `command.resume`, sent as given, and returns the `/runs/wait` response; raises `ThreadResumptionError` with the response body when Assistants refuses it, or the run's failure when it fails |

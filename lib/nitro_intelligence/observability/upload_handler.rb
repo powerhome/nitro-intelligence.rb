@@ -7,6 +7,7 @@ require "uri"
 
 module NitroIntelligence
   module Observability
+    # @api private
     class UploadHandler
       attr_reader :uploaded_media
 

@@ -4,6 +4,8 @@ module NitroIntelligence
   module Observability
     # Resolves a managed prompt from the lookups a request asks for, most specific first. A lookup that is
     # missing -- or that fails -- yields to the next; the last one's failure propagates.
+    #
+    # @api private
     class PromptResolver
       # One prompt lookup: the name asked for, at a label or a version.
       Lookup = Data.define(:name, :label, :version)

@@ -4,6 +4,7 @@ require "nitro_intelligence/client/handlers/base_handler"
 module NitroIntelligence
   module Client
     module Handlers
+      # @api private
       class ChatHandler < BaseHandler
         ALLOWED_EXTRA_PARAMETERS = OpenAI::Models::Chat::CompletionCreateParams.fields.keys.uniq.freeze
 

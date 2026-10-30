@@ -5,6 +5,7 @@ require "nitro_intelligence/media/image_generation"
 module NitroIntelligence
   module Client
     module Handlers
+      # @api private
       class ImageHandler < BaseHandler
         ALLOWED_EXTRA_PARAMETERS = OpenAI::Models::Chat::CompletionCreateParams.fields.keys.uniq.freeze
 

@@ -7,7 +7,9 @@ require "time"
 require "nitro_intelligence/media/image"
 
 module NitroIntelligence
+  # What {Client::Base#generate_image} returns.
   class ImageGeneration
+    # @api private
     class Config
       DEFAULT_ASPECT_RATIO = "1:1".freeze
       DEFAULT_RESOLUTION = "1K".freeze
@@ -21,10 +23,18 @@ module NitroIntelligence
       end
     end
 
-    attr_reader :byte_string, :config, :file_type, :file_extension, :generated_image, :messages, :reference_images,
-                :target_image
+    # @api private
+    attr_reader :byte_string, :config, :file_type, :file_extension, :messages, :reference_images, :target_image
+    # @return [Image, nil] the generated image; nil when the model returned none
+    attr_reader :generated_image
+    # @!attribute [rw] trace_id
+    #   @return [String, nil] the trace the request was recorded under; nil without observability
+    # @!attribute [rw] observation_id
+    #   @return [String, nil] the generation observation the images are attached to; nil without
+    #     observability
     attr_accessor :trace_id, :observation_id
 
+    # @api private
     def initialize(
       message: "",
       target_image: nil,
@@ -49,10 +59,12 @@ module NitroIntelligence
       build_messages(message, @target_image, @reference_images)
     end
 
+    # @api private
     def files
       [target_image, reference_images, generated_image].flatten.compact
     end
 
+    # @api private
     def parse_file(chat_completion)
       base64_string = chat_completion.choices.first&.message.to_h.fetch(:images, {})&.first&.dig(:image_url, :url)
 

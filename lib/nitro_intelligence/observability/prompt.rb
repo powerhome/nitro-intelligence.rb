@@ -1,5 +1,6 @@
 module NitroIntelligence
   module Observability
+    # @api private
     class Prompt
       attr_reader :name, :type, :prompt, :version, :config, :labels, :tags
 

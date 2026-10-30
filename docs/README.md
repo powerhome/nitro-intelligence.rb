@@ -4,6 +4,12 @@ The entrypoint to everything AI.
 
 This component aims to consolidate and standardize AI features implemented in the host application.
 
+## Public API
+
+What this README and [ASSISTANTS.md](ASSISTANTS.md) document is the gem's public API, and follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html): it changes incompatibly only in a major release. Everything else is private, may change in any release, and is marked `@api private` in the source. The API reference is generated from the source with [YARD](https://yardoc.org): run `bundle exec yard doc` and open `doc/api/index.html`, or browse it for any released version on [RubyDoc.info](https://www.rubydoc.info/gems/nitro_intelligence).
+
+`NitroIntelligence::VERSION` is the installed version, and `NitroIntelligence.logger` the configured logger. `NitroIntelligence.config` reads back any configuration key below.
+
 ## Configuration
 
 `NitroIntelligence` is configured via an initializer in the host application. All external dependencies
@@ -83,6 +89,7 @@ end
 | ------------------------ | ------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `logger`                 | `Logger`      | `Logger.new($stdout)` | Logger used for diagnostic output                                                                                                                                                                          |
 | `environment`            | `String`      | `"test"`              | Runtime environment name                                                                                                                                                                                   |
+| `current_revision`       | `String`      | `""`                  | The host application's revision, such as its commit, recorded as each trace's release |
 | `cache_provider`         | cache store   | `NullCache`           | ActiveSupport-compatible cache store                                                                                                                                                                       |
 | `inference_api_key`      | `String`      | `""`                  | API key for the LLM inference service                                                                                                                                                                      |
 | `inference_base_url`     | `String`      | `"https://inference.powerhome.ai"` | Base URL for the LLM inference service. Defaults to the shared inference gateway, so only a host talking to a different one needs to set it                                                                 |
@@ -225,6 +232,8 @@ result = client.generate_image(message: "Create an image of a bear installing a 
 `result` is a `NitroIntelligence::ImageGeneration` object, and the generated image can be accessed via `result.generated_image` which returns a `NitroIntelligence::Image`.
 
 With observability enabled, `result.trace_id` and `result.observation_id` identify the trace and generation observation. Both are `nil` without observability.
+
+A `NitroIntelligence::Image` carries the file in `byte_string`, its `file_extension` (such as `"png"`) and `mime_type` (such as `"image/png"`), and its `width` and `height` in pixels.
 
 You may write the file to disk:
 
@@ -480,6 +489,44 @@ reporter.score(name: "precision", value: "Partially Correct", trace_id:, data_ty
 
 Numeric data is helpful for scores that happen on a sliding scale, like success rate or percent similarity. Boolean data is helpful to convey something that either passes or fails. Categorical data is helpful for scores that have pre-defined categories, like "Correct", "Partially Correct", and "Incorrect".
 
+### Dataset Items
+
+`NitroIntelligence::Reporter#create_dataset_item` adds an item to one of the project's datasets, to evaluate prompts against later. It takes the item as Langfuse's [`POST /api/public/dataset-items`](https://api.reference.langfuse.com) does, and raises `NitroIntelligence::Reporter::DatasetItemError`, carrying the response's status and body, when Cerebro does not store it.
+
+```ruby
+reporter = NitroIntelligence::Reporter.new(observability_project_slug: "fake-feature-project")
+reporter.create_dataset_item(
+  datasetName: "call-categorization",
+  input: { transcript: },
+  expectedOutput: "Rescheduled",
+  sourceTraceId: trace_id
+)
+```
+
+### Reaching Cerebro Directly
+
+For what this gem does not wrap, such as a Langfuse API it has no method for, or a link to a trace, a project's details are available from its configuration:
+
+```ruby
+project = NitroIntelligence.project_client_registry.fetch("fake-feature-project").project
+project.id          # the project's id in Cerebro, as in its URLs
+project.auth_token  # the Basic credential for Cerebro's public API
+
+trace_url = "#{NitroIntelligence.config.observability_base_url}/project/#{project.id}/traces/#{trace_id}"
+```
+
+`NitroIntelligence.project_client_registry.fetch(slug)` builds each project's client once per process, and raises `NitroIntelligence::Observability::Project::NotFoundError` for a slug `observability_projects` does not configure. `NitroIntelligence::Observability::Project.find_by_slug(slug:)` reads the same configuration without building a client, and returns `nil` instead. `NitroIntelligence::Observability::ProjectClient::NotFoundError` is the error for a project without a client.
+
+Traces and scores are sent to Cerebro in the background. Fetch each project in an initializer to build its client at boot, and shut them all down as the process exits so that the last ones are sent:
+
+```ruby
+NitroIntelligence.config.observability_projects.each do |project|
+  NitroIntelligence.project_client_registry.fetch(project["slug"])
+end
+
+at_exit { NitroIntelligence.project_client_registry.shutdown_all }
+```
+
 ### Prompts
 
 #### Message Shape
@@ -605,6 +652,20 @@ client.chat(
   }
 )
 ```
+
+#### Prompt Errors
+
+A request naming a prompt raises when it cannot use one:
+
+| Error | Raised when |
+| --- | --- |
+| `NitroIntelligence::Observability::PromptStore::ObservabilityPromptNotFoundError` | The prompt does not exist, nor its fallback when `prompt_fallback_name` names one |
+| `NitroIntelligence::Observability::PromptStore::ObservabilityPromptError` | Cerebro fails to return the prompt; the message is its response body |
+| `NitroIntelligence::Client::Handlers::Observed::ChatHandler::ObservedChatPromptError` | `#chat` has no user message for the model to answer (see [Message Shape](#message-shape)) |
+| `NitroIntelligence::Client::Handlers::Observed::AudioTranscriptionHandler::ObservedAudioTranscriptionPromptError` | `#transcribe_audio` names a prompt that is not a text prompt |
+| `NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandler::ObservedTextToSpeechPromptError` | `#text_to_speech` names a prompt that is not a text prompt |
+
+On an observed client, `#transcribe_audio` also raises `NitroIntelligence::Audio::AudioFileFormatError` when `audio_file` is not a file with a path. Every method raises `ArgumentError` for a model, or a model setting such as a voice or aspect ratio, that `model_config` does not list.
 
 ## Nitro Intelligence Assistants
 

@@ -4,16 +4,34 @@ require "nitro_intelligence/observability/project_client"
 
 module NitroIntelligence
   module Observability
+    # Each Cerebro project's client, built once per process, as {NitroIntelligence.project_client_registry}
+    # holds them. Fetching each project at boot builds its client before the first request.
+    #
+    # @example In an initializer
+    #   NitroIntelligence.config.observability_projects.each do |project|
+    #     NitroIntelligence.project_client_registry.fetch(project["slug"])
+    #   end
+    #   at_exit { NitroIntelligence.project_client_registry.shutdown_all }
     class ProjectClientRegistry
+      # @api private
       def initialize(base_url:)
         @base_url = base_url
         @project_clients = {}
       end
 
+      # The client for the project configured under `slug`, built on first use.
+      #
+      # @param slug [String]
+      # @return [ProjectClient]
+      # @raise [Project::NotFoundError] when `observability_projects` does not configure the project
       def fetch(slug)
         @project_clients[slug] ||= build_project_client(slug)
       end
 
+      # Sends what each client still holds to Cerebro, and stops it. Call it as the process exits, or
+      # the last traces and scores are lost.
+      #
+      # @return [void]
       def shutdown_all
         @project_clients.values.each(&:shutdown)
       end

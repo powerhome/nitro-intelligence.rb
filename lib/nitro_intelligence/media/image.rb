@@ -4,9 +4,14 @@ require "mini_magick"
 require "nitro_intelligence/media/media"
 
 module NitroIntelligence
+  # An image, such as {ImageGeneration#generated_image}.
   class Image < Media
-    attr_reader :height, :width
+    # @return [Integer] in pixels
+    attr_reader :height
+    # @return [Integer] in pixels
+    attr_reader :width
 
+    # @api private
     def self.from_base64(base64_string)
       # Strip data_uri from string
       base64_string = base64_string.sub(/^data:[^;]*;base64,/, "")
@@ -15,6 +20,7 @@ module NitroIntelligence
       new(byte_string)
     end
 
+    # @api private
     def initialize(file)
       super
 

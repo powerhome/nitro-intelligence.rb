@@ -1,6 +1,8 @@
 module NitroIntelligence
   # Default no-operation cache implementation used
   # as a sensible default for initializing NitroIntelligence
+  #
+  # @api private
   class NullCache
     def read(_key) = nil
     def write(_key, _value, **_options) = true

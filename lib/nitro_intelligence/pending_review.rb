@@ -20,29 +20,46 @@ module NitroIntelligence
   # response of a paused `/runs/wait` (which reports `__interrupt__`); both carry the messages the
   # tool calls are matched back onto.
   class PendingReview
+    # @api private
     REPLY_ACTION = "__reply__".freeze
 
+    # @api private
     # What a reviewer may do with a reply. LangChain's `respond` supplies a tool's result, which a
     # reply does not have, so it is never offered for one, whatever the interrupt lists.
     REPLY_DECISIONS = %w[approve edit reject].freeze
 
+    # @api private
     KIND_NAMES = { tool_calls: "tool calls", reply: "a reply" }.freeze
 
     # The draft reply a reviewer is asked to approve, edit or reject.
+    #
+    # @!attribute [r] content
+    #   @return [String] the draft
+    # @!attribute [r] allowed_decisions
+    #   @return [Array<String>] what the reviewer may do, from `approve`, `edit` and `reject`
+    # @!attribute [r] description
+    #   @return [String, nil] the guidance the pause gives the reviewer
+    # @!attribute [r] interrupt_id
+    #   @return [String] the pause, as {PendingReview#interrupt_id}
     Reply = Struct.new(:content, :allowed_decisions, :description, :interrupt_id, keyword_init: true)
 
     # The pending review in a thread state, or nil when the thread is not paused.
+    #
+    # @api private
     def self.from_thread_state(thread_state)
       interrupt = Array(thread_state["interrupts"]).first
       interrupt && new(interrupt:, messages: Array(thread_state.dig("values", "messages")))
     end
 
     # The pending review in a `/runs/wait` response, or nil when the run did not pause.
+    #
+    # @api private
     def self.from_run(run)
       interrupt = Array(run["__interrupt__"]).first
       interrupt && new(interrupt:, messages: Array(run["messages"]))
     end
 
+    # @api private
     def initialize(interrupt:, messages:)
       @interrupt = interrupt.to_h
       @messages = messages
@@ -50,25 +67,34 @@ module NitroIntelligence
 
     # Identifies this pause. A thread that has moved on -- a new message superseded the review, or
     # another reviewer decided it first -- reports a different interrupt, or none.
+    #
+    # @return [String]
     def interrupt_id
       @interrupt["id"] || @interrupt["interrupt_id"]
     end
 
-    # `:tool_calls` or `:reply`.
+    # What the run is paused on.
+    #
+    # @return [Symbol] `:tool_calls` or `:reply`
     def kind
       action_name == REPLY_ACTION ? :reply : :tool_calls
     end
 
+    # @return [Boolean] whether the run is paused on its tool calls
     def tool_calls?
       kind == :tool_calls
     end
 
+    # @return [Boolean] whether the run is paused on its reply
     def reply?
       kind == :reply
     end
 
     # The tool calls the interrupt is holding, as `Assistants#tool_calls_under_review` reports them.
     # Empty when the pause is on a reply.
+    #
+    # @return [Array<Hash>] each with `previous_message_id`, `id`, `name`, `args` and
+    #   `allowed_decisions`
     def tool_calls
       return [] unless tool_calls?
 
@@ -76,6 +102,8 @@ module NitroIntelligence
     end
 
     # The held draft, or nil when the pause is not on a reply.
+    #
+    # @return [Reply, nil]
     def reply
       return nil unless reply?
 
@@ -92,6 +120,8 @@ module NitroIntelligence
     # thread moved on between reading this pause and resuming it -- it decides nothing, and the
     # thread stays paused on the newer interrupt. An interrupt reported without an id can only be
     # resumed unkeyed.
+    #
+    # @api private
     def resume(decisions)
       interrupt_id.blank? ? { decisions: } : { interrupt_id => { decisions: } }
     end
@@ -110,6 +140,8 @@ module NitroIntelligence
     # state still on the reported pause (a new message may already have moved it on), or when the
     # state cannot be read, it is false and the result stands as returned. That a stale decision is
     # never applied is guaranteed by the keyed resume, not by this.
+    #
+    # @api private
     def unapplied_resume?(run:, run_id:)
       paused_on = self.class.from_run(run)&.interrupt_id
       return false if interrupt_id.blank? || run_id.blank? || paused_on.blank? || paused_on == interrupt_id
@@ -127,6 +159,8 @@ module NitroIntelligence
     # For a reply, `reviews` is a single review hash. For tool calls, it is either a hash of reviews
     # keyed by tool call id, as `Assistants#review_tool_calls` has always taken them, or a list of
     # reviews that each carry their tool call's `id`.
+    #
+    # @api private
     def decisions(reviews)
       return [reply_decision(reviews)] if reply?
 

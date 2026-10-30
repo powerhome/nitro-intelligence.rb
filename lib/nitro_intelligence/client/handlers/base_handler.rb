@@ -2,7 +2,9 @@ require "json"
 
 module NitroIntelligence
   module Client
+    # @api private
     module Handlers
+      # @api private
       class BaseHandler
         MODALITY_HEADER = "nip-modality".freeze
         REQUESTED_MODEL_HEADER = "nip-requested-model".freeze

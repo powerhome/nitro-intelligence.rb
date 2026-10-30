@@ -1,7 +1,12 @@
 require "nitro_intelligence/media/media"
 
 module NitroIntelligence
+  # @api private
   class Audio < Media
+    # Raised by {Client::Base#transcribe_audio} on an observed client when `audio_file` is not a
+    # file with a path.
+    #
+    # @api public
     class AudioFileFormatError < StandardError; end
 
     def initialize(file)

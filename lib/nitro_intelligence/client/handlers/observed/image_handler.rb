@@ -5,6 +5,7 @@ module NitroIntelligence
   module Client
     module Handlers
       module Observed
+        # @api private
         class ImageHandler
           def initialize(base_handler:, observer:)
             @base_handler = base_handler

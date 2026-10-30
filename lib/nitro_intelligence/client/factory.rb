@@ -5,6 +5,7 @@ require "nitro_intelligence/observability/project"
 
 module NitroIntelligence
   module Client
+    # @api private
     class Factory
       def initialize(observability_project_slug:, inference_max_retries: nil, inference_timeout: nil)
         @observability_project_slug = observability_project_slug
