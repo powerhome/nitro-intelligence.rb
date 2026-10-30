@@ -7,10 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ImageGeneration#observation_id`: with observability enabled, the ID of the generation observation the image belongs to, beside the existing `trace_id`; `nil` without observability. (#167)
+
+### Changed
+
+- `Observability::UploadHandler#upload` now requires `observation_id:`. The client's observed handlers are its only callers and pass it themselves, so code using the client is unaffected. (#167)
+
 ### Fixed
 
 - Text-to-speech uploads are labeled as output instead of input. (#173)
-- Image and audio uploads now include the generation's observation ID so Cerebro can display them in the correct observation preview. `Observability::UploadHandler#upload` now requires `observation_id:`. (#167)
+- Image and audio uploads now include the generation's observation ID so Cerebro can display them in the correct observation preview. (#167)
 
 ## [4.0.0] - 2026-10-28
 
