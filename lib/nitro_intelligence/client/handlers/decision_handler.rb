@@ -28,9 +28,7 @@ module NitroIntelligence
         end
 
         def perform_request(state:, questions:, parameters: {}, correlation_trace_id: nil, mask_content: false)
-          add_request_headers(parameters, REQUESTED_MODEL_HEADER => parameters[:model])
-          add_correlation_headers(parameters, trace_id: correlation_trace_id)
-          add_message_redaction_header(parameters, mask_content:)
+          add_gateway_headers(parameters, correlation_trace_id:, mask_content:)
           response = @client.request(
             method: :post,
             path: PATH,
@@ -42,16 +40,13 @@ module NitroIntelligence
         end
 
         def validate_and_resolve!(parameters)
-          model_name = parameters[:model] || NitroIntelligence.model_catalog.default_decision_model&.name
-          model = NitroIntelligence.model_catalog.lookup_by_name(model_name)
-          raise ArgumentError, "Unsupported model: '#{model_name}'" unless model
+          default_parameters = {
+            metadata: {},
+            model: NitroIntelligence.model_catalog.default_decision_model&.name,
+          }
 
-          parameters.replace({ metadata: {}, model: model.name }.merge(parameters))
-          return if model.is_a?(DecisionModel)
-
-          # A decision request has nothing in common with a chat one, so a model of another type
-          # would fail at the gateway with an error that does not say why.
-          raise ArgumentError, "Model '#{parameters[:model]}' is not a decision model"
+          parameters.replace(default_parameters.merge(parameters))
+          Client.validate_model(parameters[:model], type: DecisionModel)
         end
       end
     end

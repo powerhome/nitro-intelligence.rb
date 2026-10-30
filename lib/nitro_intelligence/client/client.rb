@@ -6,8 +6,8 @@ module NitroIntelligence
       Factory.new(observability_project_slug:, inference_max_retries:, inference_timeout:).build
     end
 
-    def self.validate_model(model)
-      raise ArgumentError, "Unsupported model: '#{model}'" unless NitroIntelligence.model_catalog.exists?(model)
+    def self.validate_model(model, type: Model)
+      NitroIntelligence.model_catalog.fetch(model, type:)
     end
   end
 end

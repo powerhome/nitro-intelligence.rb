@@ -94,4 +94,35 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       expect(catalog.lookup_by_name("unknown-model")).to be_nil
     end
   end
+
+  describe "#fetch" do
+    let(:catalog) do
+      described_class.new(
+        models: [
+          { name: "gpt-4", type: "text" },
+          { name: "tts-1", type: "text_to_speech", default_voice: "alloy", default_response_format: "mp3" },
+          { name: "jev", type: "decision" },
+        ]
+      )
+    end
+
+    before { allow(NitroIntelligence::ModelFactory).to receive(:build).and_call_original }
+
+    it "returns the named model when it is of the requested type" do
+      expect(catalog.fetch("jev", type: NitroIntelligence::DecisionModel).name).to eq("jev")
+    end
+
+    it "accepts a model of any type when no type is requested" do
+      expect(catalog.fetch("tts-1")).to be_a(NitroIntelligence::TextToSpeechModel)
+    end
+
+    it "raises when no model has the name" do
+      expect { catalog.fetch("ghost") }.to raise_error(ArgumentError, "Unsupported model: 'ghost'")
+    end
+
+    it "raises, naming the type, when the model is of another type" do
+      expect { catalog.fetch("jev", type: NitroIntelligence::TextModel) }
+        .to raise_error(ArgumentError, "Model 'jev' is not a text model")
+    end
+  end
 end

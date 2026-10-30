@@ -9,6 +9,8 @@ module NitroIntelligence
   end
 
   class ImageModel < Model
+    def self.kind = "image"
+
     attr_reader :aspect_ratios, :resolutions
 
     def initialize(name:, omit_output_fields: [], aspect_ratios: [], resolutions: [], **)
@@ -18,11 +20,17 @@ module NitroIntelligence
     end
   end
 
-  class DecisionModel < Model; end
+  class DecisionModel < Model
+    def self.kind = "decision"
+  end
 
-  class TextModel < Model; end
+  class TextModel < Model
+    def self.kind = "text"
+  end
 
   class TextToSpeechModel < Model
+    def self.kind = "text-to-speech"
+
     attr_reader :default_voice,
                 :default_response_format,
                 :voices,

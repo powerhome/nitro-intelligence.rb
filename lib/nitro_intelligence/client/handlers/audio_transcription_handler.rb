@@ -13,9 +13,7 @@ module NitroIntelligence
         end
 
         def perform_request(audio_file:, message: "", parameters: {}, correlation_trace_id: nil, mask_content: false)
-          add_request_headers(parameters, MODALITY_HEADER => "audio", REQUESTED_MODEL_HEADER => parameters[:model])
-          add_correlation_headers(parameters, trace_id: correlation_trace_id)
-          add_message_redaction_header(parameters, mask_content:)
+          add_gateway_headers(parameters, correlation_trace_id:, mask_content:, modality: "audio")
           @client.audio.transcriptions.create(
             prompt: message,
             file: audio_file,
@@ -30,7 +28,7 @@ module NitroIntelligence
           }
 
           parameters.replace(default_parameters.merge(parameters))
-          Client.validate_model(parameters[:model])
+          Client.validate_model(parameters[:model], type: TextModel)
         end
       end
     end

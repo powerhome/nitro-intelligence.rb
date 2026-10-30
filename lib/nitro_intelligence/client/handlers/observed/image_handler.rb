@@ -1,3 +1,4 @@
+require "nitro_intelligence/client/handlers/observed/base_handler"
 require "nitro_intelligence/media/image_generation"
 require "nitro_intelligence/observability/prompt_resolver"
 
@@ -5,12 +6,7 @@ module NitroIntelligence
   module Client
     module Handlers
       module Observed
-        class ImageHandler
-          def initialize(base_handler:, observer:)
-            @base_handler = base_handler
-            @observer = observer
-          end
-
+        class ImageHandler < BaseHandler
           def create(message: "", target_image: nil, reference_images: [], parameters: {})
             image_generation = build_image_generation(message:, target_image:, reference_images:, parameters:)
 
@@ -34,10 +30,6 @@ module NitroIntelligence
           end
 
         private
-
-          def project
-            @observer.project_client.project
-          end
 
           def build_image_generation(message:, target_image:, reference_images:, parameters:)
             NitroIntelligence::ImageGeneration.new(message:, target_image:, reference_images:) do |config|
