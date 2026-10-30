@@ -66,7 +66,7 @@ bump_level() {
     echo none
   elif grep -qiE '^### Removed|\*\*Breaking' <<<"$notes"; then
     echo major
-  elif grep -qE '^### (Added|Changed|Deprecated)' <<<"$notes"; then
+  elif grep -qiE '^### (Added|Changed|Deprecated)' <<<"$notes"; then
     echo minor
   else
     echo patch
@@ -123,6 +123,8 @@ release() {
   fi
   sha=$(release_commit)
   section "$version" | gh release create "$tag" --target "$sha" --title "$tag" --notes-file -
+  # The release creates the tag on GitHub. Tag this checkout too, so that propose() can list
+  # the merges since it.
   git tag "$tag" "$sha"
 }
 
