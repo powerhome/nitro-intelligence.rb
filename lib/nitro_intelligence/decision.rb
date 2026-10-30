@@ -22,7 +22,7 @@ module NitroIntelligence
       @response = response
       @model = response.model
       @raw_answers = response[:answers].to_h
-      @answers = raw_answers.to_h { |name, answer| [name.to_s, build_answer(answer)] }.with_indifferent_access
+      @answers = raw_answers.to_h { |name, answer| [name, build_answer(answer)] }.with_indifferent_access
       @usage = response[:usage].to_h
     end
 

@@ -73,9 +73,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
     it "posts the model, state and questions to System One" do
       handler.create(state:, questions:)
 
-      expect(
-        systemone.with(body: { model: "typesafe/jev-1.14", state:, questions: }.to_json)
-      ).to have_been_requested
+      expect(systemone.with(body: { model: "typesafe/jev-1.14", state:, questions: })).to have_been_requested
     end
 
     it "sends the requested model and the caller's metadata as gateway headers" do
