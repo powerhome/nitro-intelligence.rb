@@ -9,12 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `ImageGeneration#observation_id`: with observability enabled, the ID of the generation observation the image belongs to, beside the existing `trace_id`; `nil` without observability. (#167)
 - A Cerebro project can now opt in to content masking with `"mask_content" => true` in `observability_projects`. For a masked project the input and output of every observed request are recorded as `[masked]`, a failure records its error class without its message, and no media is uploaded; model, usage, cost, prompt link, metadata and the gateway call ID are still recorded. Masking is applied by the gem on every write rather than through langfuse-rb's `mask`, which is read from process-global configuration and so cannot differ between projects. A masked project's requests also send `x-litellm-enable-message-redaction`, so the inference gateway redacts their messages and responses from its own logs. Projects that do not set the flag are unchanged. (#169)
+
+### Changed
+
+- `Observability::UploadHandler#upload` now requires `observation_id:`. The client's observed handlers are its only callers and pass it themselves, so code using the client is unaffected. (#167)
 
 ### Fixed
 
 - Text-to-speech uploads are labeled as output instead of input. (#173)
-- Image and audio uploads now include the generation's observation ID so Cerebro can display them in the correct observation preview. `Observability::UploadHandler#upload` now requires `observation_id:`. (#167)
+- Image and audio uploads now include the generation's observation ID so Cerebro can display them in the correct observation preview. (#167)
 
 ## [4.0.0] - 2026-10-28
 
