@@ -8,7 +8,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
   let(:client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example", max_retries: 0) }
   let(:base_handler) { NitroIntelligence::Client::Handlers::DecisionHandler.new(client:) }
 
-  let(:fake_project) { double("Project", slug: "test-project") }
+  let(:fake_project) { double("Project", slug: "test-project", mask_content?: false) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
   let(:fake_observer) { double("LangfuseObserver", project_client: fake_project_client) }
   let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-123", id: "obs-1") }
@@ -91,6 +91,24 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
       _, trace_attributes = handler.create(state:, questions:)
 
       expect(trace_attributes[:usage_details]).to be_nil
+    end
+
+    it "asks the gateway to redact the request from its logs when the project masks content" do
+      allow(fake_project).to receive(:mask_content?).and_return(true)
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+      handler.create(state:, questions:)
+
+      expect(systemone.with(headers: { "x-litellm-enable-message-redaction" => "true" })).to have_been_requested
+    end
+
+    it "leaves the gateway's logs alone when the project does not mask content" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+      handler.create(state:, questions:)
+
+      expect(systemone.with { |request| !request.headers.key?("X-Litellm-Enable-Message-Redaction") })
+        .to have_been_requested
     end
 
     it "uses the supplied trace_name instead of the project slug" do

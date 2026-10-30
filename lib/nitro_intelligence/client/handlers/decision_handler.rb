@@ -25,9 +25,10 @@ module NitroIntelligence
           perform_request(state:, questions:, parameters:)
         end
 
-        def perform_request(state:, questions:, parameters: {}, correlation_trace_id: nil)
+        def perform_request(state:, questions:, parameters: {}, correlation_trace_id: nil, mask_content: false)
           add_request_headers(parameters, REQUESTED_MODEL_HEADER => parameters[:model])
           add_correlation_headers(parameters, trace_id: correlation_trace_id)
+          add_message_redaction_header(parameters, mask_content:)
           response = @client.request(
             method: :post,
             path: PATH,

@@ -14,7 +14,7 @@ module NitroIntelligence
           def create(state:, questions:, parameters: {})
             @base_handler.validate_and_resolve!(parameters)
 
-            trace_name = parameters[:trace_name] || @observer.project_client.project.slug
+            trace_name = parameters[:trace_name] || project.slug
 
             # The questions alone say nothing about why the model answered as it did, so the
             # state they were asked about is recorded with them.
@@ -31,9 +31,14 @@ module NitroIntelligence
 
         private
 
+          def project
+            @observer.project_client.project
+          end
+
           def workflow(generation:, state:, questions:, parameters:)
             decision = @base_handler.perform_request(
-              state:, questions:, parameters:, correlation_trace_id: generation.trace_id
+              state:, questions:, parameters:, correlation_trace_id: generation.trace_id,
+              mask_content: project.mask_content?
             )
 
             trace_attributes = {
