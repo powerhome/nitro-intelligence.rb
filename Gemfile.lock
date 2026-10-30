@@ -22,7 +22,7 @@ GEM
       minitest (>= 5.1, < 6)
       securerandom (>= 0.3)
       tzinfo (~> 2.0, >= 2.0.5)
-    addressable (2.9.0)
+    addressable (2.9.1)
       public_suffix (>= 2.0.2, < 8.0)
     ast (2.4.3)
     base64 (0.3.0)
@@ -199,7 +199,7 @@ GEM
       unicode-emoji (~> 4.3)
     unicode-emoji (4.3.0)
     uri (1.1.1)
-    webmock (3.26.4)
+    webmock (3.34.0)
       addressable (>= 2.8.0)
       crack (>= 0.3.2)
       hashdiff (>= 0.4.0, < 2.0.0)
@@ -230,7 +230,7 @@ DEPENDENCIES
   nitro_intelligence!
   rspec (= 3.13.2)
   rubocop-powerhome (= 0.7.0)
-  webmock (= 3.26.4)
+  webmock (= 3.34.0)
 
 BUNDLED WITH
    2.7.2
