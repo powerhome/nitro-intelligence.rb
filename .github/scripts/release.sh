@@ -58,15 +58,17 @@ section() {
   ' "$CHANGELOG" | sed -e '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
 }
 
-# bump_level < NOTES: major, minor, patch or none, per Semantic Versioning.
+# bump_level < NOTES: major, minor, patch or none, per Semantic Versioning. A heading counts only
+# when it has an entry under it.
 bump_level() {
-  local notes
+  local notes headings
   notes=$(cat)
+  headings=$(awk '/^### / { heading = tolower($2) } /^[[:space:]]*[-*] / { print heading }' <<<"$notes")
   if ! grep -qE '^[[:space:]]*[-*] ' <<<"$notes"; then
     echo none
-  elif grep -qiE '^### Removed|\*\*Breaking' <<<"$notes"; then
+  elif grep -qi '\*\*Breaking' <<<"$notes" || grep -qx 'removed' <<<"$headings"; then
     echo major
-  elif grep -qiE '^### (Added|Changed|Deprecated)' <<<"$notes"; then
+  elif grep -qxE 'added|changed|deprecated' <<<"$headings"; then
     echo minor
   else
     echo patch
@@ -131,6 +133,10 @@ release() {
 # mergers SINCE_TAG: the people who merged PRs into main since that release,
 # bots left out.
 mergers() {
+  if ! git rev-parse -q --verify "refs/tags/$1" >/dev/null; then
+    echo "::warning::$1 is not tagged, so the release PR is assigned to whoever pushed." >&2
+    return
+  fi
   git rev-list "$1..HEAD" | while read -r sha; do
     gh api "repos/{owner}/{repo}/commits/$sha/pulls" --jq '.[] | select(.merged_at) | .number'
   done | sort -u | while read -r number; do
@@ -189,8 +195,17 @@ case ${1:-run} in
   next) next_version ;;
   prepare) prepare ;;
   run)
-    release
+    # A release that fails still lets the next one be proposed, and fails the run afterwards. It
+    # runs in a subshell with errexit on, since `release || ...` would turn errexit off inside it.
+    set +e
+    (
+      set -e
+      release
+    )
+    status=$?
+    set -e
     propose
+    exit "$status"
     ;;
   *)
     echo "usage: $0 [run|next|prepare]" >&2
