@@ -7,10 +7,19 @@ require "nitro_intelligence/observability/prompt"
 
 module NitroIntelligence
   module Observability
+    # @api private
     class PromptStore
       OBSERVABILITY_PROMPTS_CACHE_KEY_PREFIX = "nitro_intelligence_observability_prompts_".freeze
 
+      # Raised by an observed request when Cerebro fails to return the prompt it names. The message
+      # is the response body.
+      #
+      # @api public
       class ObservabilityPromptError < StandardError; end
+      # Raised by an observed request when the prompt it names, and its fallback if it names one,
+      # does not exist.
+      #
+      # @api public
       class ObservabilityPromptNotFoundError < StandardError; end
 
       def initialize(observability_project_slug:, observability_public_key:, observability_secret_key:)

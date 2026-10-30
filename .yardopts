@@ -1,0 +1,9 @@
+--protected
+--markup markdown
+--hide-api private
+--readme docs/README.md
+--output-dir doc/api
+lib/**/*.rb
+-
+docs/ASSISTANTS.md
+docs/CHANGELOG.md

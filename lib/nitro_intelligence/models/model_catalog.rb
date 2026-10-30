@@ -1,6 +1,7 @@
 require "nitro_intelligence/models/model_factory"
 
 module NitroIntelligence
+  # @api private
   class ModelCatalog
     attr_reader :models,
                 :default_audio_transcription_model,

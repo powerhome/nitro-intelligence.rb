@@ -2,6 +2,8 @@ module NitroIntelligence
   # The `command.resume` decisions a review sends, and the check on the `message` a decision
   # carries, shared by tool call reviews and reply reviews. Each caller keeps its own
   # error wording, so this reports what is wrong rather than raising.
+  #
+  # @api private
   module ReviewDecision
   module_function
 

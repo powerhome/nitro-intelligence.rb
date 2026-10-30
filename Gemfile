@@ -7,4 +7,5 @@ group :development do
   gem "rspec", "3.13.2"
   gem "rubocop-powerhome", "0.7.0"
   gem "webmock", "3.26.4"
+  gem "yard", "0.9.45"
 end

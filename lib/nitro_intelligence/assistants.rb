@@ -6,34 +6,58 @@ require "nitro_intelligence/pending_review"
 require "nitro_intelligence/run_result"
 
 module NitroIntelligence
+  # The client for Nitro Intelligence Assistants: runs assistants on threads, and resumes runs
+  # paused for review. Most hosts reach it through {NitroIntelligence.assistants}, or through an
+  # {Assistant}, which supplies `assistant_id` itself. See `docs/ASSISTANTS.md`.
   class Assistants
+    # Raised by {#initialize} without an `api_key` or `user_id`.
     class ConfigurationError < StandardError; end
+    # Raised by {#run} when Assistants refuses to create or seed the thread, or the assistant has no
+    # graph. The message is the response body.
     class ThreadInitializationError < StandardError; end
+    # Raised by {#run} when Assistants rejects the run, and when the run itself fails. The message
+    # carries the failure Assistants reported.
     class RunError < StandardError; end
+    # Raised when resuming a thread fails: the thread is not paused on what the review answers, a
+    # decision is one the pause does not allow, or Assistants refuses the resume.
     class ThreadResumptionError < StandardError; end
+    # Raised by {#thread_state}, {#thread_messages} and {#under_review} when the thread's state cannot
+    # be read. The message is the response body.
     class ThreadStateError < StandardError; end
     # The review being answered is no longer the one the thread is paused on. A subclass, so that
     # callers rescuing ThreadResumptionError still catch it.
     class ReviewSupersededError < ThreadResumptionError; end
 
+    # @api private
     # What Assistants answers, with a 400, to a resume of a thread that is no longer paused.
     NOT_INTERRUPTED_REFUSAL = "thread is not in interrupted state".freeze
 
+    # @api private
     # Assistants answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
     THREAD_CONFLICT_CODE = 409
 
+    # @api private
     # Where a `/runs/wait` response says which run it waited on.
     RUN_LOCATION = %r{/runs/([^/]+)\z}
 
+    # @api private
     # Every assistant this gem is built for is served by the same deployment, so a client told
     # nothing about where to reach one gets that deployment. A host talking to a different one
     # -- a review environment, a local server -- still says so.
     DEFAULT_BASE_URL = "https://assistants.powerhome.ai".freeze
 
+    # The user threads are created for when a client is given none.
     DEFAULT_USER_ID = "default-user".freeze
 
-    attr_reader :base_url, :user_id
+    # @return [String] the Assistants deployment this client calls
+    attr_reader :base_url
+    # @return [String] the user threads are created for
+    attr_reader :user_id
 
+    # @param api_key [String] the key Assistants authenticates the client with
+    # @param base_url [String, nil] the Assistants deployment to call. Defaults to the shared one.
+    # @param user_id [String] the user threads are created for
+    # @raise [ConfigurationError] without an `api_key` or `user_id`
     def initialize(api_key:, base_url: nil, user_id: DEFAULT_USER_ID)
       raise ConfigurationError, "api_key is required" if api_key.blank?
       raise ConfigurationError, "user_id is required" if user_id.blank?
@@ -47,6 +71,15 @@ module NitroIntelligence
     # Runs the last of `messages` on the thread, seeding a new thread with the ones before it, and
     # waits for the run to end or pause. Returns a RunResult: its `reply` is nil whenever the run
     # paused, and its `review` says what the run is waiting on.
+    #
+    # @param thread_id [String] the thread, created on its first run
+    # @param assistant_id [String] the assistant to run
+    # @param messages [Array<Hash>] the conversation, oldest first: the last is run, and the ones
+    #   before it seed a new thread
+    # @param context [Hash] the run's context, such as the variables its prompt needs
+    # @return [RunResult]
+    # @raise [RunError] when `messages` is empty, Assistants rejects the run, or the run fails
+    # @raise [ThreadInitializationError] when a new thread cannot be created or seeded
     def run(thread_id:, assistant_id:, messages:, context: {})
       raise RunError, "messages cannot be empty" if messages.blank?
 
@@ -59,7 +92,11 @@ module NitroIntelligence
 
     # The run's reply, or nil when it paused for review or ended without one.
     #
-    # Deprecated: #run says why there is no reply, and how the platform delivered the one there is.
+    # @deprecated Use {#run}`(...).reply`, which also says why there is no reply, and how the
+    #   platform delivered the one there is. Removed in 5.0.
+    # @param (see #run)
+    # @return [String, nil]
+    # @raise (see #run)
     def await_run(thread_id:, assistant_id:, messages:, context: {})
       NitroIntelligence.deprecator.warn(
         "#await_run is deprecated and is removed in 5.0; use #run(...).reply, and read #run's " \
@@ -70,12 +107,20 @@ module NitroIntelligence
 
     # The thread's state as Assistants reports it, unformatted. Callers that only want the
     # conversation should reach for #thread_messages instead.
+    #
+    # @param thread_id [String]
+    # @return [Hash] the `GET /threads/{id}/state` response
+    # @raise [ThreadStateError] when the state cannot be read
     def thread_state(thread_id:)
       get_thread_state(thread_id:, error: ThreadStateError)
     end
 
     # The thread's messages as Assistants reports them, unformatted, oldest first. Each message
     # carries its own `type` ("human", "ai", "tool", ...), which callers map to their own roles.
+    #
+    # @param thread_id [String]
+    # @return [Array<Hash>]
+    # @raise [ThreadStateError] when the state cannot be read
     def thread_messages(thread_id:)
       messages_in(thread_state(thread_id:))
     end
@@ -83,9 +128,14 @@ module NitroIntelligence
     # Every tool call in the thread that has no result yet, whether or not it is held for review,
     # with the id of the message before it.
     #
-    # Deprecated: a reviewer decides only the calls the interrupt holds, which #under_review reports.
     # nitro-web's VirtualConfirmationAgent::Client still reads this, since the VCA's interrupt is not
     # in the platform's shape; it goes when the VCA moves onto the platform.
+    #
+    # @deprecated A reviewer decides only the calls the interrupt holds, which {#under_review}
+    #   reports. Removed in 5.0.
+    # @param thread_id [String]
+    # @return [Array<Hash>] each with `previous_message_id`, `id`, `name` and `args`
+    # @raise [ThreadResumptionError] when the state cannot be read
     def tool_calls_pending_review(thread_id:)
       NitroIntelligence.deprecator.warn(
         "#tool_calls_pending_review is deprecated and is removed in 5.0; use " \
@@ -120,7 +170,12 @@ module NitroIntelligence
     # Raises ThreadResumptionError when the state cannot be read, as it always has; #under_review is
     # the plain read.
     #
-    # Deprecated in favour of #under_review, which reports a pause on the reply as well.
+    # @deprecated Use {#under_review}`(thread_id:)&.tool_calls.to_a`, which reports a pause on the
+    #   reply as well. Removed in 5.0.
+    # @param thread_id [String]
+    # @return [Array<Hash>] each with `previous_message_id`, `id`, `name`, `args` and
+    #   `allowed_decisions`
+    # @raise [ThreadResumptionError] when the state cannot be read
     def tool_calls_under_review(thread_id:)
       NitroIntelligence.deprecator.warn(
         "#tool_calls_under_review is deprecated and is removed in 5.0; use " \
@@ -131,6 +186,10 @@ module NitroIntelligence
 
     # What the thread is paused on -- its tool calls or its reply -- or nil when it is not waiting
     # on a review.
+    #
+    # @param thread_id [String]
+    # @return [PendingReview, nil]
+    # @raise [ThreadStateError] when the state cannot be read
     def under_review(thread_id:)
       PendingReview.from_thread_state(get_thread_state(thread_id:, error: ThreadStateError))
     end
@@ -153,6 +212,25 @@ module NitroIntelligence
     # here, so it never decides a pause that appeared since; reporting such a resume as
     # ReviewSupersededError is best-effort (see PendingReview#unapplied_resume?), as is reporting one
     # Assistants refuses because another review resumed the thread first.
+    #
+    # @param thread_id [String]
+    # @param assistant_id [String] the assistant the resumed run runs
+    # @param reviewer_id [String] who decided, as the host identifies them
+    # @param reply [Hash, nil] the review of a held reply
+    # @param tool_calls [Array<Hash>, Hash, nil] the reviews of held tool calls: a list of reviews
+    #   that each carry their tool call's `id`, or a hash of reviews keyed by tool call id
+    # @param interrupt_id [String, nil] the pause the reviewer was shown; required for a reply
+    # @param reviewed_at [Time, String, nil] when they decided. Defaults to now.
+    # @param context [Hash] the resumed run's context, as for {#run}
+    # @return [RunResult] the resumed run
+    # @raise [ArgumentError] without exactly one of `reply` and `tool_calls`, without a `reviewer_id`,
+    #   or reviewing a reply without an `interrupt_id`
+    # @raise [ReviewSupersededError] when the thread is no longer paused on the review answered
+    # @raise [ThreadResumptionError] when a decision is not one the pause allows, the thread is paused
+    #   on the other kind of review, or the resume fails
+    # @example
+    #   assistants.review(thread_id:, assistant_id:, reviewer_id: "jane@example.com",
+    #                     interrupt_id: pending.interrupt_id, reply: { "action" => "approve" })
     def review(thread_id:, assistant_id:, reviewer_id:, reply: nil, tool_calls: nil, interrupt_id: nil, # rubocop:disable Metrics/ParameterLists
                reviewed_at: nil, context: {})
       kind, reviews = review_subject!(reply:, tool_calls:)
@@ -188,7 +266,18 @@ module NitroIntelligence
     # a resume Assistants refuses because the thread is no longer paused is raised as it always was, a
     # ThreadResumptionError carrying the response body, which nitro-web parses. Returns nil.
     #
-    # Deprecated in favour of #review, which requires the reviewer and returns the resumed run.
+    # @deprecated Use {#review}`(tool_calls:, reviewer_id:, interrupt_id:)`, which requires the
+    #   reviewer and returns the resumed run. Removed in 5.0.
+    # @param thread_id [String]
+    # @param assistant_id [String]
+    # @param tool_calls [Hash, Array<Hash>] the reviews
+    # @param context [Hash]
+    # @param reviewer_id [String, nil]
+    # @param reviewed_at [Time, String, nil]
+    # @return [nil]
+    # @raise [ReviewSupersededError] when the resumed run shows the decisions were not applied
+    # @raise [ThreadResumptionError] when the thread is not paused on tool calls, a decision is not one
+    #   the pause allows, or the resume fails
     def review_tool_calls(thread_id:, assistant_id:, tool_calls:, context: {}, reviewer_id: nil, reviewed_at: nil)
       NitroIntelligence.deprecator.warn(
         "#review_tool_calls is deprecated and is removed in 5.0; use " \
@@ -214,7 +303,58 @@ module NitroIntelligence
     # `get_thread_state` and `resume_run` below. Renaming any of the four breaks that override --
     # loudly, in nitro-web's suite at bump time rather than in anything here. The subclass goes when
     # the VCA moves onto this platform, and this note with it.
+    #
+    # The four are private to callers and public to subclasses, so they are documented as protected.
   private
+
+    # Reads a thread. For subclasses.
+    #
+    # @!visibility protected
+    # @param thread_id [String]
+    # @return [Hash] the `GET /threads/{id}` response
+    # @raise [ThreadResumptionError] when the thread cannot be read. The message is the response body.
+    def get_thread(thread_id:)
+      parse!(get(path: "/threads/#{thread_id}"), ThreadResumptionError)
+    end
+
+    # Whether a thread, as {#get_thread} reads it, is paused. For subclasses.
+    #
+    # @!visibility protected
+    # @param thread [Hash]
+    # @return [Boolean]
+    def interrupted?(thread)
+      thread["status"] == "interrupted"
+    end
+
+    # Reads a thread's state. For subclasses.
+    #
+    # The review flows have always raised ThreadResumptionError when a state read fails, and consumers
+    # rescue it as such. A plain read resumes nothing, so #thread_state asks for ThreadStateError.
+    #
+    # @!visibility protected
+    # @param thread_id [String]
+    # @param error [Class<StandardError>] what to raise when the state cannot be read
+    # @return [Hash] the `GET /threads/{id}/state` response
+    # @raise [StandardError] `error`, with the response body as its message
+    def get_thread_state(thread_id:, error: ThreadResumptionError)
+      parse!(get(path: "/threads/#{thread_id}/state"), error)
+    end
+
+    # Resumes a paused thread with `resume` as its `command.resume`, sent as given, and waits for the
+    # run. For subclasses that build their own resume.
+    #
+    # @!visibility protected
+    # @param thread_id [String]
+    # @param assistant_id [String]
+    # @param resume [Hash, Array] the `command.resume`
+    # @param context [Hash]
+    # @return [Hash] the `/runs/wait` response
+    # @raise [ThreadResumptionError] when Assistants refuses the resume, with the response body as its
+    #   message, or the resumed run fails
+    def resume_run(thread_id:, assistant_id:, resume:, context:)
+      wait_for_run(thread_id:, body: { assistant_id:, command: { resume: }, context: }, error: ThreadResumptionError)
+        .first
+    end
 
     # Assistants accepts `initial_state` on thread creation but never applies it, so a brand new thread is
     # seeded through the thread state endpoint instead. A thread that already exists is left untouched:
@@ -281,16 +421,6 @@ module NitroIntelligence
       response.code.to_i == THREAD_CONFLICT_CODE
     end
 
-    # The review flows have always raised ThreadResumptionError when a state read fails, and consumers
-    # rescue it as such. A plain read resumes nothing, so #thread_state asks for ThreadStateError.
-    def get_thread_state(thread_id:, error: ThreadResumptionError)
-      parse!(get(path: "/threads/#{thread_id}/state"), error)
-    end
-
-    def get_thread(thread_id:)
-      parse!(get(path: "/threads/#{thread_id}"), ThreadResumptionError)
-    end
-
     def trigger_run(thread_id:, assistant_id:, last_message:, context: {})
       run, = wait_for_run(thread_id:, body: { assistant_id:, context:, input: { messages: [last_message] } },
                           error: RunError)
@@ -314,11 +444,6 @@ module NitroIntelligence
 
       detail = failure.is_a?(Hash) ? [failure["error"], failure["message"]].compact.join(": ") : failure.to_s
       raise error, detail
-    end
-
-    def resume_run(thread_id:, assistant_id:, resume:, context:)
-      wait_for_run(thread_id:, body: { assistant_id:, command: { resume: }, context: }, error: ThreadResumptionError)
-        .first
     end
 
     def review_subject!(reply:, tool_calls:)
@@ -377,10 +502,6 @@ module NitroIntelligence
       message += "; it is now paused on #{now_paused_on}, and the decision was not applied" if now_paused_on
 
       raise ReviewSupersededError, message
-    end
-
-    def interrupted?(thread)
-      thread["status"] == "interrupted"
     end
 
     def messages_in(thread_state)

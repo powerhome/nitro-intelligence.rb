@@ -5,6 +5,7 @@
 # The content of this file should eventually make its way upstream.
 #
 module NitroIntelligence
+  # @api private
   class LangfuseTracerProvider
     def initialize(config)
       @trace_id_key = OpenTelemetry::Context.create_key("nitro-intelligence-trace-id")

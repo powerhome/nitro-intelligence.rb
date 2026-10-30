@@ -1,6 +1,10 @@
 require "base64"
 
 module NitroIntelligence
+  # A file sent to or returned by a model. Callers see it as an {Image}, which documents the readers
+  # they use.
+  #
+  # @api private
   class Media
     attr_accessor :direction, :reference_id
     attr_reader :base64, :byte_string, :file_extension, :file_type, :mime_type

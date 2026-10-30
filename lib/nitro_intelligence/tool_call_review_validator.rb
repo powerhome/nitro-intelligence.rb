@@ -8,6 +8,8 @@ module NitroIntelligence
   # Internal to `Assistants#review_tool_calls`, which builds the only instance there is. What
   # `#validate!` takes follows what that method needs and has changed with it before, so it carries
   # no promise to anything calling it directly.
+  #
+  # @api private
   class ToolCallReviewValidator
     def validate!(tool_calls:, tool_calls_under_review:)
       tool_calls = normalize_tool_calls(tool_calls)

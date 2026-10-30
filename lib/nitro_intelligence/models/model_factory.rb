@@ -1,6 +1,7 @@
 require "nitro_intelligence/models/model"
 
 module NitroIntelligence
+  # @api private
   class ModelFactory
     TYPES = {
       "text" => TextModel,
