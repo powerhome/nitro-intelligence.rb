@@ -13,6 +13,9 @@
 # `release.sh prepare` makes the release edits in the working tree, both
 # without touching GitHub.
 set -euo pipefail
+# Errors inside $(...) stop the script too, not just the substitution. Bash 4.4 and later, as on
+# GitHub's runners; macOS's bash 3.2 lacks it, which only weakens a local `next` or `prepare`.
+shopt -s inherit_errexit 2>/dev/null || true
 
 # Repository specifics.
 
@@ -21,7 +24,7 @@ VERSION_FILE=lib/nitro_intelligence/version.rb
 REPO_URL=https://github.com/powerhome/nitro-intelligence.rb
 
 current_version() {
-  sed -n 's/.*VERSION = "\(.*\)".*/\1/p' "$VERSION_FILE"
+  sed -n 's/.*VERSION = "\([^"]*\)".*/\1/p' "$VERSION_FILE"
 }
 
 tag_for() {
@@ -37,6 +40,10 @@ release_commit() {
 bump_version_files() {
   perl -pi -e "s/VERSION = \"\Q$1\E\"/VERSION = \"$2\"/" "$VERSION_FILE"
   perl -pi -e "s/^    nitro_intelligence \(\Q$1\E\)\$/    nitro_intelligence ($2)/" Gemfile.lock
+  if ! grep -qxF "    nitro_intelligence ($2)" Gemfile.lock; then
+    echo "::error::Gemfile.lock does not pin nitro_intelligence ($1), so it was not bumped." >&2
+    return 1
+  fi
 }
 
 # changelog_links OLD NEW: the link references that replace the Unreleased one.
@@ -63,7 +70,7 @@ section() {
 bump_level() {
   local notes headings
   notes=$(cat)
-  headings=$(awk '/^### / { heading = tolower($2) } /^[[:space:]]*[-*] / { print heading }' <<<"$notes")
+  headings=$(awk '/^### / { heading = tolower($2); gsub(/[^a-z]/, "", heading) } /^[[:space:]]*[-*] / { print heading }' <<<"$notes")
   if ! grep -qE '^[[:space:]]*[-*] ' <<<"$notes"; then
     echo none
   elif grep -qi '\*\*Breaking' <<<"$notes" || grep -qx 'removed' <<<"$headings"; then
@@ -100,7 +107,11 @@ prepare() {
   [[ $level != none ]] || return 0
   new=$(bump "$old" "$level")
   date=$(date -u +%F)
-  bump_version_files "$old" "$new" "$level"
+  bump_version_files "$old" "$new" "$level" || return 1
+  if [[ $(current_version) != "$new" ]]; then
+    echo "::error::The version is $(current_version) after bumping it to $new." >&2
+    return 1
+  fi
   LINKS=$(changelog_links "$old" "$new") awk -v heading="## [$new] - $date" '
     tolower($0) ~ /^## \[unreleased\]/ { print; print ""; print heading; next }
     tolower($0) ~ /^\[unreleased\]: / { print ENVIRON["LINKS"]; next }
@@ -130,8 +141,8 @@ release() {
   git tag "$tag" "$sha"
 }
 
-# mergers SINCE_TAG: the people who merged PRs into main since that release,
-# bots left out.
+# mergers SINCE_TAG: the people who merged PRs into main since that release, bots left out,
+# most recent first and at most 10, GitHub's limit on assignees.
 mergers() {
   if ! git rev-parse -q --verify "refs/tags/$1" >/dev/null; then
     echo "::warning::$1 is not tagged, so the release PR is assigned to whoever pushed." >&2
@@ -139,9 +150,9 @@ mergers() {
   fi
   git rev-list "$1..HEAD" | while read -r sha; do
     gh api "repos/{owner}/{repo}/commits/$sha/pulls" --jq '.[] | select(.merged_at) | .number'
-  done | sort -u | while read -r number; do
+  done | awk '!seen[$0]++' | while read -r number; do
     gh api "repos/{owner}/{repo}/pulls/$number" --jq 'select(.merged_by.type == "User") | .merged_by.login'
-  done | sort -u | head -n 10
+  done | awk '!seen[$0]++' | head -n 10
 }
 
 # Opens the release PR, or refreshes the open one, from the changelog on main.
