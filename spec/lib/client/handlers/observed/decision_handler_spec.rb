@@ -5,7 +5,7 @@ require "nitro_intelligence/client/handlers/decision_handler"
 require "nitro_intelligence/client/handlers/observed/decision_handler"
 
 RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
-  let(:client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example/v1", max_retries: 0) }
+  let(:client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example", max_retries: 0) }
   let(:base_handler) { NitroIntelligence::Client::Handlers::DecisionHandler.new(client:) }
 
   let(:fake_project) { double("Project", slug: "test-project") }
@@ -35,7 +35,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
   let(:response_headers) { { "Content-Type" => "application/json", "x-litellm-response-cost" => "1.764e-05" } }
 
   let!(:systemone) do
-    stub_request(:post, "https://gateway.example/v1/systemone")
+    stub_request(:post, "https://gateway.example/systemone")
       .to_return(status: 200, body: response_body.to_json, headers: response_headers)
   end
 
@@ -76,7 +76,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
     end
 
     it "leaves the cost unset when the gateway did not price the request" do
-      stub_request(:post, "https://gateway.example/v1/systemone").to_return(status: 200, body: response_body.to_json, headers: { "Content-Type" => "application/json" })
+      stub_request(:post, "https://gateway.example/systemone").to_return(status: 200, body: response_body.to_json, headers: { "Content-Type" => "application/json" })
       allow(fake_observer).to receive(:observe).and_yield(fake_generation)
 
       _, trace_attributes = handler.create(state:, questions:)
@@ -85,7 +85,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
     end
 
     it "leaves usage unset when the response carries none" do
-      stub_request(:post, "https://gateway.example/v1/systemone").to_return(status: 200, body: response_body.except(:usage).to_json, headers: response_headers)
+      stub_request(:post, "https://gateway.example/systemone").to_return(status: 200, body: response_body.except(:usage).to_json, headers: response_headers)
       allow(fake_observer).to receive(:observe).and_yield(fake_generation)
 
       _, trace_attributes = handler.create(state:, questions:)

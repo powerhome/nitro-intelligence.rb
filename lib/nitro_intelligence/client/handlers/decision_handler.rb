@@ -9,6 +9,9 @@ module NitroIntelligence
       # `POST /v1/systemone`. openai-ruby has no resource for it, so the request goes through
       # the client's generic `request`, which keeps its credentials, retries, timeouts and errors.
       class DecisionHandler < BaseHandler
+        # Relative to `inference_base_url`, which carries no `/v1`, like the paths openai-ruby
+        # uses for chat and speech. The gateway serves the route at both `/systemone` and
+        # `/v1/systemone`.
         PATH = "systemone".freeze
 
         # Declaring a model, rather than taking the decoded hash, is what gets the response its

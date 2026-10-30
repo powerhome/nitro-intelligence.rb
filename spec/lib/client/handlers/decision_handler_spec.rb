@@ -6,7 +6,7 @@ require "nitro_intelligence/client/handlers/decision_handler"
 RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
   subject(:handler) { described_class.new(client:) }
 
-  let(:client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example/v1", max_retries: 0) }
+  let(:client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example", max_retries: 0) }
 
   let(:model_config) do
     {
@@ -57,7 +57,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
   end
 
   let!(:systemone) do
-    stub_request(:post, "https://gateway.example/v1/systemone")
+    stub_request(:post, "https://gateway.example/systemone")
       .to_return(status: 200, body: response_body.to_json, headers: response_headers)
   end
 
@@ -115,7 +115,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
 
     it "returns an answer of a type it does not model as the hash it arrived as" do
       response_body[:answers] = { spot: { type: "box", box: { top: 0.2 }, confidence: nil } }
-      stub_request(:post, "https://gateway.example/v1/systemone").to_return(status: 200, body: response_body.to_json, headers: response_headers)
+      stub_request(:post, "https://gateway.example/systemone").to_return(status: 200, body: response_body.to_json, headers: response_headers)
 
       decision = handler.create(state:, questions:)
 
@@ -130,7 +130,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
     end
 
     it "raises the client's errors for a rejected request" do
-      stub_request(:post, "https://gateway.example/v1/systemone").to_return(
+      stub_request(:post, "https://gateway.example/systemone").to_return(
         status: 403,
         body: { error: { message: "no access" } }.to_json,
         headers: { "Content-Type" => "application/json" }
