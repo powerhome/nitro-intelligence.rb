@@ -527,12 +527,13 @@ For what this gem does not wrap, such as a Langfuse API it has no method for, or
 ```ruby
 project = NitroIntelligence.project_client_registry.fetch("fake-feature-project").project
 project.id          # the project's id in Cerebro, as in its URLs
-project.auth_token  # the Basic credential for Cerebro's public API
+project.auth_token  # the Base64 credential for Cerebro's public API, without the "Basic " scheme
 
 trace_url = "#{NitroIntelligence.config.observability_base_url}/project/#{project.id}/traces/#{trace_id}"
+request["Authorization"] = "Basic #{project.auth_token}"
 ```
 
-`NitroIntelligence.project_client_registry.fetch(slug)` builds each project's client once per process, and raises `NitroIntelligence::Observability::Project::NotFoundError` for a slug `observability_projects` does not configure. `NitroIntelligence::Observability::Project.find_by_slug(slug:)` reads the same configuration without building a client, and returns `nil` instead. `NitroIntelligence::Observability::ProjectClient::NotFoundError` is the error for a project without a client.
+`NitroIntelligence.project_client_registry.fetch(slug)` builds each project's client once per process, and raises `NitroIntelligence::Observability::Project::NotFoundError` for a slug `observability_projects` does not configure. `NitroIntelligence::Observability::Project.find_by_slug(slug:)` reads the same configuration without building a client, and returns `nil` instead. The gem never raises `NitroIntelligence::Observability::ProjectClient::NotFoundError`; it is public only because applications raise it themselves, and is to be retired ([#182](https://github.com/powerhome/nitro-intelligence.rb/issues/182)). Rescue `Project::NotFoundError` for a project that is not configured.
 
 Traces and scores are sent to Cerebro in the background. Fetch each project in an initializer to build its client at boot, and shut them all down as the process exits so that the last ones are sent:
 

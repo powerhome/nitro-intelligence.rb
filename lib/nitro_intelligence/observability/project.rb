@@ -18,7 +18,8 @@ module NitroIntelligence
       # @return [String] the project's id in Cerebro, as in its URLs:
       #   `"#{config.observability_base_url}/project/#{id}/traces/#{trace_id}"`
       attr_reader :id
-      # @return [String] the `Authorization: Basic` credential for Cerebro's public API
+      # @return [String] the Base64 `public_key:secret_key` credential for Cerebro's public API,
+      #   without the scheme: send it as `Authorization: Basic #{auth_token}`
       attr_reader :auth_token
       # @api private
       attr_reader :slug, :public_key, :secret_key, :prompt_store

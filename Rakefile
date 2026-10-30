@@ -10,11 +10,12 @@ RuboCop::RakeTask.new
 # naming an argument the method does not take.
 desc "Check that the public API is fully documented"
 task :yard do
-  output = `yard stats --list-undoc 2>&1`
-  puts output
-  abort "yard: stats failed" unless Process.last_status.success?
-  abort "yard: the public API has undocumented objects" unless output.include?("100.00% documented")
-  abort "yard: fix the warnings above" if output.include?("[warn]")
+  require "yard"
+
+  stats = YARD::CLI::Stats.new
+  stats.run("--list-undoc", "--fail-on-warning")
+  undocumented = stats.all_objects.select { |object| object.docstring.blank? }
+  abort "yard: the public API has #{undocumented.size} undocumented objects" if undocumented.any?
 end
 
 task default: %i[spec rubocop yard]

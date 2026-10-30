@@ -2,7 +2,9 @@ module NitroIntelligence
   module Observability
     # A project's connection to Cerebro, as {ProjectClientRegistry#fetch} gives it.
     class ProjectClient
-      # Raised when there is no client for a project.
+      # Not raised by the gem, which raises {Project::NotFoundError} for a project
+      # `observability_projects` does not configure. Public only because applications raise it
+      # themselves.
       class NotFoundError < StandardError; end
 
       # @return [Project]
