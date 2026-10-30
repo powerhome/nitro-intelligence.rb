@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Client#decide` asks a decision model `noul`, `choice` and `score` questions over the gateway's System One route (`POST /v1/systemone`) and returns a `NitroIntelligence::Decision` of typed answers keyed by question name. With observability, each call is recorded in Cerebro as a generation with its cost. Decision models are configured in `model_config` with the type `decision` and a `default_decision_model`. (#177)
+
 ### Fixed
 
 - Text-to-speech uploads are labeled as output instead of input. (#173)

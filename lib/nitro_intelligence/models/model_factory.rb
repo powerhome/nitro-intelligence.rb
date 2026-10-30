@@ -5,6 +5,7 @@ module NitroIntelligence
     TYPES = {
       "text" => TextModel,
       "audio_transcription" => TextModel,
+      "decision" => DecisionModel,
       "image" => ImageModel,
       "text_to_speech" => TextToSpeechModel,
     }.freeze

@@ -1,5 +1,6 @@
 require "nitro_intelligence/client/handlers/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/chat_handler"
+require "nitro_intelligence/client/handlers/decision_handler"
 require "nitro_intelligence/client/handlers/image_handler"
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
@@ -14,6 +15,13 @@ module NitroIntelligence
 
       def chat(message: "", parameters: {})
         chat_handler.create(message:, parameters:)
+      end
+
+      # Asks a decision model questions about `state`: a string, hash or array. `questions` maps
+      # each question's name to its `type` (noul, choice or score), `instructions` and `criteria`.
+      # Returns NitroIntelligence::Decision
+      def decide(state:, questions:, parameters: {})
+        decision_handler.create(state:, questions:, parameters:)
       end
 
       # Input images should be byte strings. Returns NitroIntelligence::ImageGeneration
@@ -40,6 +48,10 @@ module NitroIntelligence
 
       def chat_handler
         @chat_handler ||= Handlers::ChatHandler.new(client: @client)
+      end
+
+      def decision_handler
+        @decision_handler ||= Handlers::DecisionHandler.new(client: @client)
       end
 
       def image_handler
