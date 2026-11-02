@@ -545,6 +545,8 @@ end
 at_exit { NitroIntelligence.project_client_registry.shutdown_all }
 ```
 
+A server that loads the application and then forks its workers, such as Puma with `preload_app!` or Unicorn, runs initializers before the fork. Each worker then inherits the project clients but not the background thread that sends their scores, so a worker's scores wait until it shuts down, and are lost if it is killed. In such a server, fetch the projects in each worker after it forks instead, from Puma's `on_worker_boot` or Unicorn's `after_fork`, or leave each to be fetched on first use.
+
 ### Prompts
 
 #### Message Shape

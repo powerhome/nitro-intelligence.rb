@@ -6,8 +6,10 @@ module NitroIntelligence
   module Client
     # Builds a client, which records every request in Cerebro when given a project to report to.
     #
-    # A project slug that `observability_projects` does not configure, or that Cerebro does not
-    # know, logs a warning and gives a client without observability rather than raising.
+    # A project slug that `observability_projects` does not configure logs a warning and gives a
+    # client without observability rather than raising. Building a client makes no request to
+    # Cerebro, so a configured project with wrong credentials still gives an observed client, and the
+    # error surfaces on the first request that reaches Cerebro, such as a prompt lookup.
     #
     # @param observability_project_slug [String, nil] the Cerebro project to record requests in, and
     #   to fetch prompts from

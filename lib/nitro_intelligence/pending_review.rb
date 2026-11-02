@@ -68,7 +68,8 @@ module NitroIntelligence
     # Identifies this pause. A thread that has moved on -- a new message superseded the review, or
     # another reviewer decided it first -- reports a different interrupt, or none.
     #
-    # @return [String]
+    # @return [String, nil] nil for a tool-call pause the service reported without an id, which
+    #   {Assistants#review} then resumes without checking that it is still the same pause
     def interrupt_id
       @interrupt["id"] || @interrupt["interrupt_id"]
     end

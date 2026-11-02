@@ -11,11 +11,12 @@ RuboCop::RakeTask.new
 desc "Check that the public API is fully documented"
 task :yard do
   require "yard"
+  require_relative "tasks/yard_coverage"
 
   stats = YARD::CLI::Stats.new
   stats.run("--list-undoc", "--fail-on-warning")
-  undocumented = stats.all_objects.select { |object| object.docstring.blank? }
-  abort "yard: the public API has #{undocumented.size} undocumented objects" if undocumented.any?
+  undocumented = stats.all_objects.select { |object| YardCoverage.undocumented?(object) }
+  abort "yard: undocumented public API: #{undocumented.map(&:path).join(', ')}" if undocumented.any?
 end
 
 task default: %i[spec rubocop yard]

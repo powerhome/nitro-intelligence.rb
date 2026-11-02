@@ -55,7 +55,11 @@ module NitroIntelligence
       # @param audio_file [File] the audio, opened in binary mode, with a filename whose extension
       #   gives its format
       # @param parameters [Hash] openai-ruby's transcription parameters, and this gem's own
-      # @return [OpenAI::Models::Audio::Transcription]
+      # @return [OpenAI::Models::Audio::Transcription, OpenAI::Models::Audio::TranscriptionVerbose,
+      #   OpenAI::Models::Audio::TranscriptionDiarized, StringIO] whichever openai-ruby returns for
+      #   the `response_format`: a `Transcription` for `json`, the default, and the response body as a
+      #   StringIO for `text`, `srt` and `vtt`. An observed client records the transcription's `text`,
+      #   so it supports only the formats that return an object.
       # @raise [ArgumentError] when the model is not one `model_config` lists
       # @example
       #   client.transcribe_audio(audio_file: File.open("sample.m4a", "rb")).text

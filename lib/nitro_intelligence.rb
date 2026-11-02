@@ -53,8 +53,10 @@ module NitroIntelligence
     # the client it already had.
     #
     # @return [AssistantRegistry, Assistants]
+    # @raise [ArgumentError] without `definitions`, when `assistants_config` has no `api_key`, as
+    #   it does by default
     # @raise [Assistants::ConfigurationError] without `definitions`, when `assistants_config`
-    #   has no `api_key`
+    #   has a blank `api_key` or `user_id`
     # @example
     #   NitroIntelligence.assistants["candidate-concierge"].run(thread_id:, messages:)
     def assistants

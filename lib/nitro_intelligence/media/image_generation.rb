@@ -27,12 +27,11 @@ module NitroIntelligence
     attr_reader :byte_string, :config, :file_type, :file_extension, :messages, :reference_images, :target_image
     # @return [Image, nil] the generated image; nil when the model returned none
     attr_reader :generated_image
-    # @!attribute [rw] trace_id
-    #   @return [String, nil] the trace the request was recorded under; nil without observability
-    # @!attribute [rw] observation_id
-    #   @return [String, nil] the generation observation the images are attached to; nil without
-    #     observability
-    attr_accessor :trace_id, :observation_id
+    # @return [String, nil] the trace the request was recorded under; nil without observability
+    attr_accessor :trace_id
+    # @return [String, nil] the generation observation the images are attached to; nil without
+    #   observability
+    attr_accessor :observation_id
 
     # @api private
     def initialize(

@@ -573,7 +573,7 @@ Every error is a `StandardError` raised by the call that hits it.
 
 | Error | Raised when |
 | --- | --- |
-| `Assistants::ConfigurationError` | [`#initialize`](#initialize) is given no `api_key` or `user_id` |
+| `Assistants::ConfigurationError` | [`#initialize`](#initialize) is given a blank `api_key` or `user_id`. Omitting `api_key` altogether, including from an `assistants_config` with no `definitions`, raises `ArgumentError` instead |
 | `Assistants::ThreadInitializationError` | [`#run`](#run) cannot create or seed a new thread, or the assistant has no graph; the message is the response body |
 | `Assistants::RunError` | [`#run`](#run) is given no messages, Assistants rejects the run, or the run fails (see [Run errors](#run-errors)) |
 | `Assistants::ThreadStateError` | A thread's state cannot be read by [`#thread_state`](#thread_state), [`#thread_messages`](#thread_messages) or [`#under_review`](#under_review); the message is the response body |

@@ -57,7 +57,8 @@ module NitroIntelligence
     # @param api_key [String] the key Assistants authenticates the client with
     # @param base_url [String, nil] the Assistants deployment to call. Defaults to the shared one.
     # @param user_id [String] the user threads are created for
-    # @raise [ConfigurationError] without an `api_key` or `user_id`
+    # @raise [ConfigurationError] when `api_key` or `user_id` is blank. Omitting `api_key` raises
+    #   Ruby's `ArgumentError` for a missing keyword instead.
     def initialize(api_key:, base_url: nil, user_id: DEFAULT_USER_ID)
       raise ConfigurationError, "api_key is required" if api_key.blank?
       raise ConfigurationError, "user_id is required" if user_id.blank?
