@@ -21,9 +21,9 @@ module NitroIntelligence
       def compile(**replacements)
         return replace_variables(@prompt, **replacements) if @type == "text"
 
+        # New messages, so the prompt keeps its variables for the next request that compiles it.
         @prompt.map do |message|
-          message[:content] = replace_variables(message[:content], **replacements)
-          message
+          message.merge(content: replace_variables(message[:content], **replacements))
         end
       end
 
