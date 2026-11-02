@@ -1,23 +1,55 @@
 module NitroIntelligence
-  # A decision model's answers to the questions asked of it, keyed by the names the questions
-  # were given. See https://docs.typesafe.ai/api/system-one.md
+  # What {Client::Base#decide} returns: a decision model's answers to the questions asked of it,
+  # keyed by the names the questions were given. See https://docs.typesafe.ai/api/system-one.md
   class Decision
-    # The probability, from 0 to 1, that the answer is yes.
+    # The answer to a `noul` question.
+    #
+    # @!attribute [r] noul
+    #   @return [Float] the probability, from 0 to 1, that the answer is yes
     NoulAnswer = Data.define(:noul)
 
-    # The most probable option, how concentrated the probabilities are, and the probability
-    # of every option, keyed by option name.
+    # The answer to a `choice` question.
+    #
+    # @!attribute [r] choice
+    #   @return [String] the most probable option's name
+    # @!attribute [r] confidence
+    #   @return [Float] how concentrated the probabilities are, from 0 to 1
+    # @!attribute [r] probabilities
+    #   @return [Hash{String => Float}] the probability of every option, keyed by option name
     ChoiceAnswer = Data.define(:choice, :confidence, :probabilities)
 
-    # The expected level, which may fall between levels, how concentrated the probabilities
-    # are, and the probability and description of every level, keyed by level number.
+    # The answer to a `score` question, whose levels are numbered from 0 in the order the
+    # question's `criteria` listed them.
+    #
+    # @!attribute [r] score
+    #   @return [Float] the expected level, which may fall between levels
+    # @!attribute [r] confidence
+    #   @return [Float] how concentrated the probabilities are, from 0 to 1
+    # @!attribute [r] probabilities
+    #   @return [Hash{Integer => Float}] the probability of every level, keyed by level number
+    # @!attribute [r] legend
+    #   @return [Hash{Integer => String}] the description of every level, keyed by level number
     ScoreAnswer = Data.define(:score, :confidence, :probabilities, :legend)
 
-    # `raw_answers` are the answers as the gateway returned them, for recording.
-    attr_reader :model, :answers, :raw_answers, :usage, :response
+    # @return [String] the model that answered, as the gateway named it
+    attr_reader :model
+    # @return [ActiveSupport::HashWithIndifferentAccess] the answers keyed by question name, each a
+    #   {NoulAnswer}, {ChoiceAnswer} or {ScoreAnswer}, or, for an answer of any other type, what the
+    #   gateway sent
+    attr_reader :answers
+    # @return [Hash] the answers as the gateway sent them, keyed by question name
+    attr_reader :raw_answers
+    # @return [ActiveSupport::HashWithIndifferentAccess] the token counts the gateway reported
+    attr_reader :usage
+    # @api private
+    attr_reader :response
 
+    # @!method last_response
+    #   @return [OpenAI::ResponseMetadata, nil] the HTTP response, including the
+    #     gateway's headers
     delegate :last_response, to: :response
 
+    # @api private
     def initialize(response)
       @response = response
       @model = response.model

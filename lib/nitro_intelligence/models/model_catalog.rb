@@ -1,6 +1,7 @@
 require "nitro_intelligence/models/model_factory"
 
 module NitroIntelligence
+  # @api private
   class ModelCatalog
     attr_reader :models,
                 :default_audio_transcription_model,
@@ -36,7 +37,7 @@ module NitroIntelligence
       raise ArgumentError, "Model '#{name}' is not #{article} #{type.kind} model"
     end
 
-    # Unused within the gem, which validates through #fetch, but public: applications check
+    # Unused within the gem, which validates through #fetch, but kept for applications that check
     # whether a model is configured before offering it.
     def exists?(name)
       lookup_by_name(name).present?

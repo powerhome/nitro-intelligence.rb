@@ -9,6 +9,7 @@ require "nitro_intelligence/trace"
 
 module NitroIntelligence
   module Client
+    # @api private
     class Observed < Base
       def initialize(client:, observer:)
         super(client:)

@@ -6,6 +6,7 @@ module NitroIntelligence
   module Client
     module Handlers
       module Observed
+        # @api private
         class ImageHandler < BaseHandler
           def create(message: "", target_image: nil, reference_images: [], parameters: {})
             image_generation = build_image_generation(message:, target_image:, reference_images:, parameters:)

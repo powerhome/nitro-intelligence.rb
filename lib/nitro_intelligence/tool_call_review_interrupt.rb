@@ -11,6 +11,8 @@ module NitroIntelligence
   # Action requests carry no tool call id, and ids are what a review interface works in, so each is
   # matched back onto the tool calls of the thread's last AI message -- the ones the middleware built
   # them from -- to recover the id. The order of `#tool_calls` is the order `decisions` must be in.
+  #
+  # @api private
   class ToolCallReviewInterrupt
     def initialize(thread_state)
       @thread_state = thread_state

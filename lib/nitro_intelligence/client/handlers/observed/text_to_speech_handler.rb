@@ -6,7 +6,12 @@ module NitroIntelligence
   module Client
     module Handlers
       module Observed
+        # @api private
         class TextToSpeechHandler < BaseHandler
+          # Raised by {Client::Base#text_to_speech} on an observed client when the prompt it names
+          # is not a text prompt.
+          #
+          # @api public
           class ObservedTextToSpeechPromptError < StandardError; end
 
           def create(message: "", parameters: {})
