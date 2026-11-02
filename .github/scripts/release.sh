@@ -45,8 +45,11 @@ bump_version_files() {
     echo "::error::Gemfile.lock does not pin nitro_intelligence ($1), so it was not bumped." >&2
     return 1
   fi
-  perl -pi -e "s/VERSION = \"\Q$1\E\"/VERSION = \"$2\"/" "$VERSION_FILE"
-  perl -pi -e "s/^    nitro_intelligence \(\Q$1\E\)\$/    nitro_intelligence ($2)/" Gemfile.lock
+  # The versions reach perl as data, never as part of its program.
+  OLD_VERSION=$1 NEW_VERSION=$2 perl -pi -e \
+    's/VERSION = "\Q$ENV{OLD_VERSION}\E"/VERSION = "$ENV{NEW_VERSION}"/' "$VERSION_FILE"
+  OLD_VERSION=$1 NEW_VERSION=$2 perl -pi -e \
+    's/^    nitro_intelligence \(\Q$ENV{OLD_VERSION}\E\)$/    nitro_intelligence ($ENV{NEW_VERSION})/' Gemfile.lock
 }
 
 # changelog_links OLD NEW: the link references that replace the Unreleased one.
@@ -95,9 +98,12 @@ checked_version() {
   echo "$version"
 }
 
-# is_semver VERSION: whether VERSION is a semantic version, whose components have no leading zeros.
+# is_semver VERSION: whether VERSION is a semantic version, by the grammar at semver.org: numeric
+# components without leading zeros, and prerelease and build identifiers of letters, digits and
+# hyphens. Nothing else, so a version read from a file can be written back without escaping.
 is_semver() {
-  [[ $1 =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+].*)?$ ]]
+  local id='[0-9A-Za-z-]+'
+  [[ $1 =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-$id(\.$id)*)?(\+$id(\.$id)*)?$ ]]
 }
 
 # bump VERSION LEVEL
