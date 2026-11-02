@@ -37,9 +37,23 @@ module NitroIntelligence
         chat_handler.create(message:, parameters: parameters.dup)
       end
 
-      # Asks a decision model questions about `state`: a string, hash or array. `questions` maps
-      # each question's name to its `type` (noul, choice or score), `instructions` and `criteria`.
-      # Returns NitroIntelligence::Decision
+      # Asks a decision model questions about some content over the gateway's System One route,
+      # `POST /v1/systemone`.
+      #
+      # @param state [String, Hash, Array] the content the questions are about
+      # @param questions [Hash] each question's name mapped to its `type` (`noul`, `choice` or
+      #   `score`), `instructions` and, for `choice` and `score`, `criteria`: the options keyed by
+      #   name, or the levels in order
+      # @param parameters [Hash] `model`, `assets` (images `state` and the questions refer to),
+      #   `metadata`, `request_options`, and this gem's own
+      # @return [Decision]
+      # @raise [ArgumentError] when the model is not one `model_config` lists with the type
+      #   `decision`
+      # @example
+      #   client.decide(
+      #     state: "I was charged twice.",
+      #     questions: { billing: { type: "noul", instructions: "Is this message about billing?" } }
+      #   ).answers[:billing].noul
       def decide(state:, questions:, parameters: {})
         decision_handler.create(state:, questions:, parameters: parameters.dup)
       end

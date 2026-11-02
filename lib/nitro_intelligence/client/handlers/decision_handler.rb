@@ -8,6 +8,8 @@ module NitroIntelligence
       # Asks a decision model questions about some content over the gateway's System One route,
       # `POST /v1/systemone`. openai-ruby has no resource for it, so the request goes through
       # the client's generic `request`, which keeps its credentials, retries, timeouts and errors.
+      #
+      # @api private
       class DecisionHandler < BaseHandler
         # `/v1/systemone` is the route the gateway's docs name and key route limits list.
         PATH = "v1/systemone".freeze
