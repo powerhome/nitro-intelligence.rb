@@ -16,36 +16,61 @@ module NitroIntelligence
     # finished run still showing it was cut off before delivery recorded an outcome. Treat a
     # pending reply as not sent; the next customer message removes it and the model answers both. A
     # field the stamp does not carry, or carries as the wrong type, is nil.
+    #
+    # @!attribute [r] status
+    #   @return [String, nil] `"delivered"`, `"failed"` or `"pending"`
+    # @!attribute [r] tool
+    #   @return [String, nil] the delivery tool's name
+    # @!attribute [r] attempts
+    #   @return [Integer, nil] how many times the platform called the tool
+    # @!attribute [r] error
+    #   @return [String, nil] the tool's error, when delivery failed
+    # @!attribute [r] result
+    #   @return [Object, nil] what the tool returned, when it succeeded
+    # @!attribute [r] delivered_at
+    #   @return [String, nil] when the reply was delivered, as an ISO 8601 timestamp
+    # @!attribute [r] failed_at
+    #   @return [String, nil] when delivery gave up, as an ISO 8601 timestamp
     Delivery = Struct.new(:status, :tool, :attempts, :error, :result, :delivered_at, :failed_at,
                           keyword_init: true) do
+      # @return [Boolean] whether the platform delivered the reply
       def delivered?
         status == "delivered"
       end
 
+      # @return [Boolean] whether delivery failed
       def failed?
         status == "failed"
       end
 
+      # @return [Boolean] whether delivery was cut off before it recorded an outcome
       def pending?
         status == "pending"
       end
     end
 
+    # @api private
     # The `response_metadata.review` type the platform stamps on a draft when it pauses on it.
     PENDING_REVIEW = "pending".freeze
 
     # The response exactly as Assistants returned it.
+    #
+    # @return [Hash]
     attr_reader :raw
 
+    # @api private
     def initialize(run)
       @raw = run.to_h
     end
 
+    # @return [Boolean] whether the run paused for review
     def interrupted?
       Array(raw["__interrupt__"]).any?
     end
 
     # What the paused run is waiting on, or nil when it did not pause.
+    #
+    # @return [PendingReview, nil]
     def review
       return @review if defined?(@review)
 
@@ -53,6 +78,8 @@ module NitroIntelligence
     end
 
     # The run's messages as Assistants reports them, oldest first.
+    #
+    # @return [Array<Hash>]
     def messages
       Array(raw["messages"])
     end
@@ -61,12 +88,16 @@ module NitroIntelligence
     # Nil while the run is paused, and when it ended without one: a rejected draft is removed,
     # leaving a tool result or the human's message last, and an earlier turn's text is never the
     # reply. Blank text is no reply.
+    #
+    # @return [String, nil]
     def reply
       reply_message && text(reply_message["content"]).presence
     end
 
     # The reply's delivery, or nil when the reply carries no delivery stamp: no reply, or no
     # delivery tool configured for the assistant.
+    #
+    # @return [Delivery, nil]
     def delivery
       return @delivery if defined?(@delivery)
 

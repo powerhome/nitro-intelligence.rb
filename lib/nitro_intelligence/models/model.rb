@@ -1,4 +1,5 @@
 module NitroIntelligence
+  # @api private
   class Model
     attr_reader :name, :omit_output_fields
 
@@ -8,6 +9,7 @@ module NitroIntelligence
     end
   end
 
+  # @api private
   class ImageModel < Model
     attr_reader :aspect_ratios, :resolutions
 
@@ -18,8 +20,10 @@ module NitroIntelligence
     end
   end
 
+  # @api private
   class TextModel < Model; end
 
+  # @api private
   class TextToSpeechModel < Model
     attr_reader :default_voice,
                 :default_response_format,

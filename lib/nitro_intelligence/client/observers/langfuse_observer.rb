@@ -1,6 +1,8 @@
 module NitroIntelligence
   module Client
+    # @api private
     module Observers
+      # @api private
       class LangfuseObserver
         # The inference gateway returns its own request identifier on every
         # response, including error responses. Recording it on the observation is
