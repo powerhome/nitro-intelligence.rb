@@ -23,14 +23,17 @@ module NitroIntelligence
       @model = response.model
       @raw_answers = response[:answers].to_h
       @answers = raw_answers.to_h { |name, answer| [name, build_answer(answer)] }.with_indifferent_access
-      @usage = response[:usage].to_h
+      @usage = response[:usage].to_h.with_indifferent_access
     end
 
   private
 
     # A `box` answer, and any answer type added after this client, is returned as the hash it
-    # arrived as rather than dropped.
+    # arrived as rather than dropped. An answer that is not a hash at all is returned as it came
+    # too, so it does not cost the caller every other answer in a response already paid for.
     def build_answer(answer)
+      return answer unless answer.is_a?(Hash)
+
       case answer[:type]
       when "noul"
         NoulAnswer.new(noul: answer[:noul])
@@ -56,7 +59,7 @@ module NitroIntelligence
     # kept as it came rather than failing every other answer in the response.
     def levels(hash)
       hash.to_h.transform_keys do |level|
-        Integer(level.to_s)
+        Integer(level.to_s, 10)
       rescue ArgumentError
         level.to_s
       end

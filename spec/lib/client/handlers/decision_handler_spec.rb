@@ -61,7 +61,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
   end
 
   let!(:systemone) do
-    stub_request(:post, "https://gateway.example/systemone")
+    stub_request(:post, "https://gateway.example/v1/systemone")
       .to_return(status: 200, body: response_body.to_json, headers: response_headers)
   end
 
@@ -94,6 +94,15 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
         .to have_been_requested
     end
 
+    it "sends assets from the parameters in the body" do
+      assets = { photo: { type: "image", format: "png", data_base64: "iVBORw0KGgo=" } }
+
+      handler.create(state: "photo", questions:, parameters: { assets: })
+
+      expect(systemone.with(body: { model: "typesafe/jev-1.14", state: "photo", questions:, assets: }))
+        .to have_been_requested
+    end
+
     it "returns typed answers keyed by question name" do
       decision = handler.create(state:, questions:)
 
@@ -112,12 +121,25 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
           legend: { 0 => "Can wait", 1 => "Needs attention today" }
         )
       )
-      expect(decision.usage).to eq(input_tokens: 120, output_tokens: 3)
+      expect(decision.usage).to eq("input_tokens" => 120, "output_tokens" => 3)
+      expect(decision.usage[:input_tokens]).to eq(120)
+    end
+
+    it "keeps the other answers when one is not a hash" do
+      response_body[:answers] = { billing: { type: "noul", noul: 0.98 }, broken: nil, odd: "unexpected" }
+      stub_request(:post, "https://gateway.example/v1/systemone")
+        .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      decision = handler.create(state:, questions:)
+
+      expect(decision.answers[:billing].noul).to eq(0.98)
+      expect(decision.answers[:broken]).to be_nil
+      expect(decision.answers[:odd]).to eq("unexpected")
     end
 
     it "returns an answer of a type it does not model as the hash it arrived as" do
       response_body[:answers] = { spot: { type: "box", box: { top: 0.2 }, confidence: nil } }
-      stub_request(:post, "https://gateway.example/systemone").to_return(status: 200, body: response_body.to_json, headers: response_headers)
+      stub_request(:post, "https://gateway.example/v1/systemone").to_return(status: 200, body: response_body.to_json, headers: response_headers)
 
       decision = handler.create(state:, questions:)
 
@@ -133,7 +155,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
     end
 
     it "raises the client's errors for a rejected request" do
-      stub_request(:post, "https://gateway.example/systemone").to_return(
+      stub_request(:post, "https://gateway.example/v1/systemone").to_return(
         status: 403,
         body: { error: { message: "no access" } }.to_json,
         headers: { "Content-Type" => "application/json" }
@@ -159,10 +181,21 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
         urgency: { type: "score", score: 0.5, confidence: 0.1, legend: { "0" => "Low", "x" => "?" },
                    probabilities: { "0" => 0.5, "x" => 0.5 } },
       }
-      stub_request(:post, "https://gateway.example/systemone")
+      stub_request(:post, "https://gateway.example/v1/systemone")
         .to_return(status: 200, body: response_body.to_json, headers: response_headers)
 
       expect(handler.create(state:, questions:).answers[:urgency].legend).to eq(0 => "Low", "x" => "?")
+    end
+
+    it "reads score levels as decimal numbers" do
+      response_body[:answers] = {
+        urgency: { type: "score", score: 0.5, confidence: 0.1, legend: { "08" => "Eight", "010" => "Ten", "0x1" => "Hex" },
+                   probabilities: {} },
+      }
+      stub_request(:post, "https://gateway.example/v1/systemone")
+        .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      expect(handler.create(state:, questions:).answers[:urgency].legend).to eq(8 => "Eight", 10 => "Ten", "0x1" => "Hex")
     end
 
     it "raises when the requested model is not a decision model" do
