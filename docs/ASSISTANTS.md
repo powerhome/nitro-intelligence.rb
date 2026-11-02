@@ -584,7 +584,7 @@ Every error is a `StandardError` raised by the call that hits it.
 
 ## Subclassing
 
-A host that speaks its own review protocol can subclass `NitroIntelligence::Assistants`. `super` into [`#initialize`](#initialize) takes the same arguments, and `Assistants::DEFAULT_USER_ID` is the `user_id` a client given none uses. A subclass may call four private methods, which are part of the public API for subclasses:
+Prefer the public methods above to subclassing. These hooks are public only because nitro-web's VCA client already subclasses `NitroIntelligence::Assistants` to speak its own review protocol, and they are to be retired once it no longer needs to ([#185](https://github.com/powerhome/nitro-intelligence.rb/issues/185)). Until then, a subclass can rely on what follows. `super` into [`#initialize`](#initialize) takes the same arguments, and `Assistants::DEFAULT_USER_ID` is the `user_id` a client given none uses. A subclass may call four private methods, which are part of the public API for subclasses:
 
 | Method | What it does |
 | --- | --- |

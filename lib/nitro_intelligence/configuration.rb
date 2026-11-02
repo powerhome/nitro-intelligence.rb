@@ -22,8 +22,8 @@ module NitroIntelligence
     #     Defaults to one that caches nothing.
     config_accessor :cache_provider, default: NitroIntelligence::NullCache.new
     # @!attribute [rw] current_revision
-    #   @return [String] the host application's revision, such as its commit, recorded as each trace's
-    #     release
+    #   @return [String] the host application's revision, such as its commit, recorded on each trace
+    #     in Cerebro as its `release`
     config_accessor :current_revision, default: ""
     # @!attribute [rw] environment
     #   @return [String] the runtime environment, such as `Rails.env`, recorded on traces and scores.

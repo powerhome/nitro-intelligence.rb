@@ -3,6 +3,7 @@
 --hide-api private
 --readme docs/README.md
 --output-dir doc/api
+--load tasks/yard_guide_links.rb
 lib/**/*.rb
 -
 docs/ASSISTANTS.md
