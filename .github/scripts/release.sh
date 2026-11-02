@@ -178,12 +178,12 @@ commit_release() {
       }}
     }' | gh api graphql --input - --jq .data.createCommitOnBranch.commit.oid)
   git fetch -q origin "refs/heads/$scratch"
+  git push -q origin --delete "$scratch"
   if [[ $(git rev-parse FETCH_HEAD) != "$oid" ]]; then
     echo "::error::$scratch moved while the release commit was made." >&2
     return 1
   fi
   git push -q --force origin "FETCH_HEAD:refs/heads/$BRANCH"
-  git push -q origin --delete "$scratch"
 }
 
 # Opens the release PR, or refreshes the open one, from the changelog on main.
