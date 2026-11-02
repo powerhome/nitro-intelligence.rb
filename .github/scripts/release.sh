@@ -82,27 +82,41 @@ bump_level() {
   '
 }
 
-# bump VERSION LEVEL
+# checked_version: the current version, failing unless it is a semantic version, so that a
+# version file the pattern above no longer matches stops the run instead of releasing "v".
+checked_version() {
+  local version
+  version=$(current_version)
+  if [[ ! $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+].*)?$ ]]; then
+    echo "::error::The version is \"$version\", which is not a semantic version." >&2
+    return 1
+  fi
+  echo "$version"
+}
+
+# bump VERSION LEVEL. Components are read as decimal, since bash takes a leading zero for octal.
 bump() {
   local major minor patch
   IFS=. read -r major minor patch <<<"${1%%[-+]*}"
   case $2 in
-    major) echo "$((major + 1)).0.0" ;;
-    minor) echo "$major.$((minor + 1)).0" ;;
-    patch) echo "$major.$minor.$((patch + 1))" ;;
+    major) echo "$((10#$major + 1)).0.0" ;;
+    minor) echo "$((10#$major)).$((10#$minor + 1)).0" ;;
+    patch) echo "$((10#$major)).$((10#$minor)).$((10#$patch + 1))" ;;
   esac
 }
 
 next_version() {
-  local level
+  local level version
   level=$(section Unreleased | bump_level)
-  [[ $level == none ]] || bump "$(current_version)" "$level"
+  [[ $level != none ]] || return 0
+  version=$(checked_version)
+  bump "$version" "$level"
 }
 
 # prepare: makes the release edits in the working tree and prints the version.
 prepare() {
   local old new level date
-  old=$(current_version)
+  old=$(checked_version)
   level=$(section Unreleased | bump_level)
   [[ $level != none ]] || return 0
   new=$(bump "$old" "$level")
@@ -124,7 +138,7 @@ prepare() {
 # Publishes a GitHub release for the version on main if it has none yet.
 release() {
   local version tag sha
-  version=$(current_version)
+  version=$(checked_version)
   tag=$(tag_for "$version")
   if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
     echo "$tag is already released."
@@ -175,7 +189,12 @@ commit_release() {
         message: {headline: $headline},
         fileChanges: {additions: $additions}
       }}
-    }' | gh api graphql --input - --jq .data.createCommitOnBranch.commit.oid)
+    }' | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid // empty')
+  if [[ -z $oid ]]; then
+    echo "::error::createCommitOnBranch made no release commit." >&2
+    git push -q origin --delete "$scratch"
+    return 1
+  fi
   git fetch -q origin "refs/heads/$scratch"
   git push -q origin --delete "$scratch"
   if [[ $(git rev-parse FETCH_HEAD) != "$oid" ]]; then
@@ -188,7 +207,7 @@ commit_release() {
 # Opens the release PR, or refreshes the open one, from the changelog on main.
 propose() {
   local old level open version notes body assignees stale
-  old=$(current_version)
+  old=$(checked_version)
   level=$(section Unreleased | bump_level)
   # --head matches the branch name in forks too, so only a PR from this repository counts.
   open=$(gh pr list --head "$BRANCH" --base main --state open --json number,isCrossRepository \
