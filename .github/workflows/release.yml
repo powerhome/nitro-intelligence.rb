@@ -22,7 +22,9 @@ permissions: {}
 
 jobs:
   release:
-    # A dispatch from another branch would release, and propose, from that branch's changelog.
+    # The checkout below always reads main, but the steps come from the dispatched ref's copy of
+    # this file, so a dispatch from another branch would run that branch's version of them with
+    # the App's write token.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
