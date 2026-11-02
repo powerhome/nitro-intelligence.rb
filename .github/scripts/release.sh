@@ -69,18 +69,17 @@ section() {
 # other than a heading, whether a list item or a paragraph, and a heading counts only when it has
 # an entry under it.
 bump_level() {
-  local notes headings
-  notes=$(cat)
-  headings=$(awk '/^### / { heading = tolower($2); gsub(/[^a-z]/, "", heading); next } /[^[:space:]]/ { print heading }' <<<"$notes")
-  if ! grep -v '^### ' <<<"$notes" | grep -q '[^[:space:]]'; then
-    echo none
-  elif grep -qi '\*\*Breaking' <<<"$notes" || grep -qx 'removed' <<<"$headings"; then
-    echo major
-  elif grep -qxE 'added|changed|deprecated' <<<"$headings"; then
-    echo minor
-  else
-    echo patch
-  fi
+  # One pass, with no early-exiting reader in a pipe: under pipefail, `grep -q` closing a pipe
+  # early fails the writer with SIGPIPE once the notes outgrow the pipe buffer.
+  awk '
+    /^### / { heading = tolower($2); gsub(/[^a-z]/, "", heading); next }
+    /[^[:space:]]/ {
+      entries = 1
+      if (heading == "removed" || tolower($0) ~ /\*\*breaking/) major = 1
+      if (heading ~ /^(added|changed|deprecated)$/) minor = 1
+    }
+    END { print major ? "major" : minor ? "minor" : entries ? "patch" : "none" }
+  '
 }
 
 # bump VERSION LEVEL
@@ -161,14 +160,14 @@ mergers() {
 # commit through the API and signs it as the App. The commit is made on a scratch branch: pointing
 # $BRANCH at main first, even briefly, would mark the open release PR as merged.
 commit_release() {
-  local scratch="$BRANCH-staging" base files oid
+  local scratch="$BRANCH-staging" base oid
   base=$(git rev-parse HEAD)
   git push -q --force origin "$base:refs/heads/$scratch"
-  files=$(git diff --name-only | while read -r file; do
-    jq -n --arg path "$file" --arg contents "$(base64 <"$file" | tr -d '\n')" '{$path, $contents}'
-  done | jq -s .)
-  oid=$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg branch "$scratch" --arg base "$base" \
-    --arg headline "Release $1" --argjson additions "$files" '{
+  # File contents go through pipes, never arguments, which Linux limits to 128 KiB each.
+  oid=$(git diff --name-only | while read -r file; do
+    base64 <"$file" | tr -d '\n' | jq -Rs --arg path "$file" '{$path, contents: .}'
+  done | jq -s --arg repo "$GITHUB_REPOSITORY" --arg branch "$scratch" --arg base "$base" \
+    --arg headline "Release $1" '. as $additions | {
       query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
       variables: {input: {
         branch: {repositoryNameWithOwner: $repo, branchName: $branch},
