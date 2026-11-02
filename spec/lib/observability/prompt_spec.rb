@@ -74,6 +74,13 @@ RSpec.describe NitroIntelligence::Observability::Prompt do
     end
 
     context "for a chat prompt" do
+      it "keeps its variables, so a second compile substitutes its own values" do
+        chat_prompt_instance.compile(topic: "Ruby on Rails")
+
+        expect(chat_prompt_instance.compile(topic: "AI").last[:content]).to eq("What is AI?")
+        expect(chat_prompt_instance.variables).to contain_exactly(:topic)
+      end
+
       it "replaces variables in all message contents" do
         compiled_content = chat_prompt_instance.compile(topic: "Ruby on Rails")
         expect(compiled_content).to eq([
