@@ -10,11 +10,10 @@ Gem::Specification.new do |s|
   s.description = "The Ruby client for Nitro Intelligence"
   s.license     = "MIT"
 
-  # .yardopts, the guides it names and the extension it loads ship too, so that RubyDoc.info builds
-  # the reference as `bundle exec yard doc` does, without the private API.
+  # .yardopts and the guides it names ship too, so that RubyDoc.info builds the reference as
+  # `bundle exec yard doc` does, without the private API.
   s.files = Dir["{app,config,db,lib}/**/*"] +
-            ["Rakefile", ".yardopts", "tasks/yard_guide_links.rb",
-             "docs/README.md", "docs/ASSISTANTS.md", "docs/CHANGELOG.md"]
+            ["Rakefile", ".yardopts", "docs/README.md", "docs/ASSISTANTS.md", "docs/CHANGELOG.md"]
 
   s.required_ruby_version = ">= 3.3"
 

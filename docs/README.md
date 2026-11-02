@@ -6,7 +6,7 @@ This component aims to consolidate and standardize AI features implemented in th
 
 ## Public API
 
-The gem's public API is what its API reference documents, and follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html): it changes incompatibly only in a major release. The reference is generated from the source with [YARD](https://yardoc.org): run `bundle exec yard doc` and open `doc/api/index.html`, or browse it for any released version on [RubyDoc.info](https://www.rubydoc.info/gems/nitro_intelligence). Anything marked `@api private` in the source is left out of it, may change in any release, and is not for callers. This README and [ASSISTANTS.md](ASSISTANTS.md) are guides to using the gem, not a list of everything public.
+The gem's public API is what its API reference documents, and follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html): it changes incompatibly only in a major release. The reference is generated from the source with [YARD](https://yardoc.org): run `bundle exec yard doc` and open `doc/api/index.html`, or browse it for any released version on [RubyDoc.info](https://www.rubydoc.info/gems/nitro_intelligence). Anything marked `@api private` in the source is left out of it, may change in any release, and is not for callers. This README and [ASSISTANTS.md](https://github.com/powerhome/nitro-intelligence.rb/blob/main/docs/ASSISTANTS.md) are guides to using the gem, not a list of everything public.
 
 ## Configuration
 
@@ -691,7 +691,7 @@ On an observed client whose project does not mask content, `#transcribe_audio` a
 
 `NitroIntelligence::Assistants` is Nitro Intelligence's lightweight SDK for working with hosted agent threads, runs, and human review flows. It is mainly used to initialize conversation threads, trigger agent runs, inspect what a paused run is waiting on (tool calls or a reply held for review), and resume paused threads after human reviews.
 
-For the full guide, see [ASSISTANTS.md](ASSISTANTS.md). For the service this SDK talks to, see the [Nitro Intelligence Assistants documentation](https://portal.powerapp.cloud/docs/default/system/nip-assistants).
+For the full guide, see [ASSISTANTS.md](https://github.com/powerhome/nitro-intelligence.rb/blob/main/docs/ASSISTANTS.md). For the service this SDK talks to, see the [Nitro Intelligence Assistants documentation](https://portal.powerapp.cloud/docs/default/system/nip-assistants).
 
 ## Assistants
 
@@ -708,7 +708,7 @@ assistant.thread_state(thread_id: thread.id)
 ```
 
 `run`, `review`, and the deprecated `await_run` and `review_tool_calls` (see
-[Upgrading to 4.0](ASSISTANTS.md#upgrading-to-40)), supply the assistant's own id, so a
+[Upgrading to 4.0](https://github.com/powerhome/nitro-intelligence.rb/blob/main/docs/ASSISTANTS.md#upgrading-to-40)), supply the assistant's own id, so a
 caller never passes it -- passing `assistant_id:` to any of them raises `ArgumentError` rather
 than quietly sending the call to a different assistant, which is what a migrated caller
 carrying its old argument would otherwise do. Everything else is thread-scoped and delegates to the client untouched. Reach

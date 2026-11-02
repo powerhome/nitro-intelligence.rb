@@ -11,12 +11,18 @@ RuboCop::RakeTask.new
 desc "Check that the public API is fully documented"
 task :yard do
   require "yard"
+  require "nitro_intelligence"
   require_relative "tasks/yard_coverage"
 
   stats = YARD::CLI::Stats.new
   stats.run("--list-undoc", "--fail-on-warning")
-  undocumented = stats.all_objects.select { |object| YardCoverage.undocumented?(object) }
+  undocumented = stats.all_objects.select do |object|
+    !YardCoverage.hidden?(object) && YardCoverage.undocumented?(object)
+  end
   abort "yard: undocumented public API: #{undocumented.map(&:path).join(', ')}" if undocumented.any?
+
+  missing = YardCoverage.missing_settings(NitroIntelligence::Configuration.config.keys)
+  abort "yard: configuration settings missing from the reference: #{missing.join(', ')}" if missing.any?
 end
 
 task default: %i[spec rubocop yard]

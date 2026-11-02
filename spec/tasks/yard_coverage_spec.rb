@@ -55,4 +55,63 @@ RSpec.describe YardCoverage do
   it "counts an undocumented class as undocumented" do
     expect(objects("class Foo; end")).to eq("Foo" => true)
   end
+
+  it "counts a docstring holding only an @api tag as undocumented" do
+    expect(objects(<<~RUBY)).to eq("Foo" => true)
+      # @api public
+      class Foo; end
+    RUBY
+  end
+
+  it "counts what YARD writes for an undocumented Struct member as undocumented" do
+    expect(objects(<<~RUBY)).to include("Foo#status" => true, "Foo#status=" => true)
+      # A struct.
+      Foo = Struct.new(:status)
+    RUBY
+  end
+
+  describe ".hidden?" do
+    def hidden(source)
+      YARD::Registry.clear
+      YARD.parse_string(source)
+      YARD::Registry.all.to_h { |object| [object.path, described_class.hidden?(object)] }
+    ensure
+      YARD::Registry.clear
+    end
+
+    it "hides what a private namespace holds, unless it marks itself public" do
+      source = <<~RUBY
+        # @api private
+        class Foo
+          # A lookup.
+          Lookup = Struct.new(:name)
+          # @api public
+          class Error < StandardError; end
+        end
+      RUBY
+      expect(hidden(source)).to eq(
+        "Foo" => true, "Foo::Lookup" => true, "Foo::Lookup#name" => true, "Foo::Lookup#name=" => true,
+        "Foo::Error" => false
+      )
+    end
+  end
+
+  describe ".missing_settings" do
+    it "names the settings the reference has no reader for" do
+      YARD::Registry.clear
+      YARD.parse_string(<<~RUBY)
+        module NitroIntelligence
+          # Settings.
+          class Configuration
+            # @!attribute [rw] documented
+            #   @return [String] a setting
+            config_accessor :documented, :undocumented
+          end
+        end
+      RUBY
+      expect(described_class.missing_settings(%i[documented undocumented])).to eq(["undocumented"])
+    ensure
+      YARD::Registry.clear
+    end
+  end
 end
