@@ -1,10 +1,10 @@
-# This is an adaptation of https://github.com/simplepractice/langfuse-rb/blob/main/lib/langfuse/otel_setup.rb
-# that lets users create multiple Langfuse clients in the same process.
-# See also components/nitro_intelligence/lib/nitro_intelligence/langfuse_extension.rb
-#
-# The content of this file should eventually make its way upstream.
-#
 module NitroIntelligence
+  # This is an adaptation of https://github.com/simplepractice/langfuse-rb/blob/main/lib/langfuse/otel_setup.rb
+  # that lets users create multiple Langfuse clients in the same process.
+  # See also components/nitro_intelligence/lib/nitro_intelligence/langfuse_extension.rb
+  #
+  # The content of this file should eventually make its way upstream.
+  #
   # @api private
   class LangfuseTracerProvider
     def initialize(config)
