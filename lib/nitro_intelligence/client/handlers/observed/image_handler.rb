@@ -85,7 +85,9 @@ module NitroIntelligence
             image_generation.observation_id = generation.id
             image_generation.parse_file(chat_completion)
 
-            input = parameters[:messages]
+            # A copy, because recording replaces its image URLs and the caller may send the same
+            # messages again.
+            input = parameters[:messages].deep_dup
             output = chat_completion.choices.first.message.to_h
             handle_image_generation_uploads(input, output, image_generation)
 

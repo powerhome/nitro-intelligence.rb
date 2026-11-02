@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A `parameters` or `request_options` hash passed to several requests is left unchanged, so the defaults and gateway headers one request adds, such as its messages or spend-logs metadata, are no longer sent with the next. (#178)
+- A `parameters` or `request_options` hash, or a message, passed to several requests is left unchanged, so what one request adds to it is no longer sent with the next: its default messages, gateway headers and spend-logs metadata, a managed prompt's instructions and name, or the media references that replace images in its recording. (#178)
 - Text-to-speech uploads are labeled as output instead of input. (#173)
 - Image and audio uploads now include the generation's observation ID so Cerebro can display them in the correct observation preview. `Observability::UploadHandler#upload` now requires `observation_id:`. (#167)
 
