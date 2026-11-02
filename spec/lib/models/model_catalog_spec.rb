@@ -95,6 +95,15 @@ RSpec.describe NitroIntelligence::ModelCatalog do
     end
   end
 
+  describe "#exists?" do
+    let(:catalog) { described_class.new(model_config) }
+
+    it "is true for a model in the catalog and false otherwise" do
+      expect(catalog.exists?("dall-e-3")).to be(true)
+      expect(catalog.exists?("unknown-model")).to be(false)
+    end
+  end
+
   describe "#fetch" do
     let(:catalog) do
       described_class.new(

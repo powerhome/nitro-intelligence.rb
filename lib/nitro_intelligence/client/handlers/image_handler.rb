@@ -24,6 +24,8 @@ module NitroIntelligence
           @client.chat.completions.create(**parameters.slice(*ALLOWED_EXTRA_PARAMETERS))
         end
 
+        # The model is not checked here: building the ImageGeneration already checked it, along
+        # with the aspect ratio and resolution it supports.
         def validate_and_resolve!(parameters, image_generation)
           default_parameters = {
             image_generation:,
@@ -42,7 +44,6 @@ module NitroIntelligence
           # Deep, so that request options a caller passes (headers, max_retries,
           # timeout) sit alongside the image config rather than replacing it.
           parameters.replace(default_parameters.deep_merge(parameters))
-          Client.validate_model(parameters[:model], type: ImageModel)
         end
 
       private
