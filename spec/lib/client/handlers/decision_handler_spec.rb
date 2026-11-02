@@ -143,6 +143,35 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
       expect(decision.raw_answers).to eq(spot: { type: "box", box: { top: 0.2 } }, odd: "unexpected")
     end
 
+    it "returns typed answers that changing leaves the raw answers alone" do
+      decision = handler.create(state:, questions:)
+      decision.answers[:team].choice << "!"
+      decision.answers[:urgency].legend[0] << "!"
+
+      expect(decision.raw_answers[:team][:choice]).to eq("payments")
+      expect(decision.raw_answers[:urgency][:legend][:"0"]).to eq("Can wait")
+    end
+
+    it "posts to /v1/systemone when the base URL already ends in /v1" do
+      versioned = stub_request(:post, "https://gateway.example/v1/systemone")
+                  .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+      client = OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example/v1", max_retries: 0)
+
+      described_class.new(client:).create(state:, questions:)
+
+      expect(versioned).to have_been_requested.once
+    end
+
+    it "scopes the gateway headers to each request when request options are shared" do
+      request_options = { timeout: 30 }
+
+      handler.create(state:, questions:, parameters: { metadata: { ticket: "1" }, request_options: })
+      handler.create(state:, questions:, parameters: { request_options: })
+
+      expect(systemone.with(headers: { "x-litellm-spend-logs-metadata" => { ticket: "1" }.to_json })).to have_been_requested.once
+      expect(request_options).to eq(timeout: 30)
+    end
+
     it "returns the answers of a response that names no model" do
       stub_request(:post, "https://gateway.example/v1/systemone")
         .to_return(status: 200, body: response_body.except(:model).to_json, headers: response_headers)
