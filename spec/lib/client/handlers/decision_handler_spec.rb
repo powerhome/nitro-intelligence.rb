@@ -1,6 +1,7 @@
 require "spec_helper"
 require "webmock/rspec"
 
+require "nitro_intelligence/client/base"
 require "nitro_intelligence/client/handlers/decision_handler"
 
 RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
@@ -170,6 +171,27 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
 
       expect(systemone.with(headers: { "x-litellm-spend-logs-metadata" => { ticket: "1" }.to_json })).to have_been_requested.once
       expect(request_options).to eq(timeout: 30)
+    end
+
+    it "sends the extra headers of request options given as OpenAI::RequestOptions" do
+      request_options = OpenAI::RequestOptions.new(extra_headers: { "x-custom" => "1" })
+
+      handler.create(state:, questions:, parameters: { request_options: })
+
+      expect(systemone.with(headers: { "x-custom" => "1", "nip-requested-model" => "typesafe/jev-1.14" }))
+        .to have_been_requested
+    end
+
+    it "scopes the gateway headers to each request when the client is given one parameters hash twice" do
+      parameters = { metadata: { ticket: "1" } }
+      client = NitroIntelligence::Client::Base.new(client: self.client)
+
+      client.decide(state:, questions:, parameters:)
+      parameters.delete(:metadata)
+      client.decide(state:, questions:, parameters:)
+
+      expect(systemone.with(headers: { "x-litellm-spend-logs-metadata" => { ticket: "1" }.to_json })).to have_been_requested.once
+      expect(parameters).to eq({})
     end
 
     it "returns the answers of a response that names no model" do

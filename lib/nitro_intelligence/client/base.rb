@@ -6,6 +6,9 @@ require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
 module NitroIntelligence
   module Client
+    # Each request works on a copy of the caller's `parameters`, which the handlers fill in with
+    # defaults and gateway headers, so a hash passed to several requests carries nothing from one
+    # request into the next.
     class Base
       attr_reader :client
 
@@ -14,30 +17,30 @@ module NitroIntelligence
       end
 
       def chat(message: "", parameters: {})
-        chat_handler.create(message:, parameters:)
+        chat_handler.create(message:, parameters: parameters.dup)
       end
 
       # Asks a decision model questions about `state`: a string, hash or array. `questions` maps
       # each question's name to its `type` (noul, choice or score), `instructions` and `criteria`.
       # Returns NitroIntelligence::Decision
       def decide(state:, questions:, parameters: {})
-        decision_handler.create(state:, questions:, parameters:)
+        decision_handler.create(state:, questions:, parameters: parameters.dup)
       end
 
       # Input images should be byte strings. Returns NitroIntelligence::ImageGeneration
       def generate_image(message: "", target_image: nil, reference_images: [], parameters: {})
-        image_handler.create(message:, target_image:, reference_images:, parameters:)
+        image_handler.create(message:, target_image:, reference_images:, parameters: parameters.dup)
       end
 
       # Audio file should be file object with extension in the filename
       # Use file_extension for now to prevent a library dependency
       def transcribe_audio(message: +"", audio_file: nil, parameters: {})
-        audio_transcription_handler.create(message:, audio_file:, parameters:)
+        audio_transcription_handler.create(message:, audio_file:, parameters: parameters.dup)
       end
 
       # Returns StringIO
       def text_to_speech(message: "", parameters: {})
-        text_to_speech_handler.create(message:, parameters:)
+        text_to_speech_handler.create(message:, parameters: parameters.dup)
       end
 
     private
