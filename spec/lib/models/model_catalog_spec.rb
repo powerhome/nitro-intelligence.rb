@@ -133,5 +133,12 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       expect { catalog.fetch("jev", type: NitroIntelligence::TextModel) }
         .to raise_error(ArgumentError, "Model 'jev' is not a text model")
     end
+
+    it "names a kind of model that declares no kind of its own" do
+      stub_const("NitroIntelligence::EmbeddingModel", Class.new(NitroIntelligence::Model))
+
+      expect { catalog.fetch("jev", type: NitroIntelligence::EmbeddingModel) }
+        .to raise_error(ArgumentError, "Model 'jev' is not an embedding model")
+    end
   end
 end
