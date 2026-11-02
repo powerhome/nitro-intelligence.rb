@@ -9,11 +9,10 @@ module NitroIntelligence
       # `POST /v1/systemone`. openai-ruby has no resource for it, so the request goes through
       # the client's generic `request`, which keeps its credentials, retries, timeouts and errors.
       class DecisionHandler < BaseHandler
-        # `/v1/systemone` is the route the gateway's docs name and key route limits list. The
-        # gateway also serves `/systemone`, which is what is left to add when `inference_base_url`
-        # already ends in `/v1`.
+        # `/v1/systemone` is the route the gateway's docs name and key route limits list.
         PATH = "v1/systemone".freeze
-        VERSIONED_BASE_PATH = "systemone".freeze
+        # What is left of that route to add to an `inference_base_url` that already ends in `/v1`.
+        PATH_AFTER_V1 = "systemone".freeze
 
         # System One request fields other than the model, state and questions, taken from
         # `parameters`. Everything else there is for the client, the gateway or tracing.
@@ -38,7 +37,7 @@ module NitroIntelligence
           add_message_redaction_header(parameters, mask_content:)
           response = @client.request(
             method: :post,
-            path: @client.base_url.path.chomp("/").end_with?("/v1") ? VERSIONED_BASE_PATH : PATH,
+            path:,
             body: { model: parameters[:model], state:, questions:, **parameters.slice(*BODY_PARAMETERS).compact },
             model: Response,
             options: parameters[:request_options]
@@ -59,6 +58,14 @@ module NitroIntelligence
           # A decision request has nothing in common with a chat one, so a model of another type
           # would fail at the gateway with an error that does not say why.
           raise ArgumentError, "Model '#{parameters[:model]}' is not a decision model"
+        end
+
+      private
+
+        # Both reach `/v1/systemone`: the whole route on a base URL without a version, or only the
+        # rest of it on one that already ends in `/v1`.
+        def path
+          @client.base_url.path.chomp("/").end_with?("/v1") ? PATH_AFTER_V1 : PATH
         end
       end
     end
