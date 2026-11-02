@@ -9,9 +9,11 @@ module NitroIntelligence
       # `POST /v1/systemone`. openai-ruby has no resource for it, so the request goes through
       # the client's generic `request`, which keeps its credentials, retries, timeouts and errors.
       class DecisionHandler < BaseHandler
-        # Relative to `inference_base_url`, which carries no `/v1`. The gateway also serves
-        # `/systemone`, but `/v1/systemone` is the route its docs name and key route limits list.
+        # `/v1/systemone` is the route the gateway's docs name and key route limits list. The
+        # gateway also serves `/systemone`, which is what is left to add when `inference_base_url`
+        # already ends in `/v1`.
         PATH = "v1/systemone".freeze
+        VERSIONED_BASE_PATH = "systemone".freeze
 
         # System One request fields other than the model, state and questions, taken from
         # `parameters`. Everything else there is for the client, the gateway or tracing.
@@ -34,7 +36,7 @@ module NitroIntelligence
           add_gateway_headers(parameters, correlation_trace_id:, mask_content:)
           response = @client.request(
             method: :post,
-            path: PATH,
+            path: @client.base_url.path.chomp("/").end_with?("/v1") ? VERSIONED_BASE_PATH : PATH,
             body: { model: parameters[:model], state:, questions:, **parameters.slice(*BODY_PARAMETERS).compact },
             model: Response,
             options: parameters[:request_options]
