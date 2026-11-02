@@ -125,6 +125,34 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
       expect(decision.usage[:input_tokens]).to eq(120)
     end
 
+    it "leaves out assets that are nil" do
+      handler.create(state:, questions:, parameters: { assets: nil })
+
+      expect(systemone.with { |request| !JSON.parse(request.body).key?("assets") }).to have_been_requested
+    end
+
+    it "returns answers that changing leaves the raw answers alone" do
+      response_body[:answers] = { spot: { type: "box", box: { top: 0.2 } }, odd: "unexpected" }
+      stub_request(:post, "https://gateway.example/v1/systemone")
+        .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      decision = handler.create(state:, questions:)
+      decision.answers[:spot][:box][:top] = 999
+      decision.answers[:odd] << "!"
+
+      expect(decision.raw_answers).to eq(spot: { type: "box", box: { top: 0.2 } }, odd: "unexpected")
+    end
+
+    it "returns the answers of a response that names no model" do
+      stub_request(:post, "https://gateway.example/v1/systemone")
+        .to_return(status: 200, body: response_body.except(:model).to_json, headers: response_headers)
+
+      decision = handler.create(state:, questions:)
+
+      expect(decision.model).to be_nil
+      expect(decision.answers[:billing].noul).to eq(0.98)
+    end
+
     it "keeps the other answers when one is not a hash" do
       response_body[:answers] = { billing: { type: "noul", noul: 0.98 }, broken: nil, odd: "unexpected" }
       stub_request(:post, "https://gateway.example/v1/systemone")
@@ -201,6 +229,12 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
     it "raises when the requested model is not a decision model" do
       expect { handler.create(state:, questions:, parameters: { model: "Qwen/Qwen3.6-35B-A3B" }) }
         .to raise_error(ArgumentError, "Model 'Qwen/Qwen3.6-35B-A3B' is not a decision model")
+      expect(systemone).not_to have_been_requested
+    end
+
+    it "raises rather than sending an explicit nil model" do
+      expect { handler.create(state:, questions:, parameters: { model: nil }) }
+        .to raise_error(ArgumentError, "Unsupported model: ''")
       expect(systemone).not_to have_been_requested
     end
 

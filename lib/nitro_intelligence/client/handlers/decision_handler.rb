@@ -35,7 +35,7 @@ module NitroIntelligence
           response = @client.request(
             method: :post,
             path: PATH,
-            body: { model: parameters[:model], state:, questions:, **parameters.slice(*BODY_PARAMETERS) },
+            body: { model: parameters[:model], state:, questions:, **parameters.slice(*BODY_PARAMETERS).compact },
             model: Response,
             options: parameters[:request_options]
           )
