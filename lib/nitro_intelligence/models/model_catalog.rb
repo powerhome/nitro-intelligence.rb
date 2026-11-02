@@ -36,6 +36,8 @@ module NitroIntelligence
       raise ArgumentError, "Model '#{name}' is not #{article} #{type.kind} model"
     end
 
+    # Unused within the gem, which validates through #fetch, but public: applications check
+    # whether a model is configured before offering it.
     def exists?(name)
       lookup_by_name(name).present?
     end
