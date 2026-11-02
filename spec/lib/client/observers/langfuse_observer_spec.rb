@@ -136,6 +136,18 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
           ["result", nil]
         end
       end
+
+      it "names the prompt in the request's metadata without changing the caller's hash" do
+        caller_metadata = { ticket: "1" }
+        parameters = { model: "gpt-4", metadata: caller_metadata }
+
+        observer.observe("chat-completion", **default_args, parameters:, prompt: fake_prompt) do
+          ["result", nil]
+        end
+
+        expect(parameters[:metadata]).to eq(ticket: "1", prompt_name: "onboarding-prompt", prompt_version: "v2")
+        expect(caller_metadata).to eq(ticket: "1")
+      end
     end
 
     context "when trace attributes are returned from the block" do

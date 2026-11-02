@@ -101,6 +101,12 @@ RSpec.describe NitroIntelligence::Observability::Prompt do
         expect(interpolated_messages.first).to eq({ role: "system", content: "Hello, World! The year is 2024." })
         expect(interpolated_messages.last).to eq({ role: "user", content: "Please summarize this text." })
       end
+
+      it "leaves the given messages as they were" do
+        text_prompt_instance.interpolate(messages:, variables: { name: "World", year: 2024 })
+
+        expect(messages).to eq([{ role: "user", content: "Please summarize this text." }])
+      end
     end
 
     context "for a chat prompt" do

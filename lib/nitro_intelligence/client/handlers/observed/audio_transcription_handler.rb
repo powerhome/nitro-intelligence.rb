@@ -17,8 +17,7 @@ module NitroIntelligence
           def create(audio_file:, message: +"", parameters: {})
             @base_handler.validate_and_resolve!(parameters)
 
-            # Modifies message in place
-            prompt = handle_prompt(message:, parameters:)
+            prompt, message = handle_prompt(message:, parameters:)
             trace_name = parameters[:trace_name] || prompt&.name || project.slug
 
             @observer.observe(
@@ -44,7 +43,7 @@ module NitroIntelligence
               store: project.prompt_store,
               parameters:
             )
-            return nil if prompt.blank?
+            return [nil, message] if prompt.blank?
 
             # Prompts for audio transcriptions should only be text
             if prompt.type != "text"
@@ -53,10 +52,10 @@ module NitroIntelligence
             end
             interpolated_prompt = prompt.compile(**(parameters[:prompt_variables] || {}))
 
-            message.prepend("#{interpolated_prompt} ").strip!
             parameters.merge!(prompt.config) unless parameters[:prompt_config_disabled]
 
-            prompt
+            # A new string rather than the caller's, which they may send again.
+            [prompt, "#{interpolated_prompt} #{message}".strip]
           end
 
           # Uploads go to Cerebro's media API directly, past any masking, so a masked

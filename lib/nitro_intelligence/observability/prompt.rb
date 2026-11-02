@@ -31,7 +31,7 @@ module NitroIntelligence
       # into the correct position based on prompt "type" ("text" or "chat")
       def interpolate(messages:, variables:)
         if @type == "text"
-          messages.prepend({ role: "system", content: compile(**variables) })
+          [{ role: "system", content: compile(**variables) }] + messages
         elsif @type == "chat"
           compile(**variables) + messages
         end
