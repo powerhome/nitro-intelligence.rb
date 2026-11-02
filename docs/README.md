@@ -251,9 +251,9 @@ decision.answers[:urgency].legend        # => {0 => "Can wait", 1 => "Needs atte
 decision.answers[:urgency].probabilities # => {0 => 0.1, 1 => 0.1, 2 => 0.8}
 ```
 
-`answers` is keyed by question name and accepts strings or symbols. Each answer is a `NitroIntelligence::Decision::NoulAnswer`, `ChoiceAnswer` or `ScoreAnswer`; an answer of any other type is returned as the hash the gateway sent. `decision.usage` holds the token counts and `decision.last_response` the HTTP response, including the gateway's headers.
+`answers` is keyed by question name and accepts strings or symbols. Each answer is a `NitroIntelligence::Decision::NoulAnswer`, `ChoiceAnswer` or `ScoreAnswer`; an answer of any other type is returned as the gateway sent it. `decision.usage` holds the token counts, also by string or symbol, and `decision.last_response` the HTTP response, including the gateway's headers.
 
-The model defaults to `default_decision_model` and must be listed in `config.model_config` with the type `decision`. `parameters` takes `model`, `metadata`, `request_options` and, with observability, the trace options described under [Observability](#observability). With observability enabled, each call is recorded in Cerebro as a generation with the state and questions as input, the answers as output, and the gateway's cost.
+The model defaults to `default_decision_model` and must be listed in `config.model_config` with the type `decision`. `parameters` takes `model`, `assets` (images that `state` and the questions refer to, see the [System One docs](https://docs.typesafe.ai/api/system-one.md)), `metadata`, `request_options` and, with observability, the trace options described under [Observability](#observability). With observability enabled, each call is recorded in Cerebro as a generation with the state and questions as input, the answers as output, and the gateway's cost.
 
 The client does not limit the request. To keep a feature portable to models NIP hosts itself, stay within the gateway's [portable subset](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md#stay-within-what-every-backend-supports): up to 64 questions, 26 options per `choice` question and 10 levels per `score` question, with text `state`.
 

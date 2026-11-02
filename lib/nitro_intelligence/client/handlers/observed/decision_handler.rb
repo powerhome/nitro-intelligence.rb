@@ -43,7 +43,8 @@ module NitroIntelligence
 
             trace_attributes = {
               model: decision.model,
-              output: decision.raw_answers,
+              # A copy, because the observer truncates the output it records in place.
+              output: decision.raw_answers.deep_dup,
               usage_details: usage_details(decision.usage),
               cost_details: @base_handler.cost_details(decision),
             }

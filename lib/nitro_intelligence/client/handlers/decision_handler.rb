@@ -9,10 +9,13 @@ module NitroIntelligence
       # `POST /v1/systemone`. openai-ruby has no resource for it, so the request goes through
       # the client's generic `request`, which keeps its credentials, retries, timeouts and errors.
       class DecisionHandler < BaseHandler
-        # Relative to `inference_base_url`, which carries no `/v1`, like the paths openai-ruby
-        # uses for chat and speech. The gateway serves the route at both `/systemone` and
-        # `/v1/systemone`.
-        PATH = "systemone".freeze
+        # Relative to `inference_base_url`, which carries no `/v1`. The gateway also serves
+        # `/systemone`, but `/v1/systemone` is the route its docs name and key route limits list.
+        PATH = "v1/systemone".freeze
+
+        # System One request fields other than the model, state and questions, taken from
+        # `parameters`. Everything else there is for the client, the gateway or tracing.
+        BODY_PARAMETERS = %i[assets].freeze
 
         # Declaring a model, rather than taking the decoded hash, is what gets the response its
         # `last_response`, and with it the gateway's cost headers. Only `model` is declared:
@@ -34,7 +37,7 @@ module NitroIntelligence
           response = @client.request(
             method: :post,
             path: PATH,
-            body: { model: parameters[:model], state:, questions: },
+            body: { model: parameters[:model], state:, questions:, **parameters.slice(*BODY_PARAMETERS) },
             model: Response,
             options: parameters[:request_options]
           )

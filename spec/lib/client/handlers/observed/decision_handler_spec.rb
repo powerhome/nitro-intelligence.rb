@@ -3,6 +3,8 @@ require "webmock/rspec"
 
 require "nitro_intelligence/client/handlers/decision_handler"
 require "nitro_intelligence/client/handlers/observed/decision_handler"
+require "nitro_intelligence/client/observers/langfuse_observer"
+require "nitro_intelligence/observability/project"
 
 RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
   let(:client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example", max_retries: 0) }
@@ -35,7 +37,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
   let(:response_headers) { { "Content-Type" => "application/json", "x-litellm-response-cost" => "1.764e-05" } }
 
   let!(:systemone) do
-    stub_request(:post, "https://gateway.example/systemone")
+    stub_request(:post, "https://gateway.example/v1/systemone")
       .to_return(status: 200, body: response_body.to_json, headers: response_headers)
   end
 
@@ -75,8 +77,17 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
       )
     end
 
+    it "records a copy of the answers, so truncating the recording leaves the caller's alone" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+      decision, trace_attributes = handler.create(state:, questions:)
+      trace_attributes[:output][:billing][:noul] = "[Truncated...]"
+
+      expect(decision.raw_answers[:billing][:noul]).to eq(0.98)
+    end
+
     it "leaves the cost unset when the gateway did not price the request" do
-      stub_request(:post, "https://gateway.example/systemone").to_return(status: 200, body: response_body.to_json, headers: { "Content-Type" => "application/json" })
+      stub_request(:post, "https://gateway.example/v1/systemone").to_return(status: 200, body: response_body.to_json, headers: { "Content-Type" => "application/json" })
       allow(fake_observer).to receive(:observe).and_yield(fake_generation)
 
       _, trace_attributes = handler.create(state:, questions:)
@@ -85,7 +96,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
     end
 
     it "leaves usage unset when the response carries none" do
-      stub_request(:post, "https://gateway.example/systemone").to_return(status: 200, body: response_body.except(:usage).to_json, headers: response_headers)
+      stub_request(:post, "https://gateway.example/v1/systemone").to_return(status: 200, body: response_body.except(:usage).to_json, headers: response_headers)
       allow(fake_observer).to receive(:observe).and_yield(fake_generation)
 
       _, trace_attributes = handler.create(state:, questions:)
@@ -100,6 +111,44 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
       handler.create(state:, questions:)
 
       expect(systemone.with(headers: { "x-litellm-enable-message-redaction" => "true" })).to have_been_requested
+    end
+
+    context "with a project that masks content, observed for real" do
+      let(:project) do
+        NitroIntelligence::Observability::Project.new(slug: "masked", id: "p", public_key: "pk", secret_key: "sk", mask_content: true)
+      end
+      let(:recorded) { [] }
+      let(:generation) do
+        double("Generation", trace_id: "trace-123", id: "obs-1").tap do |generation|
+          allow(generation).to receive(:update)
+          %i[model= model_parameters= usage_details= cost_details= input= output=].each do |setter|
+            allow(generation).to receive(setter) { |value| recorded << [setter, value] }
+          end
+          allow(generation).to receive(:update_trace) { |attributes| recorded << [:update_trace, attributes] }
+        end
+      end
+      let(:observability_client) { double("ObservabilityClient") }
+      let(:project_client) { double("ProjectClient", project:, observability_client:) }
+      let(:handler) do
+        described_class.new(
+          base_handler:, observer: NitroIntelligence::Client::Observers::LangfuseObserver.new(project_client:)
+        )
+      end
+
+      before do
+        allow(Langfuse).to receive(:propagate_attributes).and_yield
+        allow(observability_client).to receive(:observe).and_yield(generation)
+      end
+
+      it "records neither the state, the questions nor the answers" do
+        decision = handler.create(state:, questions:)
+
+        expect(decision.answers[:billing].noul).to eq(0.98)
+        recorded_text = recorded.to_s
+        expect(recorded_text).not_to include("charged twice", "billing", "0.98")
+        expect(recorded).to include([:input=, "[masked]"], [:output=, "[masked]"])
+        expect(recorded).to include([:cost_details=, { total: 1.764e-05 }])
+      end
     end
 
     it "leaves the gateway's logs alone when the project does not mask content" do
