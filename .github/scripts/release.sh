@@ -204,7 +204,11 @@ propose() {
     return
   fi
 
-  assignees=$(mergers "$(tag_for "$old")" | paste -sd, -)
+  # Who to assign is a courtesy, so a failed lookup still proposes the release.
+  if ! assignees=$(mergers "$(tag_for "$old")" | paste -sd, -); then
+    echo "::warning::Looking up who merged since $(tag_for "$old") failed, so the release PR is assigned to whoever pushed." >&2
+    assignees=""
+  fi
   # The pusher stands in only when, like a merger, they are a person rather than an automation.
   if [[ -z $assignees && $GITHUB_ACTOR != *"[bot]" && $(gh api "users/$GITHUB_ACTOR" --jq .type) == User ]]; then
     assignees=$GITHUB_ACTOR
