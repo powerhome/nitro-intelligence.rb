@@ -37,7 +37,7 @@ module NitroIntelligence
           response = @client.request(
             method: :post,
             path: PATH,
-            body: { model: parameters[:model], state:, questions:, **parameters.slice(*BODY_PARAMETERS) },
+            body: { model: parameters[:model], state:, questions:, **parameters.slice(*BODY_PARAMETERS).compact },
             model: Response,
             options: parameters[:request_options]
           )
@@ -45,12 +45,14 @@ module NitroIntelligence
         end
 
         def validate_and_resolve!(parameters)
-          model_name = parameters[:model] || NitroIntelligence.model_catalog.default_decision_model&.name
-          model = NitroIntelligence.model_catalog.lookup_by_name(model_name)
-          raise ArgumentError, "Unsupported model: '#{model_name}'" unless model
+          default_parameters = {
+            metadata: {},
+            model: NitroIntelligence.model_catalog.default_decision_model&.name,
+          }
 
-          parameters.replace({ metadata: {}, model: model.name }.merge(parameters))
-          return if model.is_a?(DecisionModel)
+          parameters.replace(default_parameters.merge(parameters))
+          Client.validate_model(parameters[:model])
+          return if NitroIntelligence.model_catalog.lookup_by_name(parameters[:model]).is_a?(DecisionModel)
 
           # A decision request has nothing in common with a chat one, so a model of another type
           # would fail at the gateway with an error that does not say why.

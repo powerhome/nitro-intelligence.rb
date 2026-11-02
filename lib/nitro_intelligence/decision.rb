@@ -30,9 +30,10 @@ module NitroIntelligence
 
     # A `box` answer, and any answer type added after this client, is returned as the hash it
     # arrived as rather than dropped. An answer that is not a hash at all is returned as it came
-    # too, so it does not cost the caller every other answer in a response already paid for.
+    # too, so it does not cost the caller every other answer in a response already paid for. Both
+    # are copies, so changing one leaves `raw_answers` as the gateway sent it.
     def build_answer(answer)
-      return answer unless answer.is_a?(Hash)
+      return answer.deep_dup unless answer.is_a?(Hash)
 
       case answer[:type]
       when "noul"
@@ -51,7 +52,7 @@ module NitroIntelligence
           legend: levels(answer[:legend])
         )
       else
-        answer
+        answer.deep_dup
       end
     end
 
