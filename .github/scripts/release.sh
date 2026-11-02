@@ -31,9 +31,10 @@ tag_for() {
   echo "v$1-nitro_intelligence"
 }
 
-# The commit that last changed the version: the release commit to tag.
+# The commit that last changed the version: the release commit to tag. Merge commits are compared
+# with their first parent, so that one would count too, though main takes only squash merges.
 release_commit() {
-  git log -1 --format=%H -G'VERSION = ' -- "$VERSION_FILE"
+  git log -1 --first-parent --diff-merges=first-parent --no-patch --format=%H -G'VERSION = ' -- "$VERSION_FILE"
 }
 
 # bump_version_files OLD NEW LEVEL
@@ -87,21 +88,30 @@ bump_level() {
 checked_version() {
   local version
   version=$(current_version)
-  if [[ ! $version =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+].*)?$ ]]; then
+  if ! is_semver "$version"; then
     echo "::error::The version is \"$version\", which is not a semantic version." >&2
     return 1
   fi
   echo "$version"
 }
 
-# bump VERSION LEVEL. Components are read as decimal, since bash takes a leading zero for octal.
+# is_semver VERSION: whether VERSION is a semantic version, whose components have no leading zeros.
+is_semver() {
+  [[ $1 =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)([-+].*)?$ ]]
+}
+
+# bump VERSION LEVEL
 bump() {
   local major minor patch
+  if ! is_semver "$1"; then
+    echo "::error::\"$1\" is not a semantic version, so it cannot be bumped." >&2
+    return 1
+  fi
   IFS=. read -r major minor patch <<<"${1%%[-+]*}"
   case $2 in
-    major) echo "$((10#$major + 1)).0.0" ;;
-    minor) echo "$((10#$major)).$((10#$minor + 1)).0" ;;
-    patch) echo "$((10#$major)).$((10#$minor)).$((10#$patch + 1))" ;;
+    major) echo "$((major + 1)).0.0" ;;
+    minor) echo "$major.$((minor + 1)).0" ;;
+    patch) echo "$major.$minor.$((patch + 1))" ;;
   esac
 }
 
@@ -174,9 +184,12 @@ mergers() {
 # commit through the API and signs it as the App. The commit is made on a scratch branch: pointing
 # $BRANCH at main first, even briefly, would mark the open release PR as merged.
 commit_release() {
+  # The push workflows ignore this branch by name in their branches-ignore, so rename it there too.
   local scratch="$BRANCH-staging" base oid
   base=$(git rev-parse HEAD)
   git push -q --force origin "$base:refs/heads/$scratch"
+  # Deletes the scratch branch however the run ends, including when a command below fails.
+  trap "git push -q origin --delete '$scratch' 2>/dev/null || true" EXIT
   # File contents go through pipes, never arguments, which Linux limits to 128 KiB each.
   oid=$(git diff --name-only | while read -r file; do
     base64 <"$file" | tr -d '\n' | jq -Rs --arg path "$file" '{$path, contents: .}'
@@ -192,11 +205,11 @@ commit_release() {
     }' | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid // empty')
   if [[ -z $oid ]]; then
     echo "::error::createCommitOnBranch made no release commit." >&2
-    git push -q origin --delete "$scratch"
     return 1
   fi
   git fetch -q origin "refs/heads/$scratch"
   git push -q origin --delete "$scratch"
+  trap - EXIT
   if [[ $(git rev-parse FETCH_HEAD) != "$oid" ]]; then
     echo "::error::$scratch moved while the release commit was made." >&2
     return 1
@@ -227,7 +240,8 @@ propose() {
 
   # Looked up before anything is pushed, so a failed lookup leaves no unassigned PR.
   assignees=$(mergers "$(tag_for "$old")" | paste -sd, -)
-  if [[ -z $assignees && $GITHUB_ACTOR != *"[bot]" ]]; then
+  # The pusher stands in only when, like a merger, they are a person rather than an automation.
+  if [[ -z $assignees && $GITHUB_ACTOR != *"[bot]" && $(gh api "users/$GITHUB_ACTOR" --jq .type) == User ]]; then
     assignees=$GITHUB_ACTOR
   fi
 
