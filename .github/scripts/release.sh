@@ -118,6 +118,10 @@ bump() {
     major) echo "$((major + 1)).0.0" ;;
     minor) echo "$major.$((minor + 1)).0" ;;
     patch) echo "$major.$minor.$((patch + 1))" ;;
+    *)
+      echo "::error::\"$2\" is not a bump level." >&2
+      return 1
+      ;;
   esac
 }
 

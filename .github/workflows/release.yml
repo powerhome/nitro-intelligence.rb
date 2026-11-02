@@ -66,6 +66,11 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           branch: automated-release
           base: main
+          # Only the release edits, whatever else the job may have left in the checkout.
+          add-paths: |
+            docs/CHANGELOG.md
+            lib/nitro_intelligence/version.rb
+            Gemfile.lock
           delete-branch: true
           sign-commits: true
           commit-message: Release ${{ steps.proposal.outputs.version }}
