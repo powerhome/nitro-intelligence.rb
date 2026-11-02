@@ -19,9 +19,9 @@ require "nitro_intelligence/reporter"
 
 # The Ruby client for the Nitro Intelligence Platform.
 #
-# The public API is what `docs/README.md` and the guides it links to document, and it is the part of
-# this reference not marked private. Everything else may change in any release, without notice in
-# the changelog.
+# The public API is everything in this reference not marked `@api private`, and follows Semantic
+# Versioning. `docs/README.md` and `docs/ASSISTANTS.md` are guides to using it, not a list of
+# everything public. What the reference leaves out may change in any release.
 module NitroIntelligence
   # @!attribute [rw] configuration
   #   @api private
