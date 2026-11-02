@@ -2,12 +2,13 @@
 # Cuts releases and proposes the next one, driven by the changelog. Run by
 # .github/workflows/release.yml after every push to main:
 #
-# 1. If the version on main has no tag yet, a release PR has just merged:
-#    publish a GitHub release for it, which pushes the tag the gem release job
-#    runs on.
-# 2. If the changelog has Unreleased entries, open (or refresh) the one release
-#    PR on $BRANCH, bumping the version by what those entries call for and
-#    assigning whoever merged PRs since the last release.
+# 1. `release.sh release`: if the version on main has no tag yet, a release PR
+#    has just merged, so publish a GitHub release for it, which pushes the tag
+#    the gem release job runs on.
+# 2. `release.sh propose`: if the changelog has Unreleased entries, make the
+#    release edits, bumping the version by what those entries call for, and
+#    describe the release PR, assigned to whoever merged PRs since the last
+#    release. The workflow's create-pull-request step opens or refreshes it.
 #
 # `release.sh next` prints the version a release would get, and
 # `release.sh prepare` makes the release edits in the working tree, both
@@ -55,8 +56,6 @@ changelog_links() {
 }
 
 # Everything below is the same in every repository that uses this script.
-
-BRANCH=automated-release
 
 # section NAME: the changelog entries under "## [NAME]", without the heading.
 section() {
@@ -180,114 +179,47 @@ mergers() {
   done | awk '!seen[$0]++ && count++ < 10'
 }
 
-# commit_release VERSION: points $BRANCH at a commit of the release edits on top of main. main's
-# ruleset requires verified signatures, and the runner has no signing key, so GitHub makes the
-# commit through the API and signs it as the App. The commit is made on a scratch branch: pointing
-# $BRANCH at main first, even briefly, would mark the open release PR as merged.
-commit_release() {
-  # The push workflows ignore this branch by name in their branches-ignore, so rename it there too.
-  local scratch="$BRANCH-staging" base oid
-  base=$(git rev-parse HEAD)
-  git push -q --force origin "$base:refs/heads/$scratch"
-  # Deletes the scratch branch however the run ends, including when a command below fails.
-  trap "git push -q origin --delete '$scratch' 2>/dev/null || true" EXIT
-  # File contents go through pipes, never arguments, which Linux limits to 128 KiB each.
-  oid=$(git diff --name-only | while read -r file; do
-    base64 <"$file" | tr -d '\n' | jq -Rs --arg path "$file" '{$path, contents: .}'
-  done | jq -s --arg repo "$GITHUB_REPOSITORY" --arg branch "$scratch" --arg base "$base" \
-    --arg headline "Release $1" '. as $additions | {
-      query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
-      variables: {input: {
-        branch: {repositoryNameWithOwner: $repo, branchName: $branch},
-        expectedHeadOid: $base,
-        message: {headline: $headline},
-        fileChanges: {additions: $additions}
-      }}
-    }' | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.oid // empty')
-  if [[ -z $oid ]]; then
-    echo "::error::createCommitOnBranch made no release commit." >&2
-    return 1
-  fi
-  git fetch -q origin "refs/heads/$scratch"
-  git push -q origin --delete "$scratch"
-  trap - EXIT
-  if [[ $(git rev-parse FETCH_HEAD) != "$oid" ]]; then
-    echo "::error::$scratch moved while the release commit was made." >&2
-    return 1
-  fi
-  git push -q --force origin "FETCH_HEAD:refs/heads/$BRANCH"
-}
-
-# Opens the release PR, or refreshes the open one, from the changelog on main.
+# propose: makes the release edits for the Unreleased entries and describes the release PR for
+# release.yml's create-pull-request step, as step outputs: `version`, `assignees`, and `body-path`,
+# a file outside the checkout so that it is not committed. With nothing unreleased it makes no
+# edits and no outputs, and that step closes any open release PR, since its branch no longer
+# differs from main.
 propose() {
-  local old level open version notes body assignees stale
+  local old level version assignees body_path
   old=$(checked_version)
   level=$(section Unreleased | bump_level)
-  # --head matches the branch name in forks too, so only a PR from this repository counts.
-  open=$(gh pr list --head "$BRANCH" --base main --state open --json number,isCrossRepository \
-    --jq 'map(select(.isCrossRepository | not)) | .[0].number // empty')
   version=$(prepare)
-
   if [[ -z $version ]]; then
     echo "Nothing unreleased in $CHANGELOG."
-    if [[ -n $open ]]; then
-      gh pr close "$open" --comment "$CHANGELOG has nothing unreleased any more, so there is nothing to release."
-      if git ls-remote --exit-code -q origin "refs/heads/$BRANCH" >/dev/null; then
-        git push -q origin --delete "$BRANCH"
-      fi
-    fi
     return
   fi
 
-  # Looked up before anything is pushed, so a failed lookup leaves no unassigned PR.
   assignees=$(mergers "$(tag_for "$old")" | paste -sd, -)
   # The pusher stands in only when, like a merger, they are a person rather than an automation.
   if [[ -z $assignees && $GITHUB_ACTOR != *"[bot]" && $(gh api "users/$GITHUB_ACTOR" --jq .type) == User ]]; then
     assignees=$GITHUB_ACTOR
   fi
 
-  commit_release "$version"
-
-  notes=$(section "$version")
-  printf -v body '%s\n\n%s\n\n## %s\n\n%s\n' \
+  body_path="$RUNNER_TEMP/release-pr.md"
+  printf '%s\n\n%s\n\n## %s\n\n%s\n' \
     "Releases $version, a $level bump from $old for the changelog's Unreleased entries (**Breaking** or Removed: major; Added, Changed or Deprecated: minor; anything else: patch)." \
     "Merging this publishes the GitHub release $(tag_for "$version"), which starts the release. \`.github/workflows/release.yml\` rebuilds this PR from main after every merge, so make changelog fixes on main rather than here." \
-    "$version" "$notes"
+    "$version" "$(section "$version")" >"$body_path"
 
-  if [[ -n $open ]]; then
-    gh pr edit "$open" --title "Release $version" --body "$body"
-  else
-    open=$(gh pr create --head "$BRANCH" --base main --title "Release $version" --body "$body" | sed 's|.*/||')
-  fi
-
-  if [[ -n $assignees ]]; then
-    # Replaces the assignees rather than adding to them, so that someone who has dropped out of
-    # the ten most recent mergers does not hold a place.
-    stale=$(gh pr view "$open" --json assignees --jq '.assignees[].login' |
-      awk -v keep="$assignees" 'BEGIN { split(keep, list, ","); for (i in list) kept[list[i]] } !($0 in kept)' |
-      paste -sd, -)
-    gh pr edit "$open" --add-assignee "$assignees" ${stale:+--remove-assignee "$stale"}
-  fi
+  {
+    echo "version=$version"
+    echo "assignees=$assignees"
+    echo "body-path=$body_path"
+  } >>"$GITHUB_OUTPUT"
 }
 
-case ${1:-run} in
+case ${1:-} in
   next) next_version ;;
   prepare) prepare ;;
-  run)
-    # A release that fails still lets the next one be proposed, and fails the run afterwards. It
-    # runs in a subshell with errexit on, since `release || ...` would turn errexit off inside it.
-    set +e
-    (
-      set -e
-      release
-    )
-    status=$?
-    set -e
-    propose
-    exit "$status"
-    ;;
+  release) release ;;
+  propose) propose ;;
   *)
-    echo "usage: $0 [run|next|prepare]" >&2
+    echo "usage: $0 next|prepare|release|propose" >&2
     exit 64
     ;;
 esac

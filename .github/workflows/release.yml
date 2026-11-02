@@ -4,7 +4,8 @@
 #
 # It runs as the release GitHub App, not GITHUB_TOKEN: a PR or tag GITHUB_TOKEN creates
 # starts no workflows, so the release PR would never get its required checks and the
-# release tag would never run the gem release job.
+# release tag would never run the gem release job. The App also signs the release commit,
+# which main's ruleset requires.
 
 name: Release
 
@@ -43,7 +44,37 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
-      - name: Release and propose the next release
+      # A release that fails still lets the next one be proposed, and fails the run at the end.
+      - name: Publish the release of a merged release PR
+        id: release
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: .github/scripts/release.sh
+        run: .github/scripts/release.sh release
+
+      - name: Prepare the next release
+        id: proposal
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: .github/scripts/release.sh propose
+
+      # Rebuilds the branch from main with the release edits, and closes the PR once main has
+      # nothing left to release, since the branch then no longer differs from main.
+      - name: Open or refresh the release PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: automated-release
+          base: main
+          delete-branch: true
+          sign-commits: true
+          commit-message: Release ${{ steps.proposal.outputs.version }}
+          title: Release ${{ steps.proposal.outputs.version }}
+          body-path: ${{ steps.proposal.outputs.body-path }}
+          assignees: ${{ steps.proposal.outputs.assignees }}
+
+      - name: Fail the run if the release failed
+        if: steps.release.outcome == 'failure'
+        run: |
+          echo "::error::Publishing the release failed; see the \"Publish the release of a merged release PR\" step."
+          exit 1

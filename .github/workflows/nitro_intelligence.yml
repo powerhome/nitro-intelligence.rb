@@ -2,10 +2,6 @@ name: nitro_intelligence
 
 on:
   push:
-    # release.sh's scratch branch is never a PR head, so it needs no checks. Listing tags keeps
-    # the gem release job running on release tags, which a branch filter alone would stop.
-    branches-ignore: [automated-release-staging]
-    tags: ["**"]
 
 jobs:
   ruby:
