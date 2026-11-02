@@ -37,14 +37,15 @@ release_commit() {
   git log -1 --first-parent --diff-merges=first-parent --no-patch --format=%H -G'VERSION = ' -- "$VERSION_FILE"
 }
 
-# bump_version_files OLD NEW LEVEL
+# bump_version_files OLD NEW LEVEL. Checks the lockfile before writing either file, so a failure
+# leaves both untouched.
 bump_version_files() {
-  perl -pi -e "s/VERSION = \"\Q$1\E\"/VERSION = \"$2\"/" "$VERSION_FILE"
-  perl -pi -e "s/^    nitro_intelligence \(\Q$1\E\)\$/    nitro_intelligence ($2)/" Gemfile.lock
-  if ! grep -qxF "    nitro_intelligence ($2)" Gemfile.lock; then
+  if ! grep -qxF "    nitro_intelligence ($1)" Gemfile.lock; then
     echo "::error::Gemfile.lock does not pin nitro_intelligence ($1), so it was not bumped." >&2
     return 1
   fi
+  perl -pi -e "s/VERSION = \"\Q$1\E\"/VERSION = \"$2\"/" "$VERSION_FILE"
+  perl -pi -e "s/^    nitro_intelligence \(\Q$1\E\)\$/    nitro_intelligence ($2)/" Gemfile.lock
 }
 
 # changelog_links OLD NEW: the link references that replace the Unreleased one.
