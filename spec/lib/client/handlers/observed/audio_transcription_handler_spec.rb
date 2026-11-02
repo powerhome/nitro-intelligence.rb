@@ -9,7 +9,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
   let(:base_handler) { NitroIntelligence::Client::Handlers::AudioTranscriptionHandler.new(client: fake_openai_client) }
 
   let(:fake_prompt_store) { double("PromptStore") }
-  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token") }
+  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token", mask_content?: false) }
   let(:fake_upload_handler) { double("UploadHandler", upload: nil) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
   let(:fake_observer) { double("LangfuseObserver", project_client: fake_project_client) }
@@ -55,6 +55,31 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
       expect(audio_transcription).to eq(fake_transcription_response)
       expect(trace_attributes[:output]).to eq("transcribed text")
       expect(trace_attributes[:usage_details]).to eq(input_tokens: 10, output_tokens: 20, total_tokens: 30)
+    end
+
+    context "when the project masks content" do
+      before { allow(fake_project).to receive(:mask_content?).and_return(true) }
+
+      it "uploads no audio and still returns the transcription" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        allow(fake_transcriptions).to receive(:create).and_return(fake_transcription_response)
+
+        expect(fake_upload_handler).not_to receive(:upload)
+
+        audio_transcription, = handler.create(message: "transcribe", audio_file: fake_audio_file)
+
+        expect(audio_transcription).to eq(fake_transcription_response)
+      end
+
+      it "asks the gateway to redact the request from its logs" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        expect(fake_transcriptions).to receive(:create) do |**kwargs|
+          expect(kwargs.dig(:request_options, :extra_headers, "x-litellm-enable-message-redaction")).to eq("true")
+          fake_transcription_response
+        end
+
+        handler.create(message: "transcribe", audio_file: fake_audio_file)
+      end
     end
 
     it "records the audio duration for models billed by duration" do

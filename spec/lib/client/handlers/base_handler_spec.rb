@@ -116,6 +116,24 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
     end
   end
 
+  describe "#add_message_redaction_header" do
+    it "asks the gateway to redact the request's messages and response from its logs" do
+      parameters = {}
+
+      handler.send(:add_message_redaction_header, parameters, mask_content: true)
+
+      expect(parameters.dig(:request_options, :extra_headers, "x-litellm-enable-message-redaction")).to eq("true")
+    end
+
+    it "sends no header for a project that does not mask content" do
+      parameters = {}
+
+      handler.send(:add_message_redaction_header, parameters, mask_content: false)
+
+      expect(parameters[:request_options][:extra_headers]).to eq({})
+    end
+  end
+
   describe "#cost_details" do
     def response_with(headers)
       double("Response", last_response: double("LastResponse", headers: headers))

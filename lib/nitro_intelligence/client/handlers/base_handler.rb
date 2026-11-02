@@ -12,6 +12,10 @@ module NitroIntelligence
         TRACE_ID_HEADER = "x-litellm-trace-id".freeze
         SPEND_LOGS_METADATA_HEADER = "x-litellm-spend-logs-metadata".freeze
 
+        # Asks the gateway to replace the messages and the response with
+        # "redacted-by-litellm" in its own logs. The gateway reads any value as on.
+        MESSAGE_REDACTION_HEADER = "x-litellm-enable-message-redaction".freeze
+
         # Headers over ~8KB are rejected by most proxies. Metadata is caller
         # supplied, so cap it rather than turning a large hash into a failed request.
         MAX_SPEND_LOGS_METADATA_BYTES = 4096
@@ -108,6 +112,12 @@ module NitroIntelligence
             TRACE_ID_HEADER => trace_id.presence,
             SPEND_LOGS_METADATA_HEADER => spend_logs_metadata(parameters[:metadata])
           )
+        end
+
+        # A project that masks content in Cerebro keeps it out of the gateway's logs
+        # too, so one setting decides where a request's content is recorded.
+        def add_message_redaction_header(parameters, mask_content:)
+          add_request_headers(parameters, MESSAGE_REDACTION_HEADER => ("true" if mask_content))
         end
 
         def spend_logs_metadata(metadata)

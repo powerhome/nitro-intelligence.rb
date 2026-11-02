@@ -3,7 +3,15 @@ require "nitro_intelligence/client/observers/langfuse_observer"
 
 RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
   let(:fake_observability_client) { double("ObservabilityClient") }
-  let(:fake_project_client) { double("ProjectClient", observability_client: fake_observability_client) }
+  let(:mask_content) { false }
+  let(:fake_project) do
+    double("Project", mask_content?: mask_content).tap do |project|
+      allow(project).to receive(:mask) { |value| mask_content && !value.nil? ? "[masked]" : value }
+    end
+  end
+  let(:fake_project_client) do
+    double("ProjectClient", observability_client: fake_observability_client, project: fake_project)
+  end
   let(:observer) { described_class.new(project_client: fake_project_client) }
 
   let(:fake_generation) do
@@ -346,6 +354,89 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
         suppress_error do
           observer.observe("chat-completion", **default_args, input: "the prompt") { raise error }
         end
+      end
+    end
+
+    describe "when the project masks content" do
+      let(:mask_content) { true }
+      let(:fake_model_config) { double("ModelConfig", omit_output_fields: [%i[data image_base64]]) }
+
+      before do
+        fake_model_catalog = double("ModelCatalog", lookup_by_name: fake_model_config)
+        allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_model_catalog)
+      end
+
+      it "records the input up front as masked" do
+        expect(fake_generation).to receive(:input=).with("[masked]")
+        expect(fake_generation).to receive(:update_trace).with(input: "[masked]")
+
+        observer.observe("chat-completion", **default_args, input: [{ role: "user", content: "hi" }]) do
+          ["result", nil]
+        end
+      end
+
+      it "masks the whole output however the provider shaped it" do
+        output = { content: "hello", reasoning_content: "thinking", provider_specific_fields: { reasoning: "thinking" } }
+
+        expect(fake_generation).to receive(:output=).with("[masked]")
+        expect(fake_generation).to receive(:update_trace).with(input: nil, output: "[masked]")
+
+        observer.observe("chat-completion", **default_args) do
+          ["result", { model: "gpt-4", output: }]
+        end
+      end
+
+      it "masks an input that only the response step reports" do
+        expect(fake_generation).to receive(:input=).with("[masked]")
+
+        observer.observe("chat-completion", **default_args) do
+          ["result", { model: "gpt-4", input: [{ role: "user", content: "hi" }], output: "hello" }]
+        end
+      end
+
+      it "still records what the request cost and how it ran" do
+        expect(fake_generation).to receive(:model=).with("gpt-4")
+        expect(fake_generation).to receive(:usage_details=).with({ total_tokens: 42 })
+        expect(fake_generation).to receive(:cost_details=).with({ total: 5.85e-06 })
+
+        observer.observe("chat-completion", **default_args) do
+          ["result", { model: "gpt-4", output: "hello", usage_details: { total_tokens: 42 }, cost_details: { total: 5.85e-06 } }]
+        end
+      end
+
+      it "does not truncate an output it does not record" do
+        expect do
+          observer.observe("chat-completion", **default_args) do
+            ["result", { model: "gpt-4", output: { data: { image_base64: "long" } } }]
+          end
+        end.not_to raise_error
+      end
+
+      it "records which error occurred without what it said" do
+        expect(fake_generation).to receive(:update).with(level: "ERROR", status_message: "StandardError")
+
+        suppress_error do
+          observer.observe("chat-completion", **default_args) { raise StandardError, "the prompt said: secret" }
+        end
+      end
+
+      it "still records the gateway call ID of a failure" do
+        api_error = StandardError.new("bad request")
+        allow(api_error).to receive(:headers).and_return("x-litellm-call-id" => "call-abc-123")
+
+        expect(fake_generation).to receive(:metadata=).with({ litellm_call_id: "call-abc-123" })
+
+        suppress_error { observer.observe("chat-completion", **default_args) { raise api_error } }
+      end
+
+      it "leaves caller metadata alone" do
+        expect(fake_observability_client).to receive(:observe).with(
+          "chat-completion", hash_including(metadata: { job_id: "job-1" })
+        ).and_yield(fake_generation)
+
+        observer.observe(
+          "chat-completion", **default_args, parameters: { model: "gpt-4", metadata: { job_id: "job-1" } }
+        ) { ["result", nil] }
       end
     end
 
