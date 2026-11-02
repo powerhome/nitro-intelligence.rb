@@ -65,13 +65,14 @@ section() {
   ' "$CHANGELOG" | sed -e '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
 }
 
-# bump_level < NOTES: major, minor, patch or none, per Semantic Versioning. A heading counts only
-# when it has an entry under it.
+# bump_level < NOTES: major, minor, patch or none, per Semantic Versioning. An entry is any text
+# other than a heading, whether a list item or a paragraph, and a heading counts only when it has
+# an entry under it.
 bump_level() {
   local notes headings
   notes=$(cat)
-  headings=$(awk '/^### / { heading = tolower($2); gsub(/[^a-z]/, "", heading) } /^[[:space:]]*[-*] / { print heading }' <<<"$notes")
-  if ! grep -qE '^[[:space:]]*[-*] ' <<<"$notes"; then
+  headings=$(awk '/^### / { heading = tolower($2); gsub(/[^a-z]/, "", heading); next } /[^[:space:]]/ { print heading }' <<<"$notes")
+  if ! grep -v '^### ' <<<"$notes" | grep -q '[^[:space:]]'; then
     echo none
   elif grep -qi '\*\*Breaking' <<<"$notes" || grep -qx 'removed' <<<"$headings"; then
     echo major
@@ -155,12 +156,44 @@ mergers() {
   done | awk '!seen[$0]++ && count++ < 10'
 }
 
+# commit_release VERSION: points $BRANCH at a commit of the release edits on top of main. main's
+# ruleset requires verified signatures, and the runner has no signing key, so GitHub makes the
+# commit through the API and signs it as the App. The commit is made on a scratch branch: pointing
+# $BRANCH at main first, even briefly, would mark the open release PR as merged.
+commit_release() {
+  local scratch="$BRANCH-staging" base files oid
+  base=$(git rev-parse HEAD)
+  git push -q --force origin "$base:refs/heads/$scratch"
+  files=$(git diff --name-only | while read -r file; do
+    jq -n --arg path "$file" --arg contents "$(base64 <"$file" | tr -d '\n')" '{$path, $contents}'
+  done | jq -s .)
+  oid=$(jq -n --arg repo "$GITHUB_REPOSITORY" --arg branch "$scratch" --arg base "$base" \
+    --arg headline "Release $1" --argjson additions "$files" '{
+      query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+      variables: {input: {
+        branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+        expectedHeadOid: $base,
+        message: {headline: $headline},
+        fileChanges: {additions: $additions}
+      }}
+    }' | gh api graphql --input - --jq .data.createCommitOnBranch.commit.oid)
+  git fetch -q origin "refs/heads/$scratch"
+  if [[ $(git rev-parse FETCH_HEAD) != "$oid" ]]; then
+    echo "::error::$scratch moved while the release commit was made." >&2
+    return 1
+  fi
+  git push -q --force origin "FETCH_HEAD:refs/heads/$BRANCH"
+  git push -q origin --delete "$scratch"
+}
+
 # Opens the release PR, or refreshes the open one, from the changelog on main.
 propose() {
-  local old level open version notes body assignees bot_id
+  local old level open version notes body assignees stale
   old=$(current_version)
   level=$(section Unreleased | bump_level)
-  open=$(gh pr list --head "$BRANCH" --base main --state open --json number --jq '.[0].number // empty')
+  # --head matches the branch name in forks too, so only a PR from this repository counts.
+  open=$(gh pr list --head "$BRANCH" --base main --state open --json number,isCrossRepository \
+    --jq 'map(select(.isCrossRepository | not)) | .[0].number // empty')
   version=$(prepare)
 
   if [[ -z $version ]]; then
@@ -180,10 +213,7 @@ propose() {
     assignees=$GITHUB_ACTOR
   fi
 
-  bot_id=$(gh api "users/${APP_SLUG}%5Bbot%5D" --jq .id)
-  git -c user.name="${APP_SLUG}[bot]" -c user.email="${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com" \
-    commit -q -am "Release $version"
-  git push -q --force origin "HEAD:refs/heads/$BRANCH"
+  commit_release "$version"
 
   notes=$(section "$version")
   printf -v body '%s\n\n%s\n\n## %s\n\n%s\n' \
@@ -198,7 +228,12 @@ propose() {
   fi
 
   if [[ -n $assignees ]]; then
-    gh pr edit "$open" --add-assignee "$assignees"
+    # Replaces the assignees rather than adding to them, so that someone who has dropped out of
+    # the ten most recent mergers does not hold a place.
+    stale=$(gh pr view "$open" --json assignees --jq '.assignees[].login' |
+      awk -v keep="$assignees" 'BEGIN { split(keep, list, ","); for (i in list) kept[list[i]] } !($0 in kept)' |
+      paste -sd, -)
+    gh pr edit "$open" --add-assignee "$assignees" ${stale:+--remove-assignee "$stale"}
   fi
 }
 
