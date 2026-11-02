@@ -685,7 +685,7 @@ A request naming a prompt raises when it cannot use one:
 | `NitroIntelligence::Client::Handlers::Observed::AudioTranscriptionHandler::ObservedAudioTranscriptionPromptError` | `#transcribe_audio` names a prompt that is not a text prompt |
 | `NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandler::ObservedTextToSpeechPromptError` | `#text_to_speech` names a prompt that is not a text prompt |
 
-On an observed client whose project does not mask content, `#transcribe_audio` also raises `NitroIntelligence::Audio::AudioFileFormatError` when `audio_file` has no path, such as a `StringIO`. It raises while uploading the audio to Cerebro, after the gateway has already transcribed, and billed for, the audio, so the transcription is lost: pass a `File`. A masked project uploads nothing, so the same call succeeds there. Every method raises `ArgumentError` for a model, or a model setting such as a voice or aspect ratio, that `model_config` does not list.
+On an observed client whose project does not mask content, pass an open `File` as `audio_file` to `#transcribe_audio`. If `audio_file` has no path, as with a `StringIO`, the upload to Cerebro raises `NitroIntelligence::Audio::AudioFileFormatError`. By then, the gateway has already transcribed the audio and billed the request, but your app never receives the transcript. A masked project skips the upload, so the same input works there. Every method raises `ArgumentError` for a model, or a model setting such as a voice or aspect ratio, that `model_config` does not list.
 
 ## Nitro Intelligence Assistants
 
