@@ -17,29 +17,47 @@ module NitroIntelligence
   #     },
   #   }
   class AssistantRegistry
+    # Raised looking up a key `definitions` does not configure, listing the ones it does.
     class UnknownAssistantError < StandardError; end
 
+    # @api private
     DEFINITIONS_KEY = "definitions".freeze
+    # @api private
     SHARED_KEYS = %w[base_url user_id].freeze
 
+    # @api private
     def initialize(config = {})
       @config = config.to_h.deep_stringify_keys
       @assistants = {}
     end
 
+    # The assistant configured under `key`.
+    #
+    # @param key [String, Symbol]
+    # @return [Assistant]
+    # @raise [UnknownAssistantError] when `definitions` has no entry for `key`
+    # @raise [Assistant::ConfigurationError] when the entry lacks its `api_key` or `assistant_id`
     def [](key)
       fetch(key)
     end
 
+    # @param (see #[])
+    # @return (see #[])
+    # @raise (see #[])
     def fetch(key)
       key = key.to_s
       @assistants[key] ||= build(key)
     end
 
+    # Whether `definitions` has an entry for `key`.
+    #
+    # @param key [String, Symbol]
+    # @return [Boolean]
     def key?(key)
       definitions.key?(key.to_s)
     end
 
+    # @return [Array<String>] the keys `definitions` configures
     def keys
       definitions.keys
     end

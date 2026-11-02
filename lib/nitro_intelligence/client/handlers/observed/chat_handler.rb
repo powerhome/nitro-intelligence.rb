@@ -3,8 +3,15 @@ require "nitro_intelligence/observability/prompt_resolver"
 module NitroIntelligence
   module Client
     module Handlers
+      # @api private
       module Observed
+        # @api private
         class ChatHandler
+          # Raised by {Client::Base#chat} on an observed client when the request carries no user
+          # message for the model to answer: the prompt supplies only a system message, and the
+          # caller passed no `message`.
+          #
+          # @api public
           class ObservedChatPromptError < StandardError; end
 
           def initialize(base_handler:, observer:)
