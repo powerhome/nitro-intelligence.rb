@@ -1,6 +1,6 @@
 # Releases from the changelog. After every push to main, publishes a GitHub release for a
 # version that has none yet (the release PR just merged), then opens or refreshes the one
-# "Release X.Y.Z" PR for the Unreleased changelog entries. See .github/scripts/release.sh.
+# `chore: release X.Y.Z` PR for the Unreleased changelog entries. See .github/scripts/release.sh.
 #
 # It runs as the release GitHub App, not GITHUB_TOKEN: a PR or tag GITHUB_TOKEN creates
 # starts no workflows, so the release PR would never get its required checks and the
@@ -75,8 +75,8 @@ jobs:
             Gemfile.lock
           delete-branch: true
           sign-commits: true
-          commit-message: Release ${{ steps.proposal.outputs.version }}
-          title: Release ${{ steps.proposal.outputs.version }}
+          commit-message: "chore: release ${{ steps.proposal.outputs.version }}"
+          title: "chore: release ${{ steps.proposal.outputs.version }}"
           body-path: ${{ steps.proposal.outputs.body-path }}
           assignees: ${{ steps.proposal.outputs.assignees }}
 
