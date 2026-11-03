@@ -45,7 +45,9 @@ module NitroIntelligence
       #   `score`), `instructions` and, for `choice` and `score`, `criteria`: the options keyed by
       #   name, or the levels in order
       # @param parameters [Hash] `model`, `assets` (images `state` and the questions refer to),
-      #   `metadata`, `request_options`, and this gem's own
+      #   `metadata` and `request_options`, and on an observed client `trace_name`, `trace_seed`,
+      #   `user_id`, `session_id` and `tags`. It takes no managed prompt: `prompt_name` and
+      #   `prompt_variables` are ignored, so the instructions belong in `questions`.
       # @return [Decision]
       # @raise [ArgumentError] when the model is not one `model_config` lists with the type
       #   `decision`

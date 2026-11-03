@@ -26,12 +26,15 @@ module NitroIntelligence
     # @!attribute [r] confidence
     #   @return [Float] how concentrated the probabilities are, from 0 to 1
     # @!attribute [r] probabilities
-    #   @return [Hash{Integer => Float}] the probability of every level, keyed by level number
+    #   @return [Hash{Integer, String => Float}] the probability of every level, keyed by level
+    #     number, or by the key the gateway sent where that is not a number
     # @!attribute [r] legend
-    #   @return [Hash{Integer => String}] the description of every level, keyed by level number
+    #   @return [Hash{Integer, String => String, Hash}] the description of every level, as the
+    #     question's `criteria` gave it, keyed like `probabilities`
     ScoreAnswer = Data.define(:score, :confidence, :probabilities, :legend)
 
-    # @return [String] the model that answered, as the gateway named it
+    # @return [String, nil] the model that answered, as the gateway named it; nil when the
+    #   response did not name one
     attr_reader :model
     # @return [ActiveSupport::HashWithIndifferentAccess] the answers keyed by question name, each a
     #   {NoulAnswer}, {ChoiceAnswer} or {ScoreAnswer}, or, for an answer of any other type, what the
