@@ -92,8 +92,8 @@ module NitroIntelligence
         # hash to several requests, and the headers added here belong to this request alone.
         def add_request_headers(parameters, headers)
           request_options = parameters[:request_options].to_h
-          extra_headers = (request_options[:extra_headers] || {}).merge(headers.compact)
-          parameters[:request_options] = request_options.merge(extra_headers:)
+          parameters[:request_options] =
+            request_options.merge(extra_headers: request_options[:extra_headers].to_h.merge(headers.compact))
           parameters
         end
 
