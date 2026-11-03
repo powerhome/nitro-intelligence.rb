@@ -163,6 +163,26 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
       expect(versioned).to have_been_requested.once
     end
 
+    it "posts to /v1/systemone under any other path the base URL has" do
+      mounted = stub_request(:post, "https://gateway.example/internal/v1/systemone")
+                .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+      client = OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example/internal", max_retries: 0)
+
+      described_class.new(client:).create(state:, questions:)
+
+      expect(mounted).to have_been_requested.once
+    end
+
+    it "posts to /v1/systemone when the base URL's last segment only contains v1" do
+      mounted = stub_request(:post, "https://gateway.example/gateway-v1/v1/systemone")
+                .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+      client = OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example/gateway-v1", max_retries: 0)
+
+      described_class.new(client:).create(state:, questions:)
+
+      expect(mounted).to have_been_requested.once
+    end
+
     it "scopes the gateway headers to each request when request options are shared" do
       request_options = { timeout: 30 }
 
