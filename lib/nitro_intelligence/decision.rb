@@ -29,7 +29,7 @@ module NitroIntelligence
     #   @return [Hash{Integer, String => Float}] the probability of every level, keyed by level
     #     number, or by the key the gateway sent where that is not a number
     # @!attribute [r] legend
-    #   @return [Hash{Integer, String => String, Hash}] the description of every level, as the
+    #   @return [Hash{Integer, String => String, Hash, Array}] the description of every level, as the
     #     question's `criteria` gave it, keyed like `probabilities`
     ScoreAnswer = Data.define(:score, :confidence, :probabilities, :legend)
 
