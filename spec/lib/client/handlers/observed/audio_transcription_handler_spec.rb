@@ -177,6 +177,18 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
         handler.create(message: "transcribe", audio_file: fake_audio_file, parameters: { prompt_name: "test-prompt" })
       end
 
+      it "leaves the caller's message as it was" do
+        fake_prompt = double("Prompt", type: "text", name: "test", compile: "System instruction:", config: {})
+        allow(fake_prompt_store).to receive(:get_prompt).and_return(fake_prompt)
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        allow(fake_transcriptions).to receive(:create).and_return(fake_transcription_response)
+        message = +"transcribe"
+
+        handler.create(message:, audio_file: fake_audio_file, parameters: { prompt_name: "test-prompt" })
+
+        expect(message).to eq("transcribe")
+      end
+
       it "raises an error if the prompt is not a text prompt" do
         fake_prompt = double("Prompt", type: "chat", name: "test")
         allow(fake_prompt_store).to receive(:get_prompt).and_return(fake_prompt)
