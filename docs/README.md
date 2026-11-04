@@ -4,6 +4,10 @@ The entrypoint to everything AI.
 
 This component aims to consolidate and standardize AI features implemented in the host application.
 
+## Public API
+
+The gem's public API is what its API reference documents, and follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html): it changes incompatibly only in a major release. The reference is generated from the source with [YARD](https://yardoc.org): run `bundle exec yard doc` and open `doc/api/index.html`, or browse it for any released version on [RubyDoc.info](https://www.rubydoc.info/gems/nitro_intelligence). Anything marked `@api private` in the source is left out of it, may change in any release, and is not for callers. This README and [ASSISTANTS.md](https://github.com/powerhome/nitro-intelligence.rb/blob/main/docs/ASSISTANTS.md) are guides to using the gem, not a list of everything public.
+
 ## Configuration
 
 `NitroIntelligence` is configured via an initializer in the host application. All external dependencies
@@ -49,6 +53,7 @@ NitroIntelligence.configure do |config|
     "default_text_model" => "Qwen/Qwen3.6-35B-A3B",
     "default_image_model" => "google/gemini-3.1-flash-image",
     "default_text_to_speech_model" => "openai/gpt-4o-mini-tts",
+    "default_decision_model" => "typesafe/jev-1.14",
     "models" => [
       {
         "name" => "Qwen/Qwen3.6-35B-A3B",
@@ -72,6 +77,10 @@ NitroIntelligence.configure do |config|
         "default_response_format" => "mp3",
         "voices" => ["echo", "nova", "marin", "cedar"],
         "response_formats" => ["mp3", "wav"]
+      },
+      {
+        "name" => "typesafe/jev-1.14",
+        "type" => "decision"
       }
     ]
   }
@@ -84,6 +93,7 @@ end
 | ------------------------ | ------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `logger`                 | `Logger`      | `Logger.new($stdout)` | Logger used for diagnostic output                                                                                                                                                                          |
 | `environment`            | `String`      | `"test"`              | Runtime environment name                                                                                                                                                                                   |
+| `current_revision`       | `String`      | `""`                  | The host application's revision, such as its commit, recorded on each trace in Cerebro as its `release` |
 | `cache_provider`         | cache store   | `NullCache`           | ActiveSupport-compatible cache store                                                                                                                                                                       |
 | `inference_api_key`      | `String`      | `""`                  | API key for the LLM inference service                                                                                                                                                                      |
 | `inference_base_url`     | `String`      | `"https://inference.powerhome.ai"` | Base URL for the LLM inference service. Defaults to the shared inference gateway, so only a host talking to a different one needs to set it                                                                 |
@@ -93,7 +103,7 @@ end
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key). Add `"mask_content" => true` to keep a project's prompts and responses out of Cerebro and the gateway logs, see [Masking Content](#masking-content)                                                                                                                                            |
 | `observability_user_id`  | `String`      | `""`                  | User ID recorded on observed traces when a request passes no `user_id` parameter — see [Users](#users) |
 | `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String, default: `"https://assistants.powerhome.ai"`) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new`, which takes the same two defaults — see [Assistants](#assistants) |
-| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
+| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, `default_decision_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
 
 ## Basic Usage
 
@@ -210,6 +220,48 @@ File.binwrite('tts.mp3', tts.string)
 
 For a full list of supported parameters, see the [API reference here](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create ). Note that `voice` and `response_format` are further constrained to the `voices` and `response_formats` listed for the chosen model in `config.model_config`.
 
+### Decisions
+
+A decision model answers questions about some content with a probability for each answer you allow, rather than generated text. `decide` sends the content as `state` (a string, hash or array) and a hash of named questions to the gateway's System One route, `POST /v1/systemone`. Each question is `noul` (yes or no), `choice` (one of the options in `criteria`) or `score` (one of the ordered levels in `criteria`, the first being 0). See the [Inference Gateway's decision model docs](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md#decision-models) for when to use one and how far to trust its probabilities.
+
+```ruby
+client = NitroIntelligence::Client.new
+decision = client.decide(
+  state: { subject: "Duplicate charge", message: "I was charged twice. Please help." },
+  questions: {
+    billing: { type: "noul", instructions: "Is this message about billing?" },
+    team: {
+      type: "choice",
+      instructions: "Which team should handle this message?",
+      criteria: {
+        payments: "Charges, refunds and invoices",
+        scheduling: "Appointments and visits",
+        other: "Anything else, or not enough information to tell",
+      },
+    },
+    urgency: {
+      type: "score",
+      instructions: "How urgent is this message?",
+      criteria: ["Can wait", "Needs attention this week", "Needs attention today"],
+    },
+  }
+)
+
+decision.answers[:billing].noul          # => 0.98, the probability of yes
+decision.answers[:team].choice           # => "payments"
+decision.answers[:team].confidence       # => 0.91
+decision.answers[:team].probabilities    # => {"payments" => 0.95, "scheduling" => 0.01, "other" => 0.04}
+decision.answers[:urgency].score         # => 1.7, the expected level, which may fall between levels
+decision.answers[:urgency].legend        # => {0 => "Can wait", 1 => "Needs attention this week", 2 => "Needs attention today"}
+decision.answers[:urgency].probabilities # => {0 => 0.1, 1 => 0.1, 2 => 0.8}
+```
+
+`answers` is keyed by question name and accepts strings or symbols. Each answer is a `NitroIntelligence::Decision::NoulAnswer`, `ChoiceAnswer` or `ScoreAnswer`; an answer of any other type is returned as the gateway sent it. `decision.usage` holds the token counts, also by string or symbol, and `decision.last_response` the HTTP response, including the gateway's headers.
+
+The model defaults to `default_decision_model` and must be listed in `config.model_config` with the type `decision`. `parameters` takes `model`, `assets` (images that `state` and the questions refer to, see the [System One docs](https://docs.typesafe.ai/api/system-one.md); the gateway refuses assets for a model it reaches through OpenRouter, which includes `typesafe/jev-1.14`), `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`, described under [Observability](#observability). Decisions take no managed prompt: `prompt_name` and `prompt_variables` are ignored, so put the instructions in `questions`. With observability enabled, each call is recorded in Cerebro as a generation with the state and questions as input, the answers as output, and the gateway's cost.
+
+The client does not limit the request. To keep a feature portable to models NIP hosts itself, stay within the gateway's [portable subset](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md#stay-within-what-every-backend-supports): up to 64 questions, 26 options per `choice` question and 10 levels per `score` question, with text `state`.
+
 ### Image Editing and Generation
 
 Nitro Intelligence can be used for image editing and generation
@@ -226,6 +278,8 @@ result = client.generate_image(message: "Create an image of a bear installing a 
 `result` is a `NitroIntelligence::ImageGeneration` object, and the generated image can be accessed via `result.generated_image` which returns a `NitroIntelligence::Image`.
 
 With observability enabled, `result.trace_id` and `result.observation_id` identify the trace and generation observation. Both are `nil` without observability.
+
+A `NitroIntelligence::Image` carries the file in `byte_string`, its `file_extension` (such as `"png"`) and `mime_type` (such as `"image/png"`), and its `width` and `height` in pixels.
 
 You may write the file to disk:
 
@@ -453,7 +507,7 @@ success, so it records no input up front.
 
 A project can opt in to recording what happened without recording what was said. Set `"mask_content" => true` on its entry in `observability_projects`; projects that do not set it are unchanged.
 
-For a masked project, every observed request (chat, image generation, audio transcription and text-to-speech) is still traced, with its model, usage, cost, prompt link, tags, user, session, metadata and gateway call ID, but:
+For a masked project, every observed request (chat, image generation, audio transcription, text-to-speech and decisions) is still traced, with its model, usage, cost, prompt link, tags, user, session, metadata and gateway call ID, but:
 
 * The input and output of the generation and of the trace are recorded as `[masked]`. The whole value is replaced, so reasoning, tool calls and anything else in a response are masked however the provider shaped it.
 * A failed request records the error class (for example `OpenAI::Errors::BadRequestError`) as its status message, without the error's own message, which can quote the request or the response.
@@ -498,6 +552,47 @@ reporter.score(name: "precision", value: "Partially Correct", trace_id:, data_ty
 ```
 
 Numeric data is helpful for scores that happen on a sliding scale, like success rate or percent similarity. Boolean data is helpful to convey something that either passes or fails. Categorical data is helpful for scores that have pre-defined categories, like "Correct", "Partially Correct", and "Incorrect".
+
+### Dataset Items
+
+`NitroIntelligence::Reporter#create_dataset_item` adds an item to one of the project's datasets, to evaluate prompts against later. It takes the item as Langfuse's [`POST /api/public/dataset-items`](https://api.reference.langfuse.com) does, and raises `NitroIntelligence::Reporter::DatasetItemError`, carrying the response's status and body, when Cerebro does not store it.
+
+```ruby
+reporter = NitroIntelligence::Reporter.new(observability_project_slug: "fake-feature-project")
+reporter.create_dataset_item({
+  datasetName: "call-categorization",
+  input: { transcript: },
+  expectedOutput: "Rescheduled",
+  sourceTraceId: trace_id,
+})
+```
+
+### Reaching Cerebro Directly
+
+For what this gem does not wrap, such as a Langfuse API it has no method for, or a link to a trace, a project's details are available from its configuration:
+
+```ruby
+project = NitroIntelligence.project_client_registry.fetch("fake-feature-project").project
+project.id          # the project's id in Cerebro, as in its URLs
+project.auth_token  # the Base64 credential for Cerebro's public API, without the "Basic " scheme
+
+trace_url = "#{NitroIntelligence.config.observability_base_url}/project/#{project.id}/traces/#{trace_id}"
+request["Authorization"] = "Basic #{project.auth_token}"
+```
+
+`NitroIntelligence.project_client_registry.fetch(slug)` builds each project's client once per process, and raises `NitroIntelligence::Observability::Project::NotFoundError` for a slug `observability_projects` does not configure. `NitroIntelligence::Observability::Project.find_by_slug(slug:)` reads the same configuration without building a client, and returns `nil` instead. The gem never raises `NitroIntelligence::Observability::ProjectClient::NotFoundError`; it is public only because applications raise it themselves, and is to be retired ([#182](https://github.com/powerhome/nitro-intelligence.rb/issues/182)). Rescue `Project::NotFoundError` for a project that is not configured.
+
+Traces and scores are sent to Cerebro in the background. Fetch each project in an initializer to build its client at boot, and shut them all down as the process exits so that the last ones are sent:
+
+```ruby
+NitroIntelligence.config.observability_projects.each do |project|
+  NitroIntelligence.project_client_registry.fetch(project["slug"])
+end
+
+at_exit { NitroIntelligence.project_client_registry.shutdown_all }
+```
+
+A server that loads the application and then forks its workers, such as Puma with `preload_app!` or Unicorn, runs initializers before the fork. Each worker then inherits the project clients but not the background thread that sends their scores, so a worker's scores wait until it shuts down, and are lost if it is killed. In such a server, fetch the projects in each worker after it forks instead, from Puma's `on_worker_boot` or Unicorn's `after_fork`, or leave each to be fetched on first use.
 
 ### Prompts
 
@@ -625,11 +720,25 @@ client.chat(
 )
 ```
 
+#### Prompt Errors
+
+A request naming a prompt raises when it cannot use one:
+
+| Error | Raised when |
+| --- | --- |
+| `NitroIntelligence::Observability::PromptStore::ObservabilityPromptNotFoundError` | The prompt does not exist, nor its fallback when `prompt_fallback_name` names one |
+| `NitroIntelligence::Observability::PromptStore::ObservabilityPromptError` | Cerebro fails to return the prompt; the message is its response body |
+| `NitroIntelligence::Client::Handlers::Observed::ChatHandler::ObservedChatPromptError` | `#chat` has no user message for the model to answer (see [Message Shape](#message-shape)) |
+| `NitroIntelligence::Client::Handlers::Observed::AudioTranscriptionHandler::ObservedAudioTranscriptionPromptError` | `#transcribe_audio` names a prompt that is not a text prompt |
+| `NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandler::ObservedTextToSpeechPromptError` | `#text_to_speech` names a prompt that is not a text prompt |
+
+On an observed client whose project does not mask content, pass an open `File` as `audio_file` to `#transcribe_audio`. If `audio_file` has no path, as with a `StringIO`, the upload to Cerebro raises `NitroIntelligence::Audio::AudioFileFormatError`. By then, the gateway has already transcribed the audio and billed the request, but your app never receives the transcript. A masked project skips the upload, so the same input works there. Every method raises `ArgumentError` for a model, or a model setting such as a voice or aspect ratio, that `model_config` does not list.
+
 ## Nitro Intelligence Assistants
 
 `NitroIntelligence::Assistants` is Nitro Intelligence's lightweight SDK for working with hosted agent threads, runs, and human review flows. It is mainly used to initialize conversation threads, trigger agent runs, inspect what a paused run is waiting on (tool calls or a reply held for review), and resume paused threads after human reviews.
 
-For the full guide, see [ASSISTANTS.md](ASSISTANTS.md). For the service this SDK talks to, see the [Nitro Intelligence Assistants documentation](https://portal.powerapp.cloud/docs/default/system/nip-assistants).
+For the full guide, see [ASSISTANTS.md](https://github.com/powerhome/nitro-intelligence.rb/blob/main/docs/ASSISTANTS.md). For the service this SDK talks to, see the [Nitro Intelligence Assistants documentation](https://portal.powerapp.cloud/docs/default/system/nip-assistants).
 
 ## Assistants
 
@@ -646,7 +755,7 @@ assistant.thread_state(thread_id: thread.id)
 ```
 
 `run`, `review`, and the deprecated `await_run` and `review_tool_calls` (see
-[Upgrading to 4.0](ASSISTANTS.md#upgrading-to-40)), supply the assistant's own id, so a
+[Upgrading to 4.0](https://github.com/powerhome/nitro-intelligence.rb/blob/main/docs/ASSISTANTS.md#upgrading-to-40)), supply the assistant's own id, so a
 caller never passes it -- passing `assistant_id:` to any of them raises `ArgumentError` rather
 than quietly sending the call to a different assistant, which is what a migrated caller
 carrying its old argument would otherwise do. Everything else is thread-scoped and delegates to the client untouched. Reach

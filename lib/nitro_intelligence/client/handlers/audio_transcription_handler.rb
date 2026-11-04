@@ -4,6 +4,7 @@ require "nitro_intelligence/client/handlers/base_handler"
 module NitroIntelligence
   module Client
     module Handlers
+      # @api private
       class AudioTranscriptionHandler < BaseHandler
         ALLOWED_EXTRA_PARAMETERS = OpenAI::Models::Audio::TranscriptionCreateParams.fields.keys.uniq.freeze
 

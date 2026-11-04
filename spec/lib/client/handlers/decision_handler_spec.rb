@@ -1,0 +1,319 @@
+require "spec_helper"
+require "webmock/rspec"
+
+require "nitro_intelligence/client/base"
+require "nitro_intelligence/client/handlers/decision_handler"
+
+RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
+  subject(:handler) { described_class.new(client:) }
+
+  let(:client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example", max_retries: 0) }
+
+  let(:model_config) do
+    {
+      default_decision_model: "typesafe/jev-1.14",
+      models: [
+        { name: "typesafe/jev-1.14", type: "decision" },
+        { name: "other/decider", type: "decision" },
+        { name: "Qwen/Qwen3.6-35B-A3B", type: "text" },
+      ],
+    }
+  end
+
+  let(:state) { { subject: "Duplicate charge", message: "I was charged twice. Please help." } }
+  let(:questions) do
+    {
+      billing: { type: "noul", instructions: "Is this message about billing?" },
+      team: {
+        type: "choice",
+        instructions: "Which team should handle this message?",
+        criteria: { payments: "Charges and refunds", other: "Anything else" },
+      },
+      urgency: {
+        type: "score",
+        instructions: "How urgent is this message?",
+        criteria: ["Can wait", "Needs attention today"],
+      },
+    }
+  end
+
+  let(:response_body) do
+    {
+      model: "typesafe/jev-1.14",
+      answers: {
+        billing: { type: "noul", noul: 0.98 },
+        team: { type: "choice", choice: "payments", confidence: 0.91, probabilities: { payments: 0.95, other: 0.05 } },
+        urgency: {
+          type: "score", score: 0.8, confidence: 0.55,
+          legend: { "0" => "Can wait", "1" => "Needs attention today" },
+          probabilities: { "0" => 0.2, "1" => 0.8 }
+        },
+      },
+      usage: { input_tokens: 120, output_tokens: 3 },
+    }
+  end
+
+  let(:response_headers) do
+    {
+      "Content-Type" => "application/json",
+      "x-litellm-response-cost" => "1.764e-05",
+      "x-litellm-call-id" => "call-123",
+    }
+  end
+
+  let!(:systemone) do
+    stub_request(:post, "https://gateway.example/v1/systemone")
+      .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+  end
+
+  before do
+    allow(NitroIntelligence).to receive(:model_catalog).and_return(NitroIntelligence::ModelCatalog.new(model_config))
+  end
+
+  describe "#create" do
+    it "posts the model, state and questions to System One" do
+      handler.create(state:, questions:)
+
+      expect(systemone.with(body: { model: "typesafe/jev-1.14", state:, questions: })).to have_been_requested
+    end
+
+    it "sends the requested model and the caller's metadata as gateway headers" do
+      handler.create(state:, questions:, parameters: { metadata: { feature: "triage" } })
+
+      expect(
+        systemone.with(headers: {
+                         "nip-requested-model" => "typesafe/jev-1.14",
+                         "x-litellm-spend-logs-metadata" => { feature: "triage" }.to_json,
+                       })
+      ).to have_been_requested
+    end
+
+    it "keeps metadata and observability parameters out of the body" do
+      handler.create(state:, questions:, parameters: { metadata: { a: 1 }, trace_name: "t", user_id: "u" })
+
+      expect(systemone.with { |request| JSON.parse(request.body).keys == %w[model state questions] })
+        .to have_been_requested
+    end
+
+    it "sends assets from the parameters in the body" do
+      assets = { photo: { type: "image", format: "png", data_base64: "iVBORw0KGgo=" } }
+
+      handler.create(state: "photo", questions:, parameters: { assets: })
+
+      expect(systemone.with(body: { model: "typesafe/jev-1.14", state: "photo", questions:, assets: }))
+        .to have_been_requested
+    end
+
+    it "returns typed answers keyed by question name" do
+      decision = handler.create(state:, questions:)
+
+      expect(decision).to be_a(NitroIntelligence::Decision)
+      expect(decision.model).to eq("typesafe/jev-1.14")
+      expect(decision.answers[:billing]).to eq(NitroIntelligence::Decision::NoulAnswer.new(noul: 0.98))
+      expect(decision.answers["team"]).to eq(
+        NitroIntelligence::Decision::ChoiceAnswer.new(
+          choice: "payments", confidence: 0.91, probabilities: { "payments" => 0.95, "other" => 0.05 }
+        )
+      )
+      expect(decision.answers[:urgency]).to eq(
+        NitroIntelligence::Decision::ScoreAnswer.new(
+          score: 0.8, confidence: 0.55,
+          probabilities: { 0 => 0.2, 1 => 0.8 },
+          legend: { 0 => "Can wait", 1 => "Needs attention today" }
+        )
+      )
+      expect(decision.usage).to eq("input_tokens" => 120, "output_tokens" => 3)
+      expect(decision.usage[:input_tokens]).to eq(120)
+    end
+
+    it "leaves out assets that are nil" do
+      handler.create(state:, questions:, parameters: { assets: nil })
+
+      expect(systemone.with { |request| !JSON.parse(request.body).key?("assets") }).to have_been_requested
+    end
+
+    it "returns answers that changing leaves the raw answers alone" do
+      response_body[:answers] = { spot: { type: "box", box: { top: 0.2 } }, odd: "unexpected" }
+      stub_request(:post, "https://gateway.example/v1/systemone")
+        .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      decision = handler.create(state:, questions:)
+      decision.answers[:spot][:box][:top] = 999
+      decision.answers[:odd] << "!"
+
+      expect(decision.raw_answers).to eq(spot: { type: "box", box: { top: 0.2 } }, odd: "unexpected")
+    end
+
+    it "returns typed answers that changing leaves the raw answers alone" do
+      decision = handler.create(state:, questions:)
+      decision.answers[:team].choice << "!"
+      decision.answers[:urgency].legend[0] << "!"
+
+      expect(decision.raw_answers[:team][:choice]).to eq("payments")
+      expect(decision.raw_answers[:urgency][:legend][:"0"]).to eq("Can wait")
+    end
+
+    it "posts to /v1/systemone when the base URL already ends in /v1" do
+      versioned = stub_request(:post, "https://gateway.example/v1/systemone")
+                  .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+      client = OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example/v1", max_retries: 0)
+
+      described_class.new(client:).create(state:, questions:)
+
+      expect(versioned).to have_been_requested.once
+    end
+
+    it "posts to /v1/systemone under any other path the base URL has" do
+      mounted = stub_request(:post, "https://gateway.example/internal/v1/systemone")
+                .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+      client = OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example/internal", max_retries: 0)
+
+      described_class.new(client:).create(state:, questions:)
+
+      expect(mounted).to have_been_requested.once
+    end
+
+    it "posts to /v1/systemone when the base URL's last segment only contains v1" do
+      mounted = stub_request(:post, "https://gateway.example/gateway-v1/v1/systemone")
+                .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+      client = OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example/gateway-v1", max_retries: 0)
+
+      described_class.new(client:).create(state:, questions:)
+
+      expect(mounted).to have_been_requested.once
+    end
+
+    it "scopes the gateway headers to each request when request options are shared" do
+      request_options = { timeout: 30 }
+
+      handler.create(state:, questions:, parameters: { metadata: { ticket: "1" }, request_options: })
+      handler.create(state:, questions:, parameters: { request_options: })
+
+      expect(systemone.with(headers: { "x-litellm-spend-logs-metadata" => { ticket: "1" }.to_json })).to have_been_requested.once
+      expect(request_options).to eq(timeout: 30)
+    end
+
+    it "sends the extra headers of request options given as OpenAI::RequestOptions" do
+      request_options = OpenAI::RequestOptions.new(extra_headers: { "x-custom" => "1" })
+
+      handler.create(state:, questions:, parameters: { request_options: })
+
+      expect(systemone.with(headers: { "x-custom" => "1", "nip-requested-model" => "typesafe/jev-1.14" }))
+        .to have_been_requested
+    end
+
+    it "scopes the gateway headers to each request when the client is given one parameters hash twice" do
+      parameters = { metadata: { ticket: "1" } }
+      client = NitroIntelligence::Client::Base.new(client: self.client)
+
+      client.decide(state:, questions:, parameters:)
+      parameters.delete(:metadata)
+      client.decide(state:, questions:, parameters:)
+
+      expect(systemone.with(headers: { "x-litellm-spend-logs-metadata" => { ticket: "1" }.to_json })).to have_been_requested.once
+      expect(parameters).to eq({})
+    end
+
+    it "returns the answers of a response that names no model" do
+      stub_request(:post, "https://gateway.example/v1/systemone")
+        .to_return(status: 200, body: response_body.except(:model).to_json, headers: response_headers)
+
+      decision = handler.create(state:, questions:)
+
+      expect(decision.model).to be_nil
+      expect(decision.answers[:billing].noul).to eq(0.98)
+    end
+
+    it "keeps the other answers when one is not a hash" do
+      response_body[:answers] = { billing: { type: "noul", noul: 0.98 }, broken: nil, odd: "unexpected" }
+      stub_request(:post, "https://gateway.example/v1/systemone")
+        .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      decision = handler.create(state:, questions:)
+
+      expect(decision.answers[:billing].noul).to eq(0.98)
+      expect(decision.answers[:broken]).to be_nil
+      expect(decision.answers[:odd]).to eq("unexpected")
+    end
+
+    it "returns an answer of a type it does not model as the hash it arrived as" do
+      response_body[:answers] = { spot: { type: "box", box: { top: 0.2 }, confidence: nil } }
+      stub_request(:post, "https://gateway.example/v1/systemone").to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      decision = handler.create(state:, questions:)
+
+      expect(decision.answers[:spot]).to include(type: "box", box: { top: 0.2 })
+      expect(decision.answers["spot"]["box"]["top"]).to eq(0.2)
+    end
+
+    it "reaches the gateway's cost headers through the decision" do
+      decision = handler.create(state:, questions:)
+
+      expect(decision.last_response.headers["x-litellm-call-id"]).to eq("call-123")
+      expect(handler.cost_details(decision)).to eq(total: 1.764e-05)
+    end
+
+    it "raises the client's errors for a rejected request" do
+      stub_request(:post, "https://gateway.example/v1/systemone").to_return(
+        status: 403,
+        body: { error: { message: "no access" } }.to_json,
+        headers: { "Content-Type" => "application/json" }
+      )
+
+      expect { handler.create(state:, questions:) }.to raise_error(OpenAI::Errors::PermissionDeniedError)
+    end
+
+    it "uses the explicitly provided model" do
+      handler.create(state:, questions:, parameters: { model: "other/decider" })
+
+      expect(systemone.with { |request| JSON.parse(request.body)["model"] == "other/decider" }).to have_been_requested
+    end
+
+    it "raises when the requested model is not in the catalog" do
+      expect { handler.create(state:, questions:, parameters: { model: "ghost" }) }
+        .to raise_error(ArgumentError, /Unsupported model: 'ghost'/)
+      expect(systemone).not_to have_been_requested
+    end
+
+    it "keeps a score level that is not a number as it came" do
+      response_body[:answers] = {
+        urgency: { type: "score", score: 0.5, confidence: 0.1, legend: { "0" => "Low", "x" => "?" },
+                   probabilities: { "0" => 0.5, "x" => 0.5 } },
+      }
+      stub_request(:post, "https://gateway.example/v1/systemone")
+        .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      expect(handler.create(state:, questions:).answers[:urgency].legend).to eq(0 => "Low", "x" => "?")
+    end
+
+    it "reads score levels as decimal numbers" do
+      response_body[:answers] = {
+        urgency: { type: "score", score: 0.5, confidence: 0.1, legend: { "08" => "Eight", "010" => "Ten", "0x1" => "Hex" },
+                   probabilities: {} },
+      }
+      stub_request(:post, "https://gateway.example/v1/systemone")
+        .to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      expect(handler.create(state:, questions:).answers[:urgency].legend).to eq(8 => "Eight", 10 => "Ten", "0x1" => "Hex")
+    end
+
+    it "raises when the requested model is not a decision model" do
+      expect { handler.create(state:, questions:, parameters: { model: "Qwen/Qwen3.6-35B-A3B" }) }
+        .to raise_error(ArgumentError, "Model 'Qwen/Qwen3.6-35B-A3B' is not a decision model")
+      expect(systemone).not_to have_been_requested
+    end
+
+    it "raises rather than sending an explicit nil model" do
+      expect { handler.create(state:, questions:, parameters: { model: nil }) }
+        .to raise_error(ArgumentError, "Unsupported model: ''")
+      expect(systemone).not_to have_been_requested
+    end
+
+    it "raises when no model is provided and the catalog has no default" do
+      allow(NitroIntelligence).to receive(:model_catalog)
+        .and_return(NitroIntelligence::ModelCatalog.new(model_config.except(:default_decision_model)))
+
+      expect { handler.create(state:, questions:) }.to raise_error(ArgumentError, /Unsupported model: ''/)
+    end
+  end
+end

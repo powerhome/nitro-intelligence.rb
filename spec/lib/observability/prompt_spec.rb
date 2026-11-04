@@ -74,6 +74,13 @@ RSpec.describe NitroIntelligence::Observability::Prompt do
     end
 
     context "for a chat prompt" do
+      it "keeps its variables, so a second compile substitutes its own values" do
+        chat_prompt_instance.compile(topic: "Ruby on Rails")
+
+        expect(chat_prompt_instance.compile(topic: "AI").last[:content]).to eq("What is AI?")
+        expect(chat_prompt_instance.variables).to contain_exactly(:topic)
+      end
+
       it "replaces variables in all message contents" do
         compiled_content = chat_prompt_instance.compile(topic: "Ruby on Rails")
         expect(compiled_content).to eq([
@@ -100,6 +107,12 @@ RSpec.describe NitroIntelligence::Observability::Prompt do
         interpolated_messages = text_prompt_instance.interpolate(messages:, variables: { name: "World", year: 2024 })
         expect(interpolated_messages.first).to eq({ role: "system", content: "Hello, World! The year is 2024." })
         expect(interpolated_messages.last).to eq({ role: "user", content: "Please summarize this text." })
+      end
+
+      it "leaves the given messages as they were" do
+        text_prompt_instance.interpolate(messages:, variables: { name: "World", year: 2024 })
+
+        expect(messages).to eq([{ role: "user", content: "Please summarize this text." }])
       end
     end
 

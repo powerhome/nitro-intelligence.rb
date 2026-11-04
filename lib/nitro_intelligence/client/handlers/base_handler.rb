@@ -2,7 +2,9 @@ require "json"
 
 module NitroIntelligence
   module Client
+    # @api private
     module Handlers
+      # @api private
       class BaseHandler
         MODALITY_HEADER = "nip-modality".freeze
         REQUESTED_MODEL_HEADER = "nip-requested-model".freeze
@@ -86,9 +88,12 @@ module NitroIntelligence
           nil
         end
 
+        # Copies the request options rather than changing them, because a caller may pass one
+        # hash to several requests, and the headers added here belong to this request alone.
         def add_request_headers(parameters, headers)
-          request_options = (parameters[:request_options] ||= {})
-          (request_options[:extra_headers] ||= {}).merge!(headers.compact)
+          request_options = parameters[:request_options].to_h
+          parameters[:request_options] =
+            request_options.merge(extra_headers: request_options[:extra_headers].to_h.merge(headers.compact))
           parameters
         end
 

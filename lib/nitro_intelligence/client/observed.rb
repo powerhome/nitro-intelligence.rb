@@ -1,5 +1,6 @@
 require "nitro_intelligence/client/handlers/observed/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/observed/chat_handler"
+require "nitro_intelligence/client/handlers/observed/decision_handler"
 require "nitro_intelligence/client/handlers/observed/image_handler"
 require "nitro_intelligence/client/handlers/observed/text_to_speech_handler"
 require "nitro_intelligence/observability/prompt_store"
@@ -8,6 +9,7 @@ require "nitro_intelligence/trace"
 
 module NitroIntelligence
   module Client
+    # @api private
     class Observed < Base
       def initialize(client:, observer:)
         super(client:)
@@ -27,6 +29,12 @@ module NitroIntelligence
           Handlers::Observed::AudioTranscriptionHandler.new(
             base_handler: Handlers::AudioTranscriptionHandler.new(client: @client), observer: @observer
           )
+      end
+
+      def decision_handler
+        @decision_handler ||= Handlers::Observed::DecisionHandler.new(
+          base_handler: Handlers::DecisionHandler.new(client: @client), observer: @observer
+        )
       end
 
       def image_handler

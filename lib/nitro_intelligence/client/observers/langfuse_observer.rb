@@ -1,6 +1,8 @@
 module NitroIntelligence
   module Client
+    # @api private
     module Observers
+      # @api private
       class LangfuseObserver
         # The inference gateway returns its own request identifier on every
         # response, including error responses. Recording it on the observation is
@@ -25,9 +27,10 @@ module NitroIntelligence
           seed = parameters[:trace_seed]
           trace_id = NitroIntelligence::Trace.create_id(seed:) if seed.present?
 
+          # Into the request's own parameters, so the gateway's spend metadata names the prompt too,
+          # without writing into a metadata hash the caller may pass again.
           if prompt
-            metadata[:prompt_name] = prompt.name
-            metadata[:prompt_version] = prompt.version
+            metadata = parameters[:metadata] = metadata.merge(prompt_name: prompt.name, prompt_version: prompt.version)
           end
 
           metadata = metadata.transform_values(&:to_s)
