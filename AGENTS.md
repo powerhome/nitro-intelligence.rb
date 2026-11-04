@@ -43,6 +43,7 @@ This repository is one part of the Nitro Intelligence Platform (NIP). The parent
 
 ## Pull requests
 
+- Title every PR as a [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/), `type(scope)!: description`, as NIP's [decision record](https://github.com/powerhome/nitro-intelligence/blob/main/docs/operations/decisions/0002-conventional-commits-drive-nip-releases.md) sets out: `feat` or `fix` for changes this repository's consumers see, other types for the rest, and `!` with a `BREAKING CHANGE:` paragraph in the description for a breaking change. A Runway key, if there is one, goes in square brackets at the end. The title becomes the squash commit on `main`, and the `PR title` check enforces the format.
 - Never open a pull request ready for review. Always open it as a draft (`gh pr create --draft`). A ready PR notifies reviewers and CODEOWNERS immediately, so opening one early takes other people's attention before the PR is ready for it.
 - Mark a PR ready for review only when all of these are done: robot code review has run and every finding has been addressed, either fixed or answered; any deployment or manual testing the change needs has been done and its results recorded on the PR; and the PR's owner has finished their own review.
 - If a PR is opened ready by mistake, put it back to draft with `gh pr ready --undo <number>`.
