@@ -50,15 +50,26 @@ jobs:
       # `nitro_intelligence-vX.Y.Z`, matches both. So tag the same commit
       # `vX.Y.Z-nitro_intelligence`, as releases before release-please were; its push runs
       # nitro_intelligence.yml's release job. release-please keeps its own `vX.Y.Z`, which it
-      # finds the last release by.
-      - name: Tag the release for publishing
-        if: steps.release-please.outputs.release_created
+      # finds the last release by. This checks the latest release on every run, not only the one
+      # that created it, so a rerun after a failed tag still publishes.
+      - name: Tag the latest release for publishing
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
-          VERSION: ${{ steps.release-please.outputs.version }}
-          SHA: ${{ steps.release-please.outputs.sha }}
-        run: gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/v$VERSION-nitro_intelligence" -f sha="$SHA" --jq .ref
+        run: |
+          set -euo pipefail
+          release=$(gh release view --json tagName --jq .tagName)
+          if [[ ! $release =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "The latest release, $release, is not one of release-please's, so there is nothing to tag."
+            exit 0
+          fi
+          publish="$release-nitro_intelligence"
+          if gh api "repos/$GH_REPO/git/ref/tags/$publish" --silent 2>/dev/null; then
+            echo "$publish already exists."
+            exit 0
+          fi
+          sha=$(gh api "repos/$GH_REPO/commits/$release" --jq .sha)
+          gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/$publish" -f sha="$sha" --jq .ref
 
       # release-please can't assign its PR. Assign whoever merged PRs since the last release, bots
       # left out, most recent first and at most 10, GitHub's limit on assignees. It's a courtesy,
