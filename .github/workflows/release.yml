@@ -1,11 +1,12 @@
-# Releases from the changelog. After every push to main, publishes a GitHub release for a
-# version that has none yet (the release PR just merged), then opens or refreshes the one
-# `chore: release X.Y.Z` PR for the Unreleased changelog entries. See .github/scripts/release.sh.
+# Releases with release-please, from the Conventional Commit PR titles on main. After every push
+# to main, it publishes the GitHub release `vX.Y.Z` for a release PR that just merged and tags the
+# same commit `vX.Y.Z-nitro_intelligence` to publish the gem, then opens or refreshes the one
+# release PR for whatever `feat`, `fix` and breaking changes have merged since. Settings are in
+# release-please-config.json, and the last released version in .release-please-manifest.json.
 #
-# It runs as the release GitHub App, not GITHUB_TOKEN: a PR or tag GITHUB_TOKEN creates
-# starts no workflows, so the release PR would never get its required checks and the
-# release tag would never run the gem release job. The App also signs the release commit,
-# which main's ruleset requires.
+# It runs as the release GitHub App, not GITHUB_TOKEN: a PR or tag GITHUB_TOKEN creates starts no
+# workflows, so the release PR would never get its required checks and the tag would never publish
+# the gem. The App also signs the release commit, which main's ruleset requires.
 
 name: Release
 
@@ -22,9 +23,8 @@ permissions: {}
 
 jobs:
   release:
-    # The checkout below always reads main, but the steps come from the dispatched ref's copy of
-    # this file, so a dispatch from another branch would run that branch's version of them with
-    # the App's write token.
+    # The steps come from the dispatched ref's copy of this file, so a dispatch from another
+    # branch would run that branch's version of them with the App's write token.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -37,51 +37,54 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Release, and propose the next release
+        id: release-please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          # main as it is now, not the commit that triggered the run: a rerun of an old push
-          # would otherwise rebuild the release PR from an outdated changelog.
-          ref: refs/heads/main
-          fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
-      # A release that fails still lets the next one be proposed, and fails the run at the end.
-      - name: Publish the release of a merged release PR
-        id: release
+      # The shared ruby-gem.yml publishes only from a tag containing both `refs/tags/v` and the
+      # package name. Neither release-please's `vX.Y.Z` nor its component-first form,
+      # `nitro_intelligence-vX.Y.Z`, matches both. So tag the same commit
+      # `vX.Y.Z-nitro_intelligence`, as releases before release-please were; its push runs
+      # nitro_intelligence.yml's release job. release-please keeps its own `vX.Y.Z`, which it
+      # finds the last release by.
+      - name: Tag the release for publishing
+        if: steps.release-please.outputs.release_created
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.release-please.outputs.version }}
+          SHA: ${{ steps.release-please.outputs.sha }}
+        run: gh api "repos/$GH_REPO/git/refs" -f ref="refs/tags/v$VERSION-nitro_intelligence" -f sha="$SHA" --jq .ref
+
+      # release-please can't assign its PR. Assign whoever merged PRs since the last release, bots
+      # left out, most recent first and at most 10, GitHub's limit on assignees. It's a courtesy,
+      # so a failed lookup leaves the PR unassigned rather than failing the run.
+      - name: Assign the release PR
+        if: steps.release-please.outputs.pr
         continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: .github/scripts/release.sh release
-
-      - name: Prepare the next release
-        id: proposal
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: .github/scripts/release.sh propose
-
-      # Rebuilds the branch from main with the release edits, and closes the PR once main has
-      # nothing left to release, since the branch then no longer differs from main.
-      - name: Open or refresh the release PR
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          branch: automated-release
-          base: main
-          # Only the release edits, whatever else the job may have left in the checkout.
-          add-paths: |
-            docs/CHANGELOG.md
-            lib/nitro_intelligence/version.rb
-            Gemfile.lock
-          delete-branch: true
-          sign-commits: true
-          commit-message: "chore: release ${{ steps.proposal.outputs.version }}"
-          title: "chore: release ${{ steps.proposal.outputs.version }}"
-          body-path: ${{ steps.proposal.outputs.body-path }}
-          assignees: ${{ steps.proposal.outputs.assignees }}
-
-      - name: Fail the run if the release failed
-        if: steps.release.outcome == 'failure'
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ steps.release-please.outputs.pr }}
         run: |
-          echo "::error::Publishing the release failed; see the \"Publish the release of a merged release PR\" step."
-          exit 1
+          set -euo pipefail
+          number=$(jq -r .number <<<"$PR")
+          tag=$(gh release view --json tagName --jq .tagName)
+          assignees=$(
+            gh api --paginate "repos/$GH_REPO/compare/$tag...main" --jq '.commits | reverse | .[].sha' |
+              while read -r sha; do
+                gh api "repos/$GH_REPO/commits/$sha/pulls" --jq '.[] | select(.merged_at) | .number'
+              done | awk '!seen[$0]++' |
+              while read -r pr; do
+                gh api "repos/$GH_REPO/pulls/$pr" --jq 'select(.merged_by.type == "User") | .merged_by.login'
+              done | awk '!seen[$0]++ && count++ < 10' | paste -sd, -
+          )
+          if [[ -n $assignees ]]; then
+            gh pr edit "$number" --add-assignee "$assignees"
+          else
+            echo "Nobody merged a PR since $tag, so the release PR stays unassigned."
+          fi
