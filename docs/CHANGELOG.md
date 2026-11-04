@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-11-04
+
 ### Added
 
 - A Cerebro project can now opt in to content masking with `"mask_content" => true` in `observability_projects`. For a masked project the input and output of every observed request are recorded as `[masked]`, a failure records its error class without its message, and no media is uploaded; model, usage, cost, prompt link, metadata and the gateway call ID are still recorded. Masking is applied by the gem on every write rather than through langfuse-rb's `mask`, which is read from process-global configuration and so cannot differ between projects. A masked project's requests also send `x-litellm-enable-message-redaction`, so the inference gateway redacts their messages and responses from its own logs. Projects that do not set the flag are unchanged. (#169)
@@ -221,7 +223,8 @@ Each warns through `NitroIntelligence.deprecator`, and is removed in 5.0. See [U
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v4.0.0-nitro_intelligence...HEAD
+[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v4.1.0-nitro_intelligence...HEAD
+[4.1.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v4.0.0-nitro_intelligence...v4.1.0-nitro_intelligence
 [4.0.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.1.0-nitro_intelligence...v4.0.0-nitro_intelligence
 [3.1.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.2-nitro_intelligence...v3.1.0-nitro_intelligence
 [3.0.2]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...v3.0.2-nitro_intelligence
