@@ -1,5 +1,6 @@
 require "nitro_intelligence/client/handlers/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/chat_handler"
+require "nitro_intelligence/client/handlers/decision_handler"
 require "nitro_intelligence/client/handlers/image_handler"
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
@@ -9,6 +10,10 @@ module NitroIntelligence
     # parameters plus this gem's own (`prompt_name`, `prompt_variables`, `trace_seed`, `metadata`,
     # `user_id` and the rest the README describes), and defaults the model to the configured
     # default for its modality.
+    #
+    # Each request works on a copy of the caller's `parameters`, which the handlers fill in with
+    # defaults and gateway headers, so a hash passed to several requests carries nothing from one
+    # request into the next.
     class Base
       # @api private
       attr_reader :client
@@ -29,7 +34,30 @@ module NitroIntelligence
       # @example
       #   client.chat(message: "Why is the sky blue?").choices.first&.message&.content
       def chat(message: "", parameters: {})
-        chat_handler.create(message:, parameters:)
+        chat_handler.create(message:, parameters: parameters.dup)
+      end
+
+      # Asks a decision model questions about some content over the gateway's System One route,
+      # `POST /v1/systemone`.
+      #
+      # @param state [String, Hash, Array] the content the questions are about
+      # @param questions [Hash] each question's name mapped to its `type` (`noul`, `choice` or
+      #   `score`), `instructions` and, for `choice` and `score`, `criteria`: the options keyed by
+      #   name, or the levels in order
+      # @param parameters [Hash] `model`, `assets` (images `state` and the questions refer to),
+      #   `metadata` and `request_options`, and on an observed client `trace_name`, `trace_seed`,
+      #   `user_id`, `session_id` and `tags`. It takes no managed prompt: `prompt_name` and
+      #   `prompt_variables` are ignored, so the instructions belong in `questions`.
+      # @return [Decision]
+      # @raise [ArgumentError] when the model is not one `model_config` lists with the type
+      #   `decision`
+      # @example
+      #   client.decide(
+      #     state: "I was charged twice.",
+      #     questions: { billing: { type: "noul", instructions: "Is this message about billing?" } }
+      #   ).answers[:billing].noul
+      def decide(state:, questions:, parameters: {})
+        decision_handler.create(state:, questions:, parameters: parameters.dup)
       end
 
       # Generates an image, or edits `target_image`.
@@ -46,7 +74,7 @@ module NitroIntelligence
       #   result = client.generate_image(message: "A bear installing a window")
       #   File.binwrite("bear.#{result.generated_image.file_extension}", result.generated_image.byte_string)
       def generate_image(message: "", target_image: nil, reference_images: [], parameters: {})
-        image_handler.create(message:, target_image:, reference_images:, parameters:)
+        image_handler.create(message:, target_image:, reference_images:, parameters: parameters.dup)
       end
 
       # Transcribes audio into text.
@@ -64,7 +92,7 @@ module NitroIntelligence
       # @example
       #   client.transcribe_audio(audio_file: File.open("sample.m4a", "rb")).text
       def transcribe_audio(message: +"", audio_file: nil, parameters: {})
-        audio_transcription_handler.create(message:, audio_file:, parameters:)
+        audio_transcription_handler.create(message:, audio_file:, parameters: parameters.dup)
       end
 
       # Speaks text aloud.
@@ -77,7 +105,7 @@ module NitroIntelligence
       # @example
       #   File.binwrite("hello.mp3", client.text_to_speech(message: "Hello").string)
       def text_to_speech(message: "", parameters: {})
-        text_to_speech_handler.create(message:, parameters:)
+        text_to_speech_handler.create(message:, parameters: parameters.dup)
       end
 
     private
@@ -88,6 +116,10 @@ module NitroIntelligence
 
       def chat_handler
         @chat_handler ||= Handlers::ChatHandler.new(client: @client)
+      end
+
+      def decision_handler
+        @decision_handler ||= Handlers::DecisionHandler.new(client: @client)
       end
 
       def image_handler

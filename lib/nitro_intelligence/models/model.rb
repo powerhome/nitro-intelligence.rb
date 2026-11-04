@@ -21,6 +21,9 @@ module NitroIntelligence
   end
 
   # @api private
+  class DecisionModel < Model; end
+
+  # @api private
   class TextModel < Model; end
 
   # @api private

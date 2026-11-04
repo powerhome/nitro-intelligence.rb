@@ -85,6 +85,19 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
       expect(image_generation_result).to eq(fake_image_generation)
     end
 
+    it "replaces image URLs on a copy of the caller's messages, so the same messages can be sent again" do
+      messages = [{ role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }] }]
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      allow(fake_completions).to receive(:create).and_return(fake_completion_response)
+      allow(fake_upload_handler).to receive(:replace_base64_with_media_references) do |payload|
+        payload.first[:content].first[:image_url][:url] = "[Discarded media]" if payload.is_a?(Array)
+      end
+
+      handler.create(message: "draw a cat", parameters: { messages: })
+
+      expect(messages.first[:content].first[:image_url][:url]).to eq("data:image/png;base64,AAAA")
+    end
+
     context "when the project masks content" do
       before { allow(fake_project).to receive(:mask_content?).and_return(true) }
 

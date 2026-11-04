@@ -37,6 +37,14 @@ RSpec.describe NitroIntelligence::Client::Base do
       expect(mock_handler).to receive(:create).with(message: "say hi", parameters: {})
       base_client.text_to_speech(message: "say hi")
     end
+
+    it "delegates #decide to the DecisionHandler" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::DecisionHandler)
+      allow(NitroIntelligence::Client::Handlers::DecisionHandler).to receive(:new).with(client: fake_openai_client).and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create).with(state: "content", questions: { q: { type: "noul" } }, parameters: {})
+      base_client.decide(state: "content", questions: { q: { type: "noul" } })
+    end
   end
 
   describe "method_missing delegation" do

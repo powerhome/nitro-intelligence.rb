@@ -9,11 +9,13 @@ RSpec.describe NitroIntelligence::ModelCatalog do
         { name: "dall-e-3", type: "image", aspect_ratios: ["1:1"] },
         { name: "whisper-1", type: "audio_transcription" },
         { name: "tts-1", type: "text_to_speech" },
+        { name: "jev", type: "decision" },
       ],
       default_audio_transcription_model: "whisper-1",
       default_image_model: "dall-e-3",
       default_text_model: "gpt-4",
       default_text_to_speech_model: "tts-1",
+      default_decision_model: "jev",
     }
   end
 
@@ -21,6 +23,7 @@ RSpec.describe NitroIntelligence::ModelCatalog do
   let(:fake_dalle) { double("ImageModel", name: "dall-e-3") }
   let(:fake_whisper) { double("TextModel", name: "whisper-1") }
   let(:fake_tts) { double("TextToSpeechModel", name: "tts-1") }
+  let(:fake_jev) { double("DecisionModel", name: "jev") }
 
   before do
     # Stub the ModelFactory to return our fake models for easy testing
@@ -39,12 +42,16 @@ RSpec.describe NitroIntelligence::ModelCatalog do
     allow(NitroIntelligence::ModelFactory).to receive(:build)
       .with({ name: "tts-1", type: "text_to_speech" })
       .and_return(fake_tts)
+
+    allow(NitroIntelligence::ModelFactory).to receive(:build)
+      .with({ name: "jev", type: "decision" })
+      .and_return(fake_jev)
   end
 
   describe "#initialize" do
     it "builds models using the ModelFactory" do
       catalog = described_class.new(model_config)
-      expect(catalog.models).to contain_exactly(fake_gpt4, fake_dalle, fake_whisper, fake_tts)
+      expect(catalog.models).to contain_exactly(fake_gpt4, fake_dalle, fake_whisper, fake_tts, fake_jev)
     end
 
     it "sets the default models by performing lookups" do
@@ -54,6 +61,7 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       expect(catalog.default_image_model).to eq(fake_dalle)
       expect(catalog.default_audio_transcription_model).to eq(fake_whisper)
       expect(catalog.default_text_to_speech_model).to eq(fake_tts)
+      expect(catalog.default_decision_model).to eq(fake_jev)
     end
 
     it "accepts string-keyed configuration" do
