@@ -7,6 +7,7 @@ require "uri"
 
 module NitroIntelligence
   module Observability
+    # @api private
     class UploadHandler
       attr_reader :uploaded_media
 
@@ -58,7 +59,7 @@ module NitroIntelligence
         payload
       end
 
-      def upload(trace_id, upload_queue: Queue.new)
+      def upload(trace_id, observation_id:, upload_queue: Queue.new)
         until upload_queue.empty?
           media = upload_queue.pop
 
@@ -68,6 +69,7 @@ module NitroIntelligence
           # returns {"mediaId" -> "", "uploadUrl" => ""}
           upload_url_response = get_upload_url({
                                                  traceId: trace_id,
+                                                 observationId: observation_id,
                                                  contentType: media.mime_type,
                                                  contentLength: content_length,
                                                  sha256Hash: content_sha256,

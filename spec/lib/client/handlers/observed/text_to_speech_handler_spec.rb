@@ -9,7 +9,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
   let(:base_handler) { NitroIntelligence::Client::Handlers::TextToSpeechHandler.new(client: fake_openai_client) }
 
   let(:fake_prompt_store) { double("PromptStore") }
-  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token") }
+  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token", mask_content?: false) }
   let(:fake_uploaded_media) { double("UploadedMedia", mime_type: "audio/mp3", reference_id: "media-321") }
   let(:fake_upload_handler) { double("UploadHandler", upload: nil, uploaded_media: [fake_uploaded_media]) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
@@ -28,19 +28,17 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
   end
 
   let(:fake_catalog) do
-    instance_double(NitroIntelligence::ModelCatalog, default_text_to_speech_model: tts_model)
+    NitroIntelligence::ModelCatalog.new({}).tap do |catalog|
+      allow(catalog).to receive(:default_text_to_speech_model).and_return(tts_model)
+    end
   end
 
   let(:fake_tts_response) { StringIO.new("fake_audio_bytes") }
-  let(:fake_generation) { double("Generation", trace_id: "trace-321") }
+  let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-321", id: "f8ccff00e8b9e5bd") }
 
   before do
     allow(fake_catalog).to receive(:lookup_by_name).and_return(tts_model)
     allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_catalog)
-
-    allow(NitroIntelligence::Audio).to receive(:new).and_return(
-      double("NitroAudio", byte_string: "audio_bytes", mime_type: "audio/mp3", direction: "output", reference_id: nil)
-    )
 
     allow(NitroIntelligence::Observability::UploadHandler).to receive(:new).and_return(fake_upload_handler)
   end
@@ -56,7 +54,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
         hash_including(input: "say hi", model: "tts-1", voice: "alloy", response_format: "mp3")
       ).and_return(fake_tts_response)
 
-      expect(fake_upload_handler).to receive(:upload).with("trace-321", upload_queue: instance_of(Queue))
+      expect(fake_upload_handler).to receive(:upload).with("trace-321", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
 
       tts, trace_attributes = handler.create(message: "say hi")
 
@@ -65,6 +63,45 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
       # The requested model and the input are set on the observation before the
       # request runs, so they are deliberately not repeated here.
       expect(trace_attributes.keys).to eq(%i[output cost_details])
+    end
+
+    context "when the project masks content" do
+      before { allow(fake_project).to receive(:mask_content?).and_return(true) }
+
+      it "uploads no audio and returns the speech to the caller" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        allow(fake_speech).to receive(:create).and_return(fake_tts_response)
+
+        expect(fake_upload_handler).not_to receive(:upload)
+
+        tts, trace_attributes = handler.create(message: "say hi")
+
+        expect(tts).to eq(fake_tts_response)
+        expect(trace_attributes[:output]).to eq("")
+      end
+
+      it "asks the gateway to redact the request from its logs" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        expect(fake_speech).to receive(:create) do |**kwargs|
+          expect(kwargs.dig(:request_options, :extra_headers, "x-litellm-enable-message-redaction")).to eq("true")
+          fake_tts_response
+        end
+
+        handler.create(message: "say hi")
+      end
+    end
+
+    it "labels generated audio as output when uploading it" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      allow(fake_speech).to receive(:create).and_return(fake_tts_response)
+
+      expect(fake_upload_handler).to receive(:upload) do |_trace_id, upload_queue:, **|
+        expect(upload_queue.pop).to have_attributes(
+          byte_string: "fake_audio_bytes", mime_type: "audio/mp3", direction: "output"
+        )
+      end
+
+      handler.create(message: "say hi")
     end
 
     it "carries the cost the gateway reported into the trace attributes" do

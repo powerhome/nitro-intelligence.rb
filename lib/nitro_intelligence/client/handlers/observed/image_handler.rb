@@ -1,3 +1,4 @@
+require "nitro_intelligence/client/handlers/observed/base_handler"
 require "nitro_intelligence/media/image_generation"
 require "nitro_intelligence/observability/prompt_resolver"
 
@@ -5,12 +6,8 @@ module NitroIntelligence
   module Client
     module Handlers
       module Observed
-        class ImageHandler
-          def initialize(base_handler:, observer:)
-            @base_handler = base_handler
-            @observer = observer
-          end
-
+        # @api private
+        class ImageHandler < BaseHandler
           def create(message: "", target_image: nil, reference_images: [], parameters: {})
             image_generation = build_image_generation(message:, target_image:, reference_images:, parameters:)
 
@@ -18,7 +15,7 @@ module NitroIntelligence
 
             # Modifies parameters in place
             prompt = handle_prompt(parameters:)
-            trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
+            trace_name = parameters[:trace_name] || prompt&.name || project.slug
 
             @observer.observe(
               "image-generation",
@@ -44,12 +41,17 @@ module NitroIntelligence
           end
 
           def handle_image_generation_uploads(input, output, image_generation)
+            # Uploads go to Cerebro's media API directly, past any masking, and a masked
+            # project records no input or output for a media reference to sit in.
+            return if project.mask_content?
+
             # If we are doing image generation we should upload the media to observability manually
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(
-              auth_token: @observer.project_client.project.auth_token
+              auth_token: project.auth_token
             )
             upload_handler.upload(
               image_generation.trace_id,
+              observation_id: image_generation.observation_id,
               upload_queue: Queue.new(image_generation.files)
             )
 
@@ -60,7 +62,7 @@ module NitroIntelligence
 
           def handle_prompt(parameters:)
             prompt = NitroIntelligence::Observability::PromptResolver.for(
-              store: @observer.project_client.project.prompt_store,
+              store: project.prompt_store,
               parameters:
             )
             return nil if prompt.blank?
@@ -76,12 +78,17 @@ module NitroIntelligence
           end
 
           def workflow(generation:, image_generation:, parameters:)
-            chat_completion = @base_handler.perform_request(parameters:, correlation_trace_id: generation.trace_id)
+            chat_completion = @base_handler.perform_request(
+              parameters:, correlation_trace_id: generation.trace_id, mask_content: project.mask_content?
+            )
 
             image_generation.trace_id = generation.trace_id
+            image_generation.observation_id = generation.id
             image_generation.parse_file(chat_completion)
 
-            input = parameters[:messages]
+            # A copy, because recording replaces its image URLs and the caller may send the same
+            # messages again.
+            input = parameters[:messages].deep_dup
             output = chat_completion.choices.first.message.to_h
             handle_image_generation_uploads(input, output, image_generation)
 

@@ -1,3 +1,4 @@
+require "nitro_intelligence/client/handlers/observed/base_handler"
 require "nitro_intelligence/media/audio"
 require "nitro_intelligence/observability/prompt_resolver"
 
@@ -5,20 +6,20 @@ module NitroIntelligence
   module Client
     module Handlers
       module Observed
-        class TextToSpeechHandler
+        # @api private
+        class TextToSpeechHandler < BaseHandler
+          # Raised by {Client::Base#text_to_speech} on an observed client when the prompt it names
+          # is not a text prompt.
+          #
+          # @api public
           class ObservedTextToSpeechPromptError < StandardError; end
-
-          def initialize(base_handler:, observer:)
-            @base_handler = base_handler
-            @observer = observer
-          end
 
           def create(message: "", parameters: {})
             prompt = handle_prompt(parameters:)
 
             @base_handler.validate_and_resolve!(parameters)
 
-            trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
+            trace_name = parameters[:trace_name] || prompt&.name || project.slug
 
             @observer.observe(
               "text-to-speech",
@@ -28,7 +29,7 @@ module NitroIntelligence
               prompt:,
               input: message
             ) do |generation|
-              workflow(message:, parameters:, trace_id: generation.trace_id)
+              workflow(generation:, message:, parameters:)
             end
           end
 
@@ -36,7 +37,7 @@ module NitroIntelligence
 
           def handle_prompt(parameters:)
             prompt = NitroIntelligence::Observability::PromptResolver.for(
-              store: @observer.project_client.project.prompt_store,
+              store: project.prompt_store,
               parameters:
             )
             return nil if prompt.blank?
@@ -54,21 +55,30 @@ module NitroIntelligence
             prompt
           end
 
-          def handle_text_to_speech_upload(tts_file, trace_id)
+          def handle_text_to_speech_upload(tts_file, trace_id, observation_id:)
+            # Uploads go to Cerebro's media API directly, past any masking. A masked
+            # project has no media reference to record; the observer masks the output.
+            return "" if project.mask_content?
+
             upload_handler = NitroIntelligence::Observability::UploadHandler.new(
-              auth_token: @observer.project_client.project.auth_token
+              auth_token: project.auth_token
             )
+            audio = Audio.new(tts_file)
+            audio.direction = "output"
+
             upload_handler.upload(
               trace_id,
-              upload_queue: Queue.new([Audio.new(tts_file)])
+              observation_id:,
+              upload_queue: Queue.new([audio])
             )
 
             uploaded_media = upload_handler.uploaded_media.first
             "@@@langfuseMedia:type=#{uploaded_media.mime_type}|id=#{uploaded_media.reference_id}|source=bytes@@@"
           end
 
-          def workflow(message:, parameters:, trace_id:)
-            tts = @base_handler.perform_request(message:, parameters:, correlation_trace_id: trace_id)
+          def workflow(generation:, message:, parameters:)
+            tts = @base_handler.perform_request(message:, parameters:, correlation_trace_id: generation.trace_id,
+                                                mask_content: project.mask_content?)
             output = ""
 
             Tempfile.create(["tts", ".#{parameters[:response_format]}"]) do |tempfile|
@@ -76,7 +86,7 @@ module NitroIntelligence
               tempfile.write(tts.string)
               tempfile.rewind
 
-              output = handle_text_to_speech_upload(tempfile, trace_id)
+              output = handle_text_to_speech_upload(tempfile, generation.trace_id, observation_id: generation.id)
             end
 
             # Usage details and the resolved model are read off a response body, and

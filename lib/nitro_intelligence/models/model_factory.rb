@@ -1,10 +1,12 @@
 require "nitro_intelligence/models/model"
 
 module NitroIntelligence
+  # @api private
   class ModelFactory
     TYPES = {
       "text" => TextModel,
       "audio_transcription" => TextModel,
+      "decision" => DecisionModel,
       "image" => ImageModel,
       "text_to_speech" => TextToSpeechModel,
     }.freeze

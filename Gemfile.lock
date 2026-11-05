@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    nitro_intelligence (3.1.0)
+    nitro_intelligence (4.1.1)
       activesupport (~> 7.1)
       langfuse-rb (= 0.12.4)
       mini_magick (~> 4.10)
@@ -207,6 +207,7 @@ GEM
     with_env (1.1.0)
     xml-simple (1.1.9)
       rexml
+    yard (0.9.45)
 
 PLATFORMS
   aarch64-linux-gnu
@@ -232,6 +233,7 @@ DEPENDENCIES
   rspec (= 3.13.2)
   rubocop-powerhome (= 0.7.0)
   webmock (= 3.26.4)
+  yard (= 0.9.45)
 
 BUNDLED WITH
    2.7.2

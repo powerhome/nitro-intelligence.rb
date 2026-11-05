@@ -1,3 +1,4 @@
+require "nitro_intelligence/client/handlers/observed/base_handler"
 require "base64"
 require "nitro_intelligence/media/audio"
 require "nitro_intelligence/observability/prompt_resolver"
@@ -6,20 +7,19 @@ module NitroIntelligence
   module Client
     module Handlers
       module Observed
-        class AudioTranscriptionHandler
+        # @api private
+        class AudioTranscriptionHandler < BaseHandler
+          # Raised by {Client::Base#transcribe_audio} on an observed client when the prompt it names
+          # is not a text prompt.
+          #
+          # @api public
           class ObservedAudioTranscriptionPromptError < StandardError; end
-
-          def initialize(base_handler:, observer:)
-            @base_handler = base_handler
-            @observer = observer
-          end
 
           def create(audio_file:, message: +"", parameters: {})
             @base_handler.validate_and_resolve!(parameters)
 
-            # Modifies message in place
-            prompt = handle_prompt(message:, parameters:)
-            trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
+            prompt, message = handle_prompt(message:, parameters:)
+            trace_name = parameters[:trace_name] || prompt&.name || project.slug
 
             @observer.observe(
               "audio-transcription",
@@ -37,10 +37,10 @@ module NitroIntelligence
 
           def handle_prompt(message:, parameters:)
             prompt = NitroIntelligence::Observability::PromptResolver.for(
-              store: @observer.project_client.project.prompt_store,
+              store: project.prompt_store,
               parameters:
             )
-            return nil if prompt.blank?
+            return [nil, message] if prompt.blank?
 
             # Prompts for audio transcriptions should only be text
             if prompt.type != "text"
@@ -49,25 +49,35 @@ module NitroIntelligence
             end
             interpolated_prompt = prompt.compile(**(parameters[:prompt_variables] || {}))
 
-            message.prepend("#{interpolated_prompt} ").strip!
             parameters.merge!(prompt.config) unless parameters[:prompt_config_disabled]
 
-            prompt
+            # A new string rather than the caller's, which they may send again.
+            [prompt, "#{interpolated_prompt} #{message}".strip]
+          end
+
+          # Uploads go to Cerebro's media API directly, past any masking, so a masked
+          # project does not send the audio at all.
+          def upload_input_audio(audio_file, generation)
+            return if project.mask_content?
+
+            audio_file.rewind
+            upload_handler = NitroIntelligence::Observability::UploadHandler.new(
+              auth_token: project.auth_token
+            )
+            upload_handler.upload(
+              generation.trace_id,
+              observation_id: generation.id,
+              upload_queue: Queue.new([NitroIntelligence::Audio.new(audio_file)])
+            )
           end
 
           def workflow(generation:, message:, audio_file:, parameters:)
             audio_transcription = @base_handler.perform_request(
-              audio_file:, message:, parameters:, correlation_trace_id: generation.trace_id
+              audio_file:, message:, parameters:,
+              correlation_trace_id: generation.trace_id, mask_content: project.mask_content?
             )
 
-            audio_file.rewind
-            upload_handler = NitroIntelligence::Observability::UploadHandler.new(
-              auth_token: @observer.project_client.project.auth_token
-            )
-            upload_handler.upload(
-              generation.trace_id,
-              upload_queue: Queue.new([NitroIntelligence::Audio.new(audio_file)])
-            )
+            upload_input_audio(audio_file, generation)
 
             # The model and input are already recorded on the observation before the
             # request runs, and the response carries no model of its own

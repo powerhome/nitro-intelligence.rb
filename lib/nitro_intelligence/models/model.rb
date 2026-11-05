@@ -1,5 +1,11 @@
 module NitroIntelligence
+  # @api private
   class Model
+    # What the model is for, as an error names it: "image" for ImageModel, "text-to-speech" for
+    # TextToSpeechModel. Taken from the class name, so a new kind of model has one without
+    # declaring it.
+    def self.kind = name.demodulize.delete_suffix("Model").underscore.dasherize
+
     attr_reader :name, :omit_output_fields
 
     def initialize(name:, omit_output_fields: [], **)
@@ -8,6 +14,7 @@ module NitroIntelligence
     end
   end
 
+  # @api private
   class ImageModel < Model
     attr_reader :aspect_ratios, :resolutions
 
@@ -18,8 +25,13 @@ module NitroIntelligence
     end
   end
 
+  # @api private
+  class DecisionModel < Model; end
+
+  # @api private
   class TextModel < Model; end
 
+  # @api private
   class TextToSpeechModel < Model
     attr_reader :default_voice,
                 :default_response_format,

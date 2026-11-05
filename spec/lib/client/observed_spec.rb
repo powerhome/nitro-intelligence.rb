@@ -47,5 +47,15 @@ RSpec.describe NitroIntelligence::Client::Observed do
       expect(mock_handler).to receive(:create).with(message: "say hi", parameters: {})
       observed_client.text_to_speech(message: "say hi")
     end
+
+    it "delegates #decide to the Observed::DecisionHandler" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::Observed::DecisionHandler)
+      allow(NitroIntelligence::Client::Handlers::Observed::DecisionHandler)
+        .to receive(:new).with(base_handler: instance_of(NitroIntelligence::Client::Handlers::DecisionHandler), observer: fake_observer)
+        .and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create).with(state: "content", questions: { q: { type: "noul" } }, parameters: {})
+      observed_client.decide(state: "content", questions: { q: { type: "noul" } })
+    end
   end
 end

@@ -1,3 +1,4 @@
 module NitroIntelligence
-  VERSION = "3.1.0".freeze
+  # The gem's version.
+  VERSION = "4.1.1".freeze
 end

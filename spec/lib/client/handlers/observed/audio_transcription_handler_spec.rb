@@ -9,7 +9,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
   let(:base_handler) { NitroIntelligence::Client::Handlers::AudioTranscriptionHandler.new(client: fake_openai_client) }
 
   let(:fake_prompt_store) { double("PromptStore") }
-  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token") }
+  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token", mask_content?: false) }
   let(:fake_upload_handler) { double("UploadHandler", upload: nil) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
   let(:fake_observer) { double("LangfuseObserver", project_client: fake_project_client) }
@@ -18,7 +18,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
 
   before do
     fake_catalog = double("ModelCatalog", default_audio_transcription_model: double(name: "whisper-1"))
-    allow(fake_catalog).to receive(:exists?).and_return(true)
+    allow(fake_catalog).to receive(:fetch) { |name, **| double("Model", name:) }
     allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_catalog)
 
     # Mock Audio to have the required methods for upload handler
@@ -39,7 +39,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
     let(:fake_transcription_response) do
       double("TranscriptionResponse", text: "transcribed text", usage: token_usage)
     end
-    let(:fake_generation) { double("Generation", trace_id: "trace-123") }
+    let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-123", id: "f8ccff00e8b9e5bd") }
 
     it "observes the request, uploads the file, and builds trace attributes" do
       expect(fake_observer).to receive(:observe).and_yield(fake_generation)
@@ -48,13 +48,38 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
         hash_including(prompt: "transcribe", model: "whisper-1", file: fake_audio_file)
       ).and_return(fake_transcription_response)
 
-      expect(fake_upload_handler).to receive(:upload).with("trace-123", upload_queue: instance_of(Queue))
+      expect(fake_upload_handler).to receive(:upload).with("trace-123", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
 
       audio_transcription, trace_attributes = handler.create(message: "transcribe", audio_file: fake_audio_file)
 
       expect(audio_transcription).to eq(fake_transcription_response)
       expect(trace_attributes[:output]).to eq("transcribed text")
       expect(trace_attributes[:usage_details]).to eq(input_tokens: 10, output_tokens: 20, total_tokens: 30)
+    end
+
+    context "when the project masks content" do
+      before { allow(fake_project).to receive(:mask_content?).and_return(true) }
+
+      it "uploads no audio and still returns the transcription" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        allow(fake_transcriptions).to receive(:create).and_return(fake_transcription_response)
+
+        expect(fake_upload_handler).not_to receive(:upload)
+
+        audio_transcription, = handler.create(message: "transcribe", audio_file: fake_audio_file)
+
+        expect(audio_transcription).to eq(fake_transcription_response)
+      end
+
+      it "asks the gateway to redact the request from its logs" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        expect(fake_transcriptions).to receive(:create) do |**kwargs|
+          expect(kwargs.dig(:request_options, :extra_headers, "x-litellm-enable-message-redaction")).to eq("true")
+          fake_transcription_response
+        end
+
+        handler.create(message: "transcribe", audio_file: fake_audio_file)
+      end
     end
 
     it "records the audio duration for models billed by duration" do
@@ -130,7 +155,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
           hash_including(prompt: "transcribe", model: "whisper-1", file: fake_audio_file)
         ).and_return(fake_transcription_response)
 
-        expect(fake_upload_handler).to receive(:upload).with("trace-123", upload_queue: instance_of(Queue))
+        expect(fake_upload_handler).to receive(:upload).with("trace-123", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
 
         handler.create(message: "transcribe", audio_file: fake_audio_file, parameters: { metadata: { custom_key: "custom_value" } })
       end
@@ -147,9 +172,21 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
           hash_including(prompt: "System instruction: transcribe")
         ).and_return(fake_transcription_response)
 
-        expect(fake_upload_handler).to receive(:upload).with("trace-123", upload_queue: instance_of(Queue))
+        expect(fake_upload_handler).to receive(:upload).with("trace-123", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
 
         handler.create(message: "transcribe", audio_file: fake_audio_file, parameters: { prompt_name: "test-prompt" })
+      end
+
+      it "leaves the caller's message as it was" do
+        fake_prompt = double("Prompt", type: "text", name: "test", compile: "System instruction:", config: {})
+        allow(fake_prompt_store).to receive(:get_prompt).and_return(fake_prompt)
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        allow(fake_transcriptions).to receive(:create).and_return(fake_transcription_response)
+        message = +"transcribe"
+
+        handler.create(message:, audio_file: fake_audio_file, parameters: { prompt_name: "test-prompt" })
+
+        expect(message).to eq("transcribe")
       end
 
       it "raises an error if the prompt is not a text prompt" do

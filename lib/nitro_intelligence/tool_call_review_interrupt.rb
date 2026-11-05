@@ -1,4 +1,5 @@
 require "active_support/core_ext/hash/indifferent_access"
+require "nitro_intelligence/review_decision"
 
 module NitroIntelligence
   # The tool calls one interrupt is holding, and the resume payload that answers them.
@@ -10,6 +11,8 @@ module NitroIntelligence
   # Action requests carry no tool call id, and ids are what a review interface works in, so each is
   # matched back onto the tool calls of the thread's last AI message -- the ones the middleware built
   # them from -- to recover the id. The order of `#tool_calls` is the order `decisions` must be in.
+  #
+  # @api private
   class ToolCallReviewInterrupt
     def initialize(thread_state)
       @thread_state = thread_state
@@ -68,14 +71,10 @@ module NitroIntelligence
       review = (review || {}).with_indifferent_access
 
       case review[:action].to_s
-      when "approve"
-        { "type" => "approve" }
-      when "edit"
-        { "type" => "edit", "edited_action" => edited_action(tool_call, review) }
-      when "reject"
-        review[:message].nil? ? { "type" => "reject" } : { "type" => "reject", "message" => review[:message] }
-      when "respond"
-        { "type" => "respond", "message" => review[:message] }
+      when "approve" then ReviewDecision.approve
+      when "edit" then ReviewDecision.edit(tool_call["name"], edited_args(tool_call, review))
+      when "reject" then ReviewDecision.reject(review[:message])
+      when "respond" then ReviewDecision.respond(review[:message])
       else
         raise Assistants::ThreadResumptionError,
               "Tool call #{tool_call['id']} has no review naming `approve`, `edit`, `reject` or `respond`"
@@ -84,11 +83,8 @@ module NitroIntelligence
 
     # Edited arguments are merged over the call the model made, so a reviewer changing one of them
     # does not have to restate the rest -- and cannot drop one by omitting it.
-    def edited_action(tool_call, review)
-      {
-        "name" => tool_call["name"],
-        "args" => tool_call["args"].merge(review[:args] || {}),
-      }
+    def edited_args(tool_call, review)
+      tool_call["args"].merge(review[:args] || {})
     end
 
     def interrupt_value

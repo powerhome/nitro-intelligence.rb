@@ -133,15 +133,14 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#await_run" do
-    let(:thread_id) { "thread-456" }
+    include_context "with an Assistants thread"
+
     let(:assistant_id) { "assistant-789" }
     let(:context) { { key: "value" } }
     let(:graph_id) { "confirmation-agent" }
     let(:assistant_url) { "#{base_url}/assistants/#{assistant_id}" }
     let(:thread_init_url) { "#{base_url}/threads" }
-    let(:thread_url) { "#{base_url}/threads/#{thread_id}" }
-    let(:thread_state_url) { "#{base_url}/threads/#{thread_id}/state" }
-    let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
+    let(:thread_state_url) { state_url }
 
     context "when messages is nil" do
       it "raises RunError" do
@@ -217,36 +216,13 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     before do
-      stub_request(:get, assistant_url)
-        .to_return(
-          status: 200,
-          body: { assistant_id:, name: graph_id, graph_id: }.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:get, assistant_url, { assistant_id:, name: graph_id, graph_id: })
 
-      stub_request(:post, thread_init_url)
-        .with(body: thread_init_request_body.to_json)
-        .to_return(
-          status: 200,
-          body: {}.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:post, thread_init_url, {}, request_body: thread_init_request_body)
 
-      stub_request(:post, thread_state_url)
-        .with(body: thread_state_request_body.to_json)
-        .to_return(
-          status: 200,
-          body: {}.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:post, thread_state_url, {}, request_body: thread_state_request_body)
 
-      stub_request(:post, run_url)
-        .with(body: run_request_body.to_json)
-        .to_return(
-          status: 200,
-          body: run_response_body.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:post, run_url, run_response_body, request_body: run_request_body)
     end
 
     it "creates the thread" do
@@ -285,12 +261,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when the assistant cannot be fetched" do
       before do
-        stub_request(:get, assistant_url)
-          .to_return(
-            status: 404,
-            body: { error: "not_found" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:get, assistant_url, { error: "not_found" }, status: 404)
       end
 
       it "raises ThreadInitializationError" do
@@ -310,12 +281,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when the assistant has no graph_id" do
       before do
-        stub_request(:get, assistant_url)
-          .to_return(
-            status: 200,
-            body: { assistant_id: }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:get, assistant_url, { assistant_id: })
       end
 
       it "raises ThreadInitializationError" do
@@ -344,12 +310,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when the thread already exists" do
       before do
-        stub_request(:post, thread_init_url)
-          .to_return(
-            status: 409,
-            body: { error: "Thread #{thread_id} already exists" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, thread_init_url, { error: "Thread #{thread_id} already exists" }, status: 409)
       end
 
       it "does not raise ThreadInitializationError" do
@@ -396,13 +357,7 @@ RSpec.describe NitroIntelligence::Assistants do
       end
 
       before do
-        stub_request(:post, run_url)
-          .with(body: run_request_body_without_context.to_json)
-          .to_return(
-            status: 200,
-            body: run_response_body.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, run_url, run_response_body, request_body: run_request_body_without_context)
       end
 
       it "uses an empty hash as default context" do
@@ -436,21 +391,9 @@ RSpec.describe NitroIntelligence::Assistants do
       end
 
       before do
-        stub_request(:post, thread_init_url)
-          .with(body: single_message_thread_init_body.to_json)
-          .to_return(
-            status: 200,
-            body: {}.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, thread_init_url, {}, request_body: single_message_thread_init_body)
 
-        stub_request(:post, run_url)
-          .with(body: single_message_run_body.to_json)
-          .to_return(
-            status: 200,
-            body: run_response_body.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, run_url, run_response_body, request_body: single_message_run_body)
       end
 
       it "creates the thread" do
@@ -476,12 +419,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when thread initialization fails" do
       before do
-        stub_request(:post, thread_init_url)
-          .to_return(
-            status: 500,
-            body: { error: "Internal Server Error" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, thread_init_url, { error: "Internal Server Error" }, status: 500)
       end
 
       it "raises ThreadInitializationError" do
@@ -502,12 +440,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when seeding the thread state fails" do
       before do
-        stub_request(:post, thread_state_url)
-          .to_return(
-            status: 500,
-            body: { error: "Internal Server Error" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, thread_state_url, { error: "Internal Server Error" }, status: 500)
 
         stub_request(:delete, thread_url).to_return(status: 200, body: {}.to_json)
       end
@@ -574,12 +507,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when run trigger fails" do
       before do
-        stub_request(:post, run_url)
-          .to_return(
-            status: 500,
-            body: { error: "Internal Server Error" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, run_url, { error: "Internal Server Error" }, status: 500)
       end
 
       it "raises RunError" do
@@ -649,13 +577,7 @@ RSpec.describe NitroIntelligence::Assistants do
       end
 
       before do
-        stub_request(:post, run_url)
-          .with(body: run_request_body.to_json)
-          .to_return(
-            status: 200,
-            body: multi_message_run_response_body.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, run_url, multi_message_run_response_body, request_body: run_request_body)
       end
 
       it "returns the content of the last message" do
@@ -683,12 +605,7 @@ RSpec.describe NitroIntelligence::Assistants do
       [400, 401, 403, 404, 422, 502, 503].each do |status_code|
         context "when thread initialization returns #{status_code}" do
           before do
-            stub_request(:post, thread_init_url)
-              .to_return(
-                status: status_code,
-                body: {}.to_json,
-                headers: { "Content-Type" => "application/json" }
-              )
+            stub_json(:post, thread_init_url, {}, status: status_code)
           end
 
           it "raises ThreadInitializationError" do
@@ -704,12 +621,7 @@ RSpec.describe NitroIntelligence::Assistants do
       [400, 401, 403, 404, 422, 502, 503].each do |status_code|
         context "when run trigger returns #{status_code}" do
           before do
-            stub_request(:post, run_url)
-              .to_return(
-                status: status_code,
-                body: {}.to_json,
-                headers: { "Content-Type" => "application/json" }
-              )
+            stub_json(:post, run_url, {}, status: status_code)
           end
 
           it "raises RunError" do
@@ -723,8 +635,8 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#tool_calls_under_review" do
-    let(:thread_id) { "thread-456" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    include_context "with an Assistants thread"
+
     let(:messages) do
       [
         {
@@ -759,12 +671,7 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     before do
-      stub_request(:get, state_url)
-        .to_return(
-          status: 200,
-          body: { "values" => { "messages" => messages }, "interrupts" => interrupts }.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:get, state_url, { "values" => { "messages" => messages }, "interrupts" => interrupts })
     end
 
     it "reports only the tool calls the interrupt is holding, with the decisions it allows" do
@@ -791,12 +698,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when the thread state cannot be fetched" do
       before do
-        stub_request(:get, state_url)
-          .to_return(
-            status: 500,
-            body: { error: "Internal Server Error" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:get, state_url, { error: "Internal Server Error" }, status: 500)
       end
 
       it "raises ThreadResumptionError" do
@@ -811,11 +713,9 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#review_tool_calls" do
-    let(:thread_id) { "thread-456" }
+    include_context "with an Assistants thread"
+
     let(:assistant_id) { "assistant-789" }
-    let(:thread_url) { "#{base_url}/threads/#{thread_id}" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
-    let(:run_url) { "#{base_url}/threads/#{thread_id}/runs/wait" }
     let(:thread_status) { "interrupted" }
     let(:tool_calls) do
       {
@@ -933,27 +833,11 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     before do
-      stub_request(:get, thread_url)
-        .to_return(
-          status: 200,
-          body: thread.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:get, thread_url, thread)
 
-      stub_request(:get, state_url)
-        .to_return(
-          status: 200,
-          body: thread_state.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:get, state_url, thread_state)
 
-      stub_request(:post, run_url)
-        .with(body: resume_request_body.to_json)
-        .to_return(
-          status: 200,
-          body: run_response_body.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:post, run_url, run_response_body, request_body: resume_request_body)
     end
 
     it "fetches the thread and thread state before resuming reviewed tool calls" do
@@ -1031,12 +915,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when the thread does not exist" do
       before do
-        stub_request(:get, thread_url)
-          .to_return(
-            status: 404,
-            body: {}.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:get, thread_url, {}, status: 404)
       end
 
       it "raises ThreadResumptionError" do
@@ -1178,13 +1057,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when resuming the thread fails" do
       before do
-        stub_request(:post, run_url)
-          .with(body: resume_request_body.to_json)
-          .to_return(
-            status: 500,
-            body: { error: "Internal Server Error" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:post, run_url, { error: "Internal Server Error" }, status: 500, request_body: resume_request_body)
       end
 
       it "raises ThreadResumptionError" do
@@ -1199,8 +1072,8 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#thread_state" do
-    let(:thread_id) { "thread-456" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    include_context "with an Assistants thread"
+
     let(:thread_state) do
       {
         "values" => {
@@ -1223,12 +1096,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when the thread state is fetched successfully" do
       before do
-        stub_request(:get, state_url)
-          .to_return(
-            status: 200,
-            body: thread_state.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:get, state_url, thread_state)
       end
 
       it "returns the thread state as reported by Assistants" do
@@ -1245,12 +1113,7 @@ RSpec.describe NitroIntelligence::Assistants do
 
     context "when the thread state cannot be fetched" do
       before do
-        stub_request(:get, state_url)
-          .to_return(
-            status: 404,
-            body: { "detail" => "Thread not found" }.to_json,
-            headers: { "Content-Type" => "application/json" }
-          )
+        stub_json(:get, state_url, { "detail" => "Thread not found" }, status: 404)
       end
 
       it "raises ThreadStateError carrying the response body" do
@@ -1265,8 +1128,8 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#thread_messages" do
-    let(:thread_id) { "thread-456" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    include_context "with an Assistants thread"
+
     let(:messages) do
       [
         {
@@ -1283,12 +1146,7 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     before do
-      stub_request(:get, state_url)
-        .to_return(
-          status: 200,
-          body: thread_state.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:get, state_url, thread_state)
     end
 
     context "when the thread has messages" do
@@ -1336,8 +1194,8 @@ RSpec.describe NitroIntelligence::Assistants do
   end
 
   describe "#tool_calls_pending_review" do
-    let(:thread_id) { "thread-456" }
-    let(:state_url) { "#{base_url}/threads/#{thread_id}/state" }
+    include_context "with an Assistants thread"
+
     let(:thread_state) do
       {
         "values" => {
@@ -1347,12 +1205,7 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     before do
-      stub_request(:get, state_url)
-        .to_return(
-          status: 200,
-          body: thread_state.to_json,
-          headers: { "Content-Type" => "application/json" }
-        )
+      stub_json(:get, state_url, thread_state)
     end
 
     context "when an AI message is the first message in the thread" do
@@ -1549,6 +1402,561 @@ RSpec.describe NitroIntelligence::Assistants do
 
       it "returns an empty array" do
         expect(assistants.tool_calls_pending_review(thread_id:)).to eq([])
+      end
+    end
+  end
+
+  describe "deprecated methods" do
+    include_context "with an Assistants thread"
+
+    let(:assistant_id) { "assistant-789" }
+
+    before do
+      allow(NitroIntelligence.deprecator).to receive(:warn)
+      stub_json(:get, thread_url, { error: "Internal Server Error" }, status: 500)
+      stub_json(:get, state_url, { error: "Internal Server Error" }, status: 500)
+    end
+
+    it "warns that #await_run is replaced by #run(...).reply" do
+      expect { assistants.await_run(thread_id:, assistant_id:, messages: []) }.to raise_error(described_class::RunError)
+
+      expect(NitroIntelligence.deprecator).to have_received(:warn).with(/#await_run is deprecated.*#run\(\.\.\.\)\.reply/)
+    end
+
+    it "warns that #review_tool_calls is replaced by #review" do
+      expect do
+        assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls: {})
+      end.to raise_error(described_class::ThreadResumptionError)
+
+      expect(NitroIntelligence.deprecator).to have_received(:warn).with(/#review_tool_calls is deprecated.*#review\(tool_calls:/)
+    end
+
+    it "warns that #tool_calls_under_review is replaced by #under_review" do
+      expect { assistants.tool_calls_under_review(thread_id:) }.to raise_error(described_class::ThreadResumptionError)
+
+      expect(NitroIntelligence.deprecator).to have_received(:warn).with(/#tool_calls_under_review is deprecated.*#under_review/)
+    end
+
+    it "warns that #tool_calls_pending_review is replaced by #under_review" do
+      expect { assistants.tool_calls_pending_review(thread_id:) }.to raise_error(described_class::ThreadResumptionError)
+
+      expect(NitroIntelligence.deprecator).to have_received(:warn).with(/#tool_calls_pending_review is deprecated.*#under_review/)
+    end
+  end
+
+  describe "runs that pause for review" do
+    include_context "with an Assistants thread"
+
+    let(:assistant_id) { "assistant-789" }
+    let(:reviewer_id) { "jane@example.com" }
+    let(:reviewed_at) { "2026-10-18T14:03:00Z" }
+    let(:context) { { "prompt_variables" => { "first_name" => "Casey" } } }
+    let(:draft) { "Sure! You're booked for Tuesday at 10am." }
+    let(:human_message) { { "type" => "human", "id" => "human-1", "content" => "Can I move it to Tuesday?" } }
+    let(:draft_message) { { "type" => "ai", "id" => "ai-2", "content" => draft } }
+    let(:tool_message) do
+      {
+        "type" => "ai",
+        "id" => "ai-1",
+        "content" => "Let me cancel that.",
+        "tool_calls" => [{ "id" => "call-1", "name" => "cancel_appointment", "args" => { "id" => 7 } }],
+      }
+    end
+    let(:tool_result) { { "type" => "tool", "id" => "tool-1", "tool_call_id" => "call-1", "content" => "Cancelled" } }
+    let(:reply_interrupt) { reply_interrupt_for(draft, description: "Review this SMS") }
+    let(:tool_interrupt) { tool_interrupt_for("cancel_appointment", { "id" => 7 }) }
+
+    describe "#run" do
+      let(:messages) { [{ role: "user", content: "Can I move it to Tuesday?" }] }
+      let(:run_response_body) { { "messages" => [human_message, draft_message] } }
+
+      before do
+        stub_json(:get, "#{base_url}/assistants/#{assistant_id}", { "graph_id" => "confirmation-agent" })
+        stub_json(:post, "#{base_url}/threads", {}, status: 409)
+        stub_json(:post, run_url, run_response_body)
+      end
+
+      it "returns the reply of a run that ended" do
+        result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+        expect(result).to be_a(NitroIntelligence::RunResult)
+        expect(result).not_to be_interrupted
+        expect(result.reply).to eq(draft)
+      end
+
+      context "when the run pauses on its reply" do
+        let(:run_response_body) { { "messages" => [human_message, draft_message], "__interrupt__" => [reply_interrupt] } }
+
+        it "holds the draft back and reports it for review" do
+          result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+          expect(result).to be_interrupted
+          expect(result.reply).to be_nil
+          expect(result.review.reply).to have_attributes(
+            content: draft, allowed_decisions: %w[approve edit reject], description: "Review this SMS",
+            interrupt_id: "interrupt-reply"
+          )
+        end
+
+        it "makes #await_run return nil rather than the draft" do
+          expect(assistants.await_run(thread_id:, assistant_id:, messages:, context:)).to be_nil
+        end
+      end
+
+      context "when the run pauses on tool calls" do
+        let(:run_response_body) { { "messages" => [human_message, tool_message], "__interrupt__" => [tool_interrupt] } }
+
+        it "reports the tool calls, and makes #await_run return nil rather than the working text" do
+          result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+          expect(result.review.tool_calls.map { |tool_call| tool_call["id"] }).to eq(["call-1"])
+          expect(assistants.await_run(thread_id:, assistant_id:, messages:, context:)).to be_nil
+        end
+      end
+
+      context "when the reply was delivered" do
+        let(:delivered) do
+          draft_message.merge(
+            "response_metadata" => { "delivery" => { "status" => "delivered", "tool" => "send_sms", "attempts" => 1 } }
+          )
+        end
+        let(:run_response_body) { { "messages" => [human_message, delivered] } }
+
+        it "reports the delivery with the reply" do
+          result = assistants.run(thread_id:, assistant_id:, messages:, context:)
+
+          expect(result.reply).to eq(draft)
+          expect(result.delivery).to have_attributes(status: "delivered", attempts: 1)
+        end
+      end
+    end
+
+    describe "#under_review" do
+      it "reads the pending review from the thread state" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+
+        expect(assistants.under_review(thread_id:).reply.content).to eq(draft)
+      end
+
+      it "is nil when the thread is not paused" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: nil, status: "idle")
+
+        expect(assistants.under_review(thread_id:)).to be_nil
+      end
+
+      it "raises ThreadStateError when the state cannot be read" do
+        stub_json(:get, state_url, { "error" => "boom" }, status: 500)
+
+        expect { assistants.under_review(thread_id:) }
+          .to raise_error(NitroIntelligence::Assistants::ThreadStateError, '{"error":"boom"}')
+      end
+    end
+
+    describe "#tool_calls_under_review on a reply pause" do
+      it "returns an empty array instead of failing to match __reply__ to a tool call" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+
+        expect(assistants.tool_calls_under_review(thread_id:)).to eq([])
+      end
+    end
+
+    describe "#review_tool_calls" do
+      it "refuses a reply pause, as it does any pause holding no tool calls" do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+
+        expect do
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls: {})
+        end.to raise_error(
+          NitroIntelligence::Assistants::ThreadResumptionError,
+          "Thread #{thread_id} has no tool calls awaiting review"
+        )
+      end
+
+      it "takes a list of reviews that each carry their tool call's id" do
+        stub_paused_thread(messages: [human_message, tool_message], interrupt: tool_interrupt)
+        stub_json(:post, run_url, { "messages" => [human_message, tool_message, tool_result] })
+
+        assistants.review_tool_calls(thread_id:, assistant_id:, context:,
+                                     tool_calls: [{ "id" => "call-1", "action" => "reject", "message" => "No" }])
+
+        decisions = [{ "type" => "reject", "message" => "No" }]
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: hash_including("command" => { "resume" => { "interrupt-tools" => { "decisions" => decisions } } }))
+      end
+    end
+
+    # The resume #review sends: decisions keyed by the interrupt, with the reviewer in the run's
+    # config.metadata.
+    def resume_body(decisions, interrupt_id: "interrupt-reply", reviewed_at: self.reviewed_at)
+      stamp = { "reviewer_id" => reviewer_id, "reviewed_at" => reviewed_at }
+      {
+        assistant_id:,
+        command: { resume: { interrupt_id => { decisions: } } },
+        config: { metadata: stamp },
+        context:,
+      }
+    end
+
+    describe "#review_tool_calls with a reviewer" do
+      before do
+        stub_paused_thread(messages: [human_message, tool_message], interrupt: tool_interrupt)
+        stub_json(:post, run_url, { "messages" => [human_message, tool_message, tool_result] })
+      end
+
+      it "puts the reviewer in config.metadata, as #review does" do
+        result = assistants.review_tool_calls(
+          thread_id:, assistant_id:, reviewer_id:, reviewed_at:, context:,
+          tool_calls: { "call-1" => { "action" => "approve" } }
+        )
+
+        expect(result).to be_nil
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: resume_body([{ "type" => "approve" }], interrupt_id: "interrupt-tools").to_json)
+      end
+
+      it "sends neither without one" do
+        assistants.review_tool_calls(thread_id:, assistant_id:, context:,
+                                     tool_calls: { "call-1" => { "action" => "approve" } })
+
+        expect(WebMock).to have_requested(:post, run_url).with(
+          body: {
+            assistant_id:, command: { resume: { "interrupt-tools" => { decisions: [{ "type" => "approve" }] } } }, context:
+          }.to_json
+        )
+      end
+
+      it "raises a resume Assistants refuses as the raw body, not as superseded, for callers that parse it" do
+        refusal = { "detail" => "Cannot resume: thread is not in interrupted state" }
+        stub_json(:post, run_url, refusal, status: 400)
+
+        expect do
+          assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls: { "call-1" => { "action" => "approve" } })
+        end.to raise_error(
+          an_instance_of(NitroIntelligence::Assistants::ThreadResumptionError).and(
+            having_attributes(message: refusal.to_json)
+          )
+        )
+      end
+    end
+
+    describe "#review" do
+      before do
+        stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt)
+        stub_json(:post, run_url, { "messages" => [human_message, draft_message] })
+      end
+
+      # A reply review names the interrupt the reviewer was shown; a tool call review need not.
+      def review(**kwargs)
+        kwargs = { interrupt_id: "interrupt-reply" }.merge(kwargs) if kwargs.key?(:reply)
+        assistants.review(thread_id:, assistant_id:, reviewer_id:, reviewed_at:, context:, **kwargs)
+      end
+
+      it "approves the reply, with the reviewer in the decision and in config.metadata" do
+        result = review(reply: { "action" => "approve" }, interrupt_id: "interrupt-reply")
+
+        expect(WebMock).to have_requested(:post, run_url).with(body: resume_body([{ "type" => "approve" }]).to_json)
+        expect(result).to be_a(NitroIntelligence::RunResult)
+        expect(result.reply).to eq(draft)
+      end
+
+      it "edits the reply" do
+        edited = draft_message.merge(
+          "content" => "Tuesday at 10am works.",
+          "response_metadata" => { "delivery" => { "status" => "delivered", "attempts" => 1 } }
+        )
+        stub_json(:post, run_url, { "messages" => [human_message, edited] })
+
+        result = review(reply: { "action" => "edit", "content" => "Tuesday at 10am works." })
+
+        edit = { "type" => "edit", "edited_action" => { "name" => "__reply__", "args" => { "content" => "Tuesday at 10am works." } } }
+        expect(WebMock).to have_requested(:post, run_url).with(body: resume_body([edit]).to_json)
+        expect(result.reply).to eq("Tuesday at 10am works.")
+        expect(result.delivery.status).to eq("delivered")
+      end
+
+      it "rejects the reply with a reason, and returns no reply" do
+        stub_json(:post, run_url, { "messages" => [human_message] })
+
+        result = review(reply: { "action" => "reject", "message" => "Wrong appointment" })
+
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: resume_body([{ "type" => "reject", "message" => "Wrong appointment" }]).to_json)
+        expect(result.reply).to be_nil
+      end
+
+      it "returns no reply when the rejected draft followed a tool turn, rather than that turn's text" do
+        stub_json(:post, run_url, { "messages" => [human_message, tool_message, tool_result] })
+
+        expect(review(reply: { "action" => "reject" }).reply).to be_nil
+      end
+
+      it "stamps the current time when reviewed_at is not given" do
+        allow(Time).to receive(:now).and_return(Time.utc(2026, 10, 21, 12, 0, 0))
+
+        assistants.review(thread_id:, assistant_id:, reviewer_id:, context:, interrupt_id: "interrupt-reply",
+                          reply: { "action" => "approve" })
+
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: resume_body([{ "type" => "approve" }], reviewed_at: "2026-10-21T12:00:00Z").to_json)
+      end
+
+      it "stamps a reviewed_at given as a Time in UTC" do
+        review(reply: { "action" => "approve" }, reviewed_at: Time.new(2026, 10, 21, 8, 0, 0, "-04:00"))
+
+        expect(WebMock).to have_requested(:post, run_url)
+          .with(body: resume_body([{ "type" => "approve" }], reviewed_at: "2026-10-21T12:00:00Z").to_json)
+      end
+
+      it "refuses respond for a reply, sending nothing" do
+        expect { review(reply: { "action" => "respond", "message" => "Hi" }) }.to raise_error(
+          NitroIntelligence::Assistants::ThreadResumptionError,
+          "Invalid review action `respond` for the reply; allowed: approve, edit, reject"
+        )
+        expect(WebMock).not_to have_requested(:post, run_url)
+      end
+
+      it "requires a reviewer" do
+        expect do
+          assistants.review(thread_id:, assistant_id:, reviewer_id: "", reply: { "action" => "approve" })
+        end.to raise_error(ArgumentError, "reviewer_id is required")
+      end
+
+      it "requires the interrupt the reviewer was shown for a reply, sending nothing" do
+        expect do
+          assistants.review(thread_id:, assistant_id:, reviewer_id:, context:, reply: { "action" => "approve" })
+        end.to raise_error(ArgumentError, /interrupt_id is required to review a reply/)
+        expect(WebMock).not_to have_requested(:any, /#{base_url}/)
+      end
+
+      it "requires exactly one thing to review" do
+        expect { review(reply: { "action" => "approve" }, tool_calls: {}) }
+          .to raise_error(ArgumentError, "pass exactly one of reply: or tool_calls:")
+        expect { review }.to raise_error(ArgumentError, "pass exactly one of reply: or tool_calls:")
+      end
+
+      context "when a new message superseded the review the reviewer was shown" do
+        before do
+          stub_paused_thread(messages: [human_message, draft_message],
+                             interrupt: reply_interrupt.merge("id" => "interrupt-newer"))
+        end
+
+        it "refuses as superseded instead of deciding the newer draft, sending nothing" do
+          expect { review(reply: { "action" => "approve" }, interrupt_id: "interrupt-reply") }.to raise_error(
+            NitroIntelligence::Assistants::ReviewSupersededError,
+            "Thread #{thread_id} is no longer paused on interrupt-reply: another review already resumed it, " \
+            "or a new message superseded it"
+          )
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+
+        it "is still a ThreadResumptionError for callers that rescue that" do
+          expect { review(reply: { "action" => "approve" }, interrupt_id: "interrupt-reply") }
+            .to raise_error(NitroIntelligence::Assistants::ThreadResumptionError)
+        end
+      end
+
+      context "when the thread is no longer paused" do
+        before { stub_paused_thread(messages: [human_message, draft_message], interrupt: nil, status: "idle") }
+
+        it "refuses as superseded" do
+          expect { review(reply: { "action" => "approve" }, interrupt_id: "interrupt-reply") }
+            .to raise_error(NitroIntelligence::Assistants::ReviewSupersededError)
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+      end
+
+      context "when the thread's run is under way again" do
+        before { stub_paused_thread(messages: [human_message, draft_message], interrupt: reply_interrupt, status: "busy") }
+
+        it "refuses as superseded without reading the stale interrupt" do
+          expect { review(reply: { "action" => "approve" }) }
+            .to raise_error(NitroIntelligence::Assistants::ReviewSupersededError, /no longer paused on interrupt-reply/)
+        end
+      end
+
+      context "when another review resumes the thread between the check and the resume" do
+        before do
+          stub_json(:post, run_url, { "detail" => "Cannot resume: thread is not in interrupted state" }, status: 400)
+        end
+
+        it "reports the review Assistants refused as superseded, since the first resume won" do
+          expect { review(reply: { "action" => "approve" }, interrupt_id: "interrupt-reply") }.to raise_error(
+            NitroIntelligence::Assistants::ReviewSupersededError, /no longer paused on interrupt-reply/
+          )
+        end
+      end
+
+      context "when the resume fails for another reason" do
+        before { stub_json(:post, run_url, { "detail" => "boom" }, status: 500) }
+
+        it "raises the failure as a ThreadResumptionError, not as superseded" do
+          expect { review(reply: { "action" => "approve" }) }.to raise_error(
+            an_instance_of(NitroIntelligence::Assistants::ThreadResumptionError).and(
+              having_attributes(message: '{"detail":"boom"}')
+            )
+          )
+        end
+      end
+
+      context "when the resumed run fails inside a successful response" do
+        before { stub_json(:post, run_url, { "__error__" => { "error" => "Error", "message" => "tool blew up" } }) }
+
+        it "raises the run's error as a ThreadResumptionError, not as superseded" do
+          expect { review(reply: { "action" => "approve" }) }.to raise_error(
+            an_instance_of(NitroIntelligence::Assistants::ThreadResumptionError).and(
+              having_attributes(message: "Error: tool blew up")
+            )
+          )
+        end
+      end
+
+      context "when the thread is paused on tool calls" do
+        before do
+          stub_paused_thread(messages: [human_message, tool_message], interrupt: tool_interrupt)
+          stub_json(:post, run_url, { "messages" => [human_message, tool_message, tool_result, draft_message] })
+        end
+
+        it "refuses a reply review, sending nothing" do
+          expect { review(reply: { "action" => "approve" }, interrupt_id: "interrupt-tools") }.to raise_error(
+            NitroIntelligence::Assistants::ThreadResumptionError,
+            "Thread #{thread_id} is awaiting review of tool calls, not of a reply"
+          )
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+
+        it "decides them from a list of reviews, with the reviewer in config.metadata" do
+          result = review(tool_calls: [{ "id" => "call-1", "action" => "reject", "message" => "Customer called in" }],
+                          interrupt_id: "interrupt-tools")
+
+          expect(WebMock).to have_requested(:post, run_url).with(
+            body: resume_body([{ "type" => "reject", "message" => "Customer called in" }],
+                              interrupt_id: "interrupt-tools").to_json
+          )
+          expect(result.reply).to eq(draft)
+        end
+
+        it "takes them without the interrupt the reviewer was shown, keyed by the one it read" do
+          review(tool_calls: { "call-1" => { "action" => "approve" } })
+
+          expect(WebMock).to have_requested(:post, run_url)
+            .with(body: resume_body([{ "type" => "approve" }], interrupt_id: "interrupt-tools").to_json)
+        end
+
+        it "refuses a review of a tool call the interrupt is not holding, sending nothing" do
+          expect { review(tool_calls: { "call-9" => { "action" => "approve" } }) }.to raise_error(
+            NitroIntelligence::Assistants::ThreadResumptionError, "Unknown tool call ids: call-9"
+          )
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+
+        it "refuses reviews that leave a held tool call undecided, sending nothing" do
+          expect { review(tool_calls: {}) }.to raise_error(
+            NitroIntelligence::Assistants::ThreadResumptionError, "Missing reviews for tool calls: call-1"
+          )
+          expect(WebMock).not_to have_requested(:post, run_url)
+        end
+      end
+    end
+
+    describe "keyed resumes" do
+      let(:tools_state) { { "values" => { "messages" => [human_message, tool_message] }, "interrupts" => [tool_interrupt] } }
+      let(:reply_paused_run) do
+        { "messages" => [human_message, tool_message, tool_result, draft_message], "__interrupt__" => [reply_interrupt] }
+      end
+
+      def reply_state(written_by:)
+        {
+          "values" => { "messages" => [human_message, tool_message, tool_result, draft_message] },
+          "interrupts" => [reply_interrupt],
+          "metadata" => { "run_id" => written_by, "step" => 4 },
+        }
+      end
+
+      def review_tools(**kwargs)
+        assistants.review(thread_id:, assistant_id:, reviewer_id:, reviewed_at:, context:,
+                          tool_calls: { "call-1" => { "action" => "approve" } }, **kwargs)
+      end
+
+      before { stub_json(:get, thread_url, { "thread_id" => thread_id, "status" => "interrupted" }) }
+
+      context "when the resume was applied and the run paused again on its reply" do
+        before do
+          stub_states(tools_state, reply_state(written_by: "run-mine"))
+          stub_resume(reply_paused_run, run_id: "run-mine")
+        end
+
+        it "returns the new pause" do
+          expect(review_tools.review.reply.content).to eq(draft)
+        end
+      end
+
+      # Another reviewer's resume decided the tool calls between this review's read and its resume,
+      # and the run's reply paused at once. Keyed by the tool call interrupt, this resume decided
+      # nothing, so the latest checkpoint is still the one the other reviewer's run wrote.
+      context "when another review's resume moved the thread on between the read and the resume" do
+        before do
+          stub_states(tools_state, reply_state(written_by: "run-theirs"))
+          stub_resume(reply_paused_run, run_id: "run-mine")
+        end
+
+        it "refuses as superseded, rather than reporting the reply pause as this review's" do
+          expect { review_tools }.to raise_error(
+            NitroIntelligence::Assistants::ReviewSupersededError,
+            "Thread #{thread_id} is no longer paused on interrupt-tools: another review already resumed it, " \
+            "or a new message superseded it; it is now paused on interrupt-reply, and the decision was not applied"
+          )
+        end
+
+        it "refuses the same through #review_tool_calls" do
+          expect do
+            assistants.review_tool_calls(thread_id:, assistant_id:, tool_calls: { "call-1" => { "action" => "approve" } })
+          end.to raise_error(NitroIntelligence::Assistants::ReviewSupersededError, /the decision was not applied/)
+        end
+      end
+
+      context "when the wait does not say which run it was" do
+        before do
+          stub_states(tools_state, reply_state(written_by: "run-theirs"))
+          stub_json(:post, run_url, reply_paused_run)
+        end
+
+        it "returns the pause, since nothing shows the decision was not applied" do
+          expect(review_tools.review.reply).to be_present
+          expect(WebMock).to have_requested(:get, state_url).once
+        end
+      end
+
+      context "when the state cannot be read after the resume" do
+        before do
+          stub_request(:get, state_url)
+            .to_return(status: 200, body: tools_state.to_json, headers: AssistantsHelpers::JSON_HEADERS)
+            .then.to_return(status: 500, body: "boom")
+          stub_resume(reply_paused_run, run_id: "run-mine")
+        end
+
+        it "returns the pause, as the resume itself succeeded" do
+          expect(review_tools.review.reply).to be_present
+        end
+      end
+
+      context "when the interrupt reports no id" do
+        before do
+          stub_states({ "values" => { "messages" => [human_message, tool_message] },
+                        "interrupts" => [tool_interrupt.except("id")] }, {})
+          stub_resume({ "messages" => [human_message, tool_message, tool_result] })
+        end
+
+        it "resumes unkeyed, the only resume such a pause takes" do
+          review_tools
+
+          stamp = { "reviewer_id" => reviewer_id, "reviewed_at" => reviewed_at }
+          expect(WebMock).to have_requested(:post, run_url).with(
+            body: {
+              assistant_id:, command: { resume: { decisions: [{ "type" => "approve" }] } },
+              config: { metadata: stamp }, context:
+            }.to_json
+          )
+        end
       end
     end
   end

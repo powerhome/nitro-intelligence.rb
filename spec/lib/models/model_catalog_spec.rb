@@ -9,11 +9,13 @@ RSpec.describe NitroIntelligence::ModelCatalog do
         { name: "dall-e-3", type: "image", aspect_ratios: ["1:1"] },
         { name: "whisper-1", type: "audio_transcription" },
         { name: "tts-1", type: "text_to_speech" },
+        { name: "jev", type: "decision" },
       ],
       default_audio_transcription_model: "whisper-1",
       default_image_model: "dall-e-3",
       default_text_model: "gpt-4",
       default_text_to_speech_model: "tts-1",
+      default_decision_model: "jev",
     }
   end
 
@@ -21,6 +23,7 @@ RSpec.describe NitroIntelligence::ModelCatalog do
   let(:fake_dalle) { double("ImageModel", name: "dall-e-3") }
   let(:fake_whisper) { double("TextModel", name: "whisper-1") }
   let(:fake_tts) { double("TextToSpeechModel", name: "tts-1") }
+  let(:fake_jev) { double("DecisionModel", name: "jev") }
 
   before do
     # Stub the ModelFactory to return our fake models for easy testing
@@ -39,12 +42,16 @@ RSpec.describe NitroIntelligence::ModelCatalog do
     allow(NitroIntelligence::ModelFactory).to receive(:build)
       .with({ name: "tts-1", type: "text_to_speech" })
       .and_return(fake_tts)
+
+    allow(NitroIntelligence::ModelFactory).to receive(:build)
+      .with({ name: "jev", type: "decision" })
+      .and_return(fake_jev)
   end
 
   describe "#initialize" do
     it "builds models using the ModelFactory" do
       catalog = described_class.new(model_config)
-      expect(catalog.models).to contain_exactly(fake_gpt4, fake_dalle, fake_whisper, fake_tts)
+      expect(catalog.models).to contain_exactly(fake_gpt4, fake_dalle, fake_whisper, fake_tts, fake_jev)
     end
 
     it "sets the default models by performing lookups" do
@@ -54,6 +61,7 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       expect(catalog.default_image_model).to eq(fake_dalle)
       expect(catalog.default_audio_transcription_model).to eq(fake_whisper)
       expect(catalog.default_text_to_speech_model).to eq(fake_tts)
+      expect(catalog.default_decision_model).to eq(fake_jev)
     end
 
     it "accepts string-keyed configuration" do
@@ -84,6 +92,53 @@ RSpec.describe NitroIntelligence::ModelCatalog do
 
     it "returns nil when no matching name is found" do
       expect(catalog.lookup_by_name("unknown-model")).to be_nil
+    end
+  end
+
+  describe "#exists?" do
+    let(:catalog) { described_class.new(model_config) }
+
+    it "is true for a model in the catalog and false otherwise" do
+      expect(catalog.exists?("dall-e-3")).to be(true)
+      expect(catalog.exists?("unknown-model")).to be(false)
+    end
+  end
+
+  describe "#fetch" do
+    let(:catalog) do
+      described_class.new(
+        models: [
+          { name: "gpt-4", type: "text" },
+          { name: "tts-1", type: "text_to_speech", default_voice: "alloy", default_response_format: "mp3" },
+          { name: "jev", type: "decision" },
+        ]
+      )
+    end
+
+    before { allow(NitroIntelligence::ModelFactory).to receive(:build).and_call_original }
+
+    it "returns the named model when it is of the requested type" do
+      expect(catalog.fetch("jev", type: NitroIntelligence::DecisionModel).name).to eq("jev")
+    end
+
+    it "accepts a model of any type when no type is requested" do
+      expect(catalog.fetch("tts-1")).to be_a(NitroIntelligence::TextToSpeechModel)
+    end
+
+    it "raises when no model has the name" do
+      expect { catalog.fetch("ghost") }.to raise_error(ArgumentError, "Unsupported model: 'ghost'")
+    end
+
+    it "raises, naming the type, when the model is of another type" do
+      expect { catalog.fetch("jev", type: NitroIntelligence::TextModel) }
+        .to raise_error(ArgumentError, "Model 'jev' is not a text model")
+    end
+
+    it "names a kind of model that declares no kind of its own" do
+      stub_const("NitroIntelligence::EmbeddingModel", Class.new(NitroIntelligence::Model))
+
+      expect { catalog.fetch("jev", type: NitroIntelligence::EmbeddingModel) }
+        .to raise_error(ArgumentError, "Model 'jev' is not an embedding model")
     end
   end
 end

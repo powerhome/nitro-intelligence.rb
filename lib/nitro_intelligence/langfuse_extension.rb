@@ -8,6 +8,7 @@
 require "nitro_intelligence/langfuse_tracer_provider"
 
 module NitroIntelligence
+  # @api private
   class LangfuseExtension
     attr_reader :config
 

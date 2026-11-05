@@ -1,16 +1,19 @@
+require "nitro_intelligence/client/handlers/observed/base_handler"
 require "nitro_intelligence/observability/prompt_resolver"
 
 module NitroIntelligence
   module Client
     module Handlers
+      # @api private
       module Observed
-        class ChatHandler
+        # @api private
+        class ChatHandler < BaseHandler
+          # Raised by {Client::Base#chat} on an observed client when the request carries no user
+          # message for the model to answer: the prompt supplies only a system message, and the
+          # caller passed no `message`.
+          #
+          # @api public
           class ObservedChatPromptError < StandardError; end
-
-          def initialize(base_handler:, observer:)
-            @base_handler = base_handler
-            @observer = observer
-          end
 
           def create(message: "", parameters: {})
             @base_handler.validate_and_resolve!(parameters, message)
@@ -18,7 +21,7 @@ module NitroIntelligence
             prompt = handle_prompt(parameters:)
             validate_message_shape!(parameters:, prompt:)
 
-            trace_name = parameters[:trace_name] || prompt&.name || @observer.project_client.project.slug
+            trace_name = parameters[:trace_name] || prompt&.name || project.slug
 
             @observer.observe(
               "chat-completion",
@@ -76,7 +79,7 @@ module NitroIntelligence
 
           def handle_prompt(parameters:)
             prompt = NitroIntelligence::Observability::PromptResolver.for(
-              store: @observer.project_client.project.prompt_store,
+              store: project.prompt_store,
               parameters:
             )
             return nil if prompt.blank?
@@ -92,7 +95,9 @@ module NitroIntelligence
           end
 
           def workflow(generation:, parameters:)
-            chat_completion = @base_handler.perform_request(parameters:, correlation_trace_id: generation.trace_id)
+            chat_completion = @base_handler.perform_request(
+              parameters:, correlation_trace_id: generation.trace_id, mask_content: project.mask_content?
+            )
             output = chat_completion.choices.first.message.to_h
 
             trace_attributes = {

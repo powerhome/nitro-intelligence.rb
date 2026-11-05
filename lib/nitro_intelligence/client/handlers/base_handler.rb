@@ -2,7 +2,9 @@ require "json"
 
 module NitroIntelligence
   module Client
+    # @api private
     module Handlers
+      # @api private
       class BaseHandler
         MODALITY_HEADER = "nip-modality".freeze
         REQUESTED_MODEL_HEADER = "nip-requested-model".freeze
@@ -11,6 +13,10 @@ module NitroIntelligence
         # See https://docs.litellm.ai/docs/proxy/request_headers
         TRACE_ID_HEADER = "x-litellm-trace-id".freeze
         SPEND_LOGS_METADATA_HEADER = "x-litellm-spend-logs-metadata".freeze
+
+        # Asks the gateway to replace the messages and the response with
+        # "redacted-by-litellm" in its own logs. The gateway reads any value as on.
+        MESSAGE_REDACTION_HEADER = "x-litellm-enable-message-redaction".freeze
 
         # Headers over ~8KB are rejected by most proxies. Metadata is caller
         # supplied, so cap it rather than turning a large hash into a failed request.
@@ -82,9 +88,12 @@ module NitroIntelligence
           nil
         end
 
+        # Copies the request options rather than changing them, because a caller may pass one
+        # hash to several requests, and the headers added here belong to this request alone.
         def add_request_headers(parameters, headers)
-          request_options = (parameters[:request_options] ||= {})
-          (request_options[:extra_headers] ||= {}).merge!(headers.compact)
+          request_options = parameters[:request_options].to_h
+          parameters[:request_options] =
+            request_options.merge(extra_headers: request_options[:extra_headers].to_h.merge(headers.compact))
           parameters
         end
 
@@ -108,6 +117,21 @@ module NitroIntelligence
             TRACE_ID_HEADER => trace_id.presence,
             SPEND_LOGS_METADATA_HEADER => spend_logs_metadata(parameters[:metadata])
           )
+        end
+
+        # Every request to the gateway names the model asked for, and the modality where the
+        # route alone does not, carries the correlation headers and, for a project that masks
+        # content, asks the gateway to redact it from its logs.
+        def add_gateway_headers(parameters, correlation_trace_id:, mask_content:, modality: nil)
+          add_request_headers(parameters, MODALITY_HEADER => modality, REQUESTED_MODEL_HEADER => parameters[:model])
+          add_correlation_headers(parameters, trace_id: correlation_trace_id)
+          add_message_redaction_header(parameters, mask_content:)
+        end
+
+        # A project that masks content in Cerebro keeps it out of the gateway's logs
+        # too, so one setting decides where a request's content is recorded.
+        def add_message_redaction_header(parameters, mask_content:)
+          add_request_headers(parameters, MESSAGE_REDACTION_HEADER => ("true" if mask_content))
         end
 
         def spend_logs_metadata(metadata)

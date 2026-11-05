@@ -9,7 +9,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
   let(:base_handler) { NitroIntelligence::Client::Handlers::ImageHandler.new(client: fake_openai_client) }
 
   let(:fake_prompt_store) { double("PromptStore") }
-  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token") }
+  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, auth_token: "auth_token", mask_content?: false) }
   let(:fake_upload_handler) { double("UploadHandler", auth_token: "auth_token", upload: nil, replace_base64_with_media_references: nil) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
   let(:fake_observer) { double("LangfuseObserver", project_client: fake_project_client) }
@@ -30,7 +30,9 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
       parse_file: nil,
       files: [fake_generated_file],
       :trace_id= => nil,
-      trace_id: "trace-999"
+      :observation_id= => nil,
+      trace_id: "trace-999",
+      observation_id: "f8ccff00e8b9e5bd"
     )
   end
 
@@ -43,7 +45,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
     )
 
     fake_catalog = double("ModelCatalog")
-    allow(fake_catalog).to receive(:exists?).and_return(true)
+    allow(fake_catalog).to receive(:fetch) { |name, **| double("Model", name:) }
     allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_catalog)
   end
 
@@ -55,7 +57,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
              usage: double(prompt_tokens: 15, completion_tokens: 30, total_tokens: 45))
     end
 
-    let(:fake_generation) { double("Generation", trace_id: "trace-999") }
+    let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-999", id: "f8ccff00e8b9e5bd") }
 
     it "observes the request, handles uploads, and builds trace attributes" do
       expect(fake_observer).to receive(:observe).with(
@@ -71,15 +73,74 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
       ).and_return(fake_completion_response)
 
       expect(fake_image_generation).to receive(:trace_id=).with("trace-999")
+      expect(fake_image_generation).to receive(:observation_id=).with("f8ccff00e8b9e5bd")
       expect(fake_image_generation).to receive(:parse_file).with(fake_completion_response)
 
-      expect(fake_upload_handler).to receive(:upload).with("trace-999", upload_queue: instance_of(Queue))
+      expect(fake_upload_handler).to receive(:upload).with("trace-999", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
       expect(fake_upload_handler).to receive(:replace_base64_with_media_references).twice
 
       # FIX: Removed array destructuring (trace_attributes) since the handler just returns the image object
       image_generation_result = handler.create(message: "draw a cat")
 
       expect(image_generation_result).to eq(fake_image_generation)
+    end
+
+    it "replaces image URLs on a copy of the caller's messages, so the same messages can be sent again" do
+      messages = [{ role: "user", content: [{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }] }]
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      allow(fake_completions).to receive(:create).and_return(fake_completion_response)
+      allow(fake_upload_handler).to receive(:replace_base64_with_media_references) do |payload|
+        payload.first[:content].first[:image_url][:url] = "[Discarded media]" if payload.is_a?(Array)
+      end
+
+      handler.create(message: "draw a cat", parameters: { messages: })
+
+      expect(messages.first[:content].first[:image_url][:url]).to eq("data:image/png;base64,AAAA")
+    end
+
+    context "when the project masks content" do
+      before { allow(fake_project).to receive(:mask_content?).and_return(true) }
+
+      it "uploads no images and still returns the generation" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        allow(fake_completions).to receive(:create).and_return(fake_completion_response)
+        allow(fake_image_generation).to receive(:trace_id=)
+        allow(fake_image_generation).to receive(:parse_file)
+
+        expect(fake_upload_handler).not_to receive(:upload)
+        expect(fake_upload_handler).not_to receive(:replace_base64_with_media_references)
+
+        expect(handler.create(message: "draw a cat")).to eq(fake_image_generation)
+      end
+
+      it "asks the gateway to redact the request from its logs" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+        allow(fake_image_generation).to receive(:trace_id=)
+        allow(fake_image_generation).to receive(:parse_file)
+        expect(fake_completions).to receive(:create) do |**kwargs|
+          expect(kwargs.dig(:request_options, :extra_headers, "x-litellm-enable-message-redaction")).to eq("true")
+          fake_completion_response
+        end
+
+        handler.create(message: "draw a cat")
+      end
+    end
+
+    it "returns the trace and observation IDs on the image generation result" do
+      model = NitroIntelligence::ImageModel.new(name: "dall-e-3", aspect_ratios: ["1:1"], resolutions: ["1K"])
+      allow(NitroIntelligence.model_catalog).to receive_messages(default_image_model: model, lookup_by_name: model, fetch: model)
+      allow(NitroIntelligence::ImageGeneration).to receive(:new).and_call_original
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      allow(fake_completions).to receive(:create).and_return(fake_completion_response)
+
+      expect(fake_upload_handler).to receive(:upload).with(
+        "trace-999", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue)
+      )
+
+      result = handler.create(message: "draw a cat")
+
+      expect(result).to be_a(NitroIntelligence::ImageGeneration)
+      expect(result).to have_attributes(trace_id: "trace-999", observation_id: "f8ccff00e8b9e5bd")
     end
 
     # #create returns the image generation rather than the observation payload, so the
@@ -134,7 +195,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
         expect(fake_image_generation).to receive(:trace_id=).with("trace-999")
         expect(fake_image_generation).to receive(:parse_file).with(fake_completion_response)
 
-        expect(fake_upload_handler).to receive(:upload).with("trace-999", upload_queue: instance_of(Queue))
+        expect(fake_upload_handler).to receive(:upload).with("trace-999", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
         expect(fake_upload_handler).to receive(:replace_base64_with_media_references).twice
 
         handler.create(message: "draw a cat", parameters: { metadata: { custom_key: "custom_value" } })
@@ -165,7 +226,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
         expect(fake_image_generation).to receive(:trace_id=).with("trace-999")
         expect(fake_image_generation).to receive(:parse_file).with(fake_completion_response)
 
-        expect(fake_upload_handler).to receive(:upload).with("trace-999", upload_queue: instance_of(Queue))
+        expect(fake_upload_handler).to receive(:upload).with("trace-999", observation_id: "f8ccff00e8b9e5bd", upload_queue: instance_of(Queue))
         expect(fake_upload_handler).to receive(:replace_base64_with_media_references).twice
 
         handler.create(message: "draw a cat", parameters: { prompt_name: "test-image-prompt" })

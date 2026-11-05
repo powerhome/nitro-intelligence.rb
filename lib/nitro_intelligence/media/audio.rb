@@ -1,7 +1,13 @@
 require "nitro_intelligence/media/media"
 
 module NitroIntelligence
+  # @api private
   class Audio < Media
+    # Raised by {Client::Base#transcribe_audio} on an observed client whose project does not mask
+    # content, when `audio_file` has no path. It is raised while uploading the audio to Cerebro,
+    # after the gateway has transcribed it, so the transcription is lost.
+    #
+    # @api public
     class AudioFileFormatError < StandardError; end
 
     def initialize(file)

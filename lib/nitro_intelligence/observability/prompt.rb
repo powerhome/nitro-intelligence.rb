@@ -1,5 +1,6 @@
 module NitroIntelligence
   module Observability
+    # @api private
     class Prompt
       attr_reader :name, :type, :prompt, :version, :config, :labels, :tags
 
@@ -21,9 +22,9 @@ module NitroIntelligence
       def compile(**replacements)
         return replace_variables(@prompt, **replacements) if @type == "text"
 
+        # New messages, so the prompt keeps its variables for the next request that compiles it.
         @prompt.map do |message|
-          message[:content] = replace_variables(message[:content], **replacements)
-          message
+          message.merge(content: replace_variables(message[:content], **replacements))
         end
       end
 
@@ -31,7 +32,7 @@ module NitroIntelligence
       # into the correct position based on prompt "type" ("text" or "chat")
       def interpolate(messages:, variables:)
         if @type == "text"
-          messages.prepend({ role: "system", content: compile(**variables) })
+          [{ role: "system", content: compile(**variables) }] + messages
         elsif @type == "chat"
           compile(**variables) + messages
         end

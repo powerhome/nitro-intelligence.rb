@@ -4,6 +4,7 @@ require "nitro_intelligence/client/handlers/base_handler"
 module NitroIntelligence
   module Client
     module Handlers
+      # @api private
       class TextToSpeechHandler < BaseHandler
         ALLOWED_EXTRA_PARAMETERS = OpenAI::Models::Audio::SpeechCreateParams.fields.keys.uniq.freeze
 
@@ -12,9 +13,8 @@ module NitroIntelligence
           perform_request(message:, parameters:)
         end
 
-        def perform_request(message: "", parameters: {}, correlation_trace_id: nil)
-          add_request_headers(parameters, MODALITY_HEADER => "audio", REQUESTED_MODEL_HEADER => parameters[:model])
-          add_correlation_headers(parameters, trace_id: correlation_trace_id)
+        def perform_request(message: "", parameters: {}, correlation_trace_id: nil, mask_content: false)
+          add_gateway_headers(parameters, correlation_trace_id:, mask_content:, modality: "audio")
           @client.audio.speech.create(
             input: message,
             **parameters.slice(*ALLOWED_EXTRA_PARAMETERS)
@@ -23,8 +23,7 @@ module NitroIntelligence
 
         def validate_and_resolve!(parameters)
           model_name = parameters[:model] || NitroIntelligence.model_catalog.default_text_to_speech_model&.name
-          model = NitroIntelligence.model_catalog.lookup_by_name(model_name)
-          raise ArgumentError, "Unsupported model: '#{model_name}'" unless model
+          model = Client.validate_model(model_name, type: TextToSpeechModel)
 
           default_parameters = {
             metadata: {},
