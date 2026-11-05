@@ -115,3 +115,14 @@ RSpec.describe NitroIntelligence::TextToSpeechModel do
     end
   end
 end
+
+RSpec.describe "NitroIntelligence::Model.kind" do
+  it "names each kind of model after its class" do
+    expect(NitroIntelligence::ModelFactory::TYPES.values.uniq.to_h { [_1, _1.kind] }).to eq(
+      NitroIntelligence::TextModel => "text",
+      NitroIntelligence::DecisionModel => "decision",
+      NitroIntelligence::ImageModel => "image",
+      NitroIntelligence::TextToSpeechModel => "text-to-speech"
+    )
+  end
+end

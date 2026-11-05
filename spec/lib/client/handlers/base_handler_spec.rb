@@ -116,6 +116,36 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
     end
   end
 
+  describe "#add_gateway_headers" do
+    it "sends every gateway header together, keeping the caller's own" do
+      parameters = {
+        model: "gpt-image-1",
+        metadata: { ticket: "1" },
+        request_options: { extra_headers: { "x-caller" => "kept" } },
+      }
+
+      handler.send(:add_gateway_headers, parameters, correlation_trace_id: "abc123", mask_content: true,
+                                                     modality: "image")
+
+      expect(parameters.dig(:request_options, :extra_headers)).to eq(
+        "x-caller" => "kept",
+        "nip-modality" => "image",
+        "nip-requested-model" => "gpt-image-1",
+        "x-litellm-trace-id" => "abc123",
+        "x-litellm-spend-logs-metadata" => '{"ticket":"1"}',
+        "x-litellm-enable-message-redaction" => "true"
+      )
+    end
+
+    it "sends only the requested model when there is nothing else to say" do
+      parameters = { model: "gpt-4o" }
+
+      handler.send(:add_gateway_headers, parameters, correlation_trace_id: nil, mask_content: false)
+
+      expect(parameters.dig(:request_options, :extra_headers)).to eq("nip-requested-model" => "gpt-4o")
+    end
+  end
+
   describe "#add_message_redaction_header" do
     it "asks the gateway to redact the request's messages and response from its logs" do
       parameters = {}

@@ -26,8 +26,8 @@ module NitroIntelligence
     end
 
     # @api private
-    def self.validate_model(model)
-      raise ArgumentError, "Unsupported model: '#{model}'" unless NitroIntelligence.model_catalog.exists?(model)
+    def self.validate_model(model, type: Model)
+      NitroIntelligence.model_catalog.fetch(model, type:)
     end
   end
 end

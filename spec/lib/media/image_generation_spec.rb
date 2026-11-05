@@ -32,7 +32,9 @@ RSpec.describe NitroIntelligence::ImageGeneration do
   end
 
   let(:mock_catalog) do
-    double("ModelCatalog", default_image_model: mock_model)
+    NitroIntelligence::ModelCatalog.new({}).tap do |catalog|
+      allow(catalog).to receive(:default_image_model).and_return(mock_model)
+    end
   end
 
   before do
@@ -60,6 +62,14 @@ RSpec.describe NitroIntelligence::ImageGeneration do
   end
 
   describe "#initialize" do
+    it "raises when the configured model is not an image model" do
+      allow(NitroIntelligence).to receive(:model_catalog)
+        .and_return(NitroIntelligence::ModelCatalog.new(models: [{ name: "gpt-4", type: "text" }]))
+
+      expect { described_class.new(message: "A cool cat") { |config| config.model = "gpt-4" } }
+        .to raise_error(ArgumentError, "Model 'gpt-4' is not an image model")
+    end
+
     context "with only a text message" do
       subject(:generator) { described_class.new(message: "A cool cat") }
 

@@ -13,7 +13,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::AudioTranscriptionHandler do
   before do
     fake_model = double("Model", name: "default-audio-model")
     fake_catalog = double("ModelCatalog", default_audio_transcription_model: fake_model)
-    allow(fake_catalog).to receive(:exists?).and_return(true)
+    allow(fake_catalog).to receive(:fetch) { |name, **| double("Model", name:) }
     allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_catalog)
   end
 
@@ -62,6 +62,18 @@ RSpec.describe NitroIntelligence::Client::Handlers::AudioTranscriptionHandler do
 
       expect(audio_transcription.text).to eq("transcribed text")
       expect(handler.cost_details(audio_transcription)).to eq(total: 5.85e-06, input: 1.1e-06, output: 4.75e-06)
+    end
+
+    it "raises when the requested model is not a text model" do
+      allow(NitroIntelligence).to receive(:model_catalog)
+        .and_return(NitroIntelligence::ModelCatalog.new(models: [{ name: "dall-e-3", type: "image" }]))
+
+      expect do
+        handler.create(
+          audio_file: OpenAI::FilePart.new(StringIO.new("audio_bytes"), filename: "audio.mp3"),
+          parameters: { model: "dall-e-3" }
+        )
+      end.to raise_error(ArgumentError, "Model 'dall-e-3' is not a text model")
     end
   end
 end

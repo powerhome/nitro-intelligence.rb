@@ -1,3 +1,4 @@
+require "nitro_intelligence/client/handlers/observed/base_handler"
 require "nitro_intelligence/observability/prompt_resolver"
 
 module NitroIntelligence
@@ -6,18 +7,13 @@ module NitroIntelligence
       # @api private
       module Observed
         # @api private
-        class ChatHandler
+        class ChatHandler < BaseHandler
           # Raised by {Client::Base#chat} on an observed client when the request carries no user
           # message for the model to answer: the prompt supplies only a system message, and the
           # caller passed no `message`.
           #
           # @api public
           class ObservedChatPromptError < StandardError; end
-
-          def initialize(base_handler:, observer:)
-            @base_handler = base_handler
-            @observer = observer
-          end
 
           def create(message: "", parameters: {})
             @base_handler.validate_and_resolve!(parameters, message)
@@ -40,10 +36,6 @@ module NitroIntelligence
           end
 
         private
-
-          def project
-            @observer.project_client.project
-          end
 
           # A chat completion needs a turn for the model to answer, and it is the model's own
           # chat template that insists on one: Qwen's raises "No user query found in
