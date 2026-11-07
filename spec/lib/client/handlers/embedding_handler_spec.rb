@@ -13,9 +13,10 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
     {
       default_embedding_model: "Qwen/Qwen3-Embedding-0.6B",
       models: [
-        { name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", instruction_format: "Instruct: {instruction}\nQuery:{text}" },
-        { name: "other/embedder", type: "embedding" },
-        { name: "Qwen/Qwen3-Reranker-0.6B", type: "rerank" },
+        { name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", query_prefix: "Instruct: Find the page\nQuery:" },
+        { name: "other/embedder", type: "embedding", query_prefix: "query: ", document_prefix: "passage: " },
+        { name: "plain/embedder", type: "embedding" },
+        { name: "Qwen/Qwen3.6-35B-A3B", type: "text" },
       ],
     }
   end
@@ -51,7 +52,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
 
   describe "#create" do
     it "embeds a single string as a list of one, asking for floats" do
-      embeddings = handler.create(input: "How do I request time off?")
+      embeddings = handler.create(input_type: :document, input: "How do I request time off?")
 
       expect(requests).to eq(
         [{ "input" => ["How do I request time off?"], "model" => "Qwen/Qwen3-Embedding-0.6B", "encoding_format" => "float" }]
@@ -63,15 +64,15 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
     end
 
     it "returns the vectors in input order" do
-      embeddings = handler.create(input: %w[a b c])
+      embeddings = handler.create(input_type: :document, input: %w[a b c])
 
       expect(embeddings.vectors).to eq([[1.0, 0.0], [1.0, 1.0], [1.0, 2.0]])
     end
 
     it "sends dimensions and user, and keeps the gem's own parameters out of the body" do
       handler.create(
-        input: "a",
-        parameters: { dimensions: 256, user: "u-1", metadata: { a: 1 }, instruction: "Find", batch_size: 5, trace_name: "t" }
+        input_type: :document, input: "a",
+        parameters: { dimensions: 256, user: "u-1", metadata: { a: 1 }, batch_size: 5, trace_name: "t" }
       )
 
       expect(requests.first.keys).to contain_exactly("input", "model", "encoding_format", "dimensions", "user")
@@ -79,43 +80,45 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
     end
 
     it "always asks for floats, whatever encoding the caller asks for" do
-      handler.create(input: "a", parameters: { encoding_format: "base64" })
+      handler.create(input_type: :document, input: "a", parameters: { encoding_format: "base64" })
 
       expect(requests.first["encoding_format"]).to eq("float")
     end
 
-    it "sends each input with the instruction in the model's instruction format" do
-      handler.create(input: ["How do I request time off?"], parameters: { instruction: "Find the Nitro page that answers this" })
+    it "puts the model's query prefix before each query" do
+      handler.create(input_type: :query, input: ["How do I request time off?"])
 
-      expect(requests.first["input"]).to eq(["Instruct: Find the Nitro page that answers this\nQuery:How do I request time off?"])
+      expect(requests.first["input"]).to eq(["Instruct: Find the page\nQuery:How do I request time off?"])
     end
 
-    it "sends the input unchanged when the instruction is blank" do
-      handler.create(input: "a", parameters: { instruction: "" })
+    it "sends documents unchanged on a model with no document prefix" do
+      handler.create(input_type: :document, input: ["Time off: request and track PTO"])
 
-      expect(requests.first["input"]).to eq(["a"])
+      expect(requests.first["input"]).to eq(["Time off: request and track PTO"])
     end
 
-    it "sends an instruction that contains a placeholder as written" do
-      handler.create(input: "a", parameters: { instruction: "Match {text}" })
+    it "puts each model's own prefix before queries and documents" do
+      handler.create(input_type: :query, input: "a", parameters: { model: "other/embedder" })
+      handler.create(input_type: :document, input: "b", parameters: { model: "other/embedder" })
 
-      expect(requests.first["input"]).to eq(["Instruct: Match {text}\nQuery:a"])
+      expect(requests.map { |request| request["input"] }).to eq([["query: a"], ["passage: b"]])
     end
 
-    it "raises for an instruction to a model with no instruction format, before sending anything" do
-      expect { handler.create(input: "a", parameters: { model: "other/embedder", instruction: "Find" }) }
-        .to raise_error(ArgumentError, "Model 'other/embedder' takes no instruction: its model_config entry has no instruction_format")
+    it "sends queries and documents unchanged on a model with no prefixes" do
+      handler.create(input_type: :query, input: "a", parameters: { model: "plain/embedder" })
+      handler.create(input_type: :document, input: "b", parameters: { model: "plain/embedder" })
+
+      expect(requests.map { |request| request["input"] }).to eq([["a"], ["b"]])
+    end
+
+    it "raises for an input type other than a query or a document, before sending anything" do
+      expect { handler.create(input_type: :passage, input: "a") }
+        .to raise_error(ArgumentError, "input_type must be one of [:query, :document]")
       expect(requests).to be_empty
     end
 
-    it "embeds without an instruction on a model with no instruction format" do
-      handler.create(input: "a", parameters: { model: "other/embedder" })
-
-      expect(requests.first["input"]).to eq(["a"])
-    end
-
     it "sends a long list in batches and returns every vector in order, with usage summed" do
-      embeddings = handler.create(input: %w[a b c d e], parameters: { batch_size: 2 })
+      embeddings = handler.create(input_type: :document, input: %w[a b c d e], parameters: { batch_size: 2 })
 
       expect(requests.map { |request| request["input"] }).to eq([%w[a b], %w[c d], %w[e]])
       expect(embeddings.vectors).to eq([[1.0, 0.0], [1.0, 1.0], [2.0, 0.0], [2.0, 1.0], [3.0, 0.0]])
@@ -124,13 +127,13 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
     end
 
     it "batches by 128 by default" do
-      handler.create(input: Array.new(129) { |index| "page #{index}" })
+      handler.create(input_type: :document, input: Array.new(129) { |index| "page #{index}" })
 
       expect(requests.map { |request| request["input"].size }).to eq([128, 1])
     end
 
     it "sends the gateway headers on every batch" do
-      handler.create(input: %w[a b], parameters: { batch_size: 1, metadata: { feature: "page-finder" } })
+      handler.create(input_type: :document, input: %w[a b], parameters: { batch_size: 1, metadata: { feature: "page-finder" } })
 
       expect(
         embeddings_route.with(headers: {
@@ -146,41 +149,41 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
         body: { object: "list", model: "m", data: [{ object: "embedding", index: 0, embedding: [0.5] }] }.to_json
       )
 
-      expect(handler.create(input: "a").usage).to eq({})
+      expect(handler.create(input_type: :document, input: "a").usage).to eq({})
     end
 
     it "raises for an empty input before sending anything" do
-      expect { handler.create(input: []) }.to raise_error(ArgumentError, /non-empty array of non-empty strings/)
+      expect { handler.create(input_type: :document, input: []) }.to raise_error(ArgumentError, /non-empty array of non-empty strings/)
       expect(embeddings_route).not_to have_been_requested
     end
 
     it "raises for input that is not text" do
-      expect { handler.create(input: ["a", 1]) }.to raise_error(ArgumentError, /non-empty array of non-empty strings/)
-      expect { handler.create(input: nil) }.to raise_error(ArgumentError, /non-empty array of non-empty strings/)
+      expect { handler.create(input_type: :document, input: ["a", 1]) }.to raise_error(ArgumentError, /non-empty array of non-empty strings/)
+      expect { handler.create(input_type: :document, input: nil) }.to raise_error(ArgumentError, /non-empty array of non-empty strings/)
     end
 
     it "raises for an empty or blank text anywhere in the input before sending any batch" do
-      expect { handler.create(input: "") }.to raise_error(ArgumentError, /non-empty strings/)
-      expect { handler.create(input: ["a", "b", " "], parameters: { batch_size: 1 }) }
+      expect { handler.create(input_type: :document, input: "") }.to raise_error(ArgumentError, /non-empty strings/)
+      expect { handler.create(input_type: :document, input: ["a", "b", " "], parameters: { batch_size: 1 }) }
         .to raise_error(ArgumentError, /non-empty strings/)
       expect(embeddings_route).not_to have_been_requested
     end
 
     it "raises for a batch size that is not a positive integer" do
-      expect { handler.create(input: "a", parameters: { batch_size: 0 }) }
+      expect { handler.create(input_type: :document, input: "a", parameters: { batch_size: 0 }) }
         .to raise_error(ArgumentError, "batch_size must be a positive integer, not 0")
       expect(embeddings_route).not_to have_been_requested
     end
 
     it "uses the explicitly provided model" do
-      handler.create(input: "a", parameters: { model: "other/embedder" })
+      handler.create(input_type: :document, input: "a", parameters: { model: "other/embedder" })
 
       expect(requests.first["model"]).to eq("other/embedder")
     end
 
     it "raises when the requested model is not an embedding model" do
-      expect { handler.create(input: "a", parameters: { model: "Qwen/Qwen3-Reranker-0.6B" }) }
-        .to raise_error(ArgumentError, "Model 'Qwen/Qwen3-Reranker-0.6B' is not an embedding model")
+      expect { handler.create(input_type: :document, input: "a", parameters: { model: "Qwen/Qwen3.6-35B-A3B" }) }
+        .to raise_error(ArgumentError, "Model 'Qwen/Qwen3.6-35B-A3B' is not an embedding model")
       expect(embeddings_route).not_to have_been_requested
     end
 
@@ -188,7 +191,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
       allow(NitroIntelligence).to receive(:model_catalog)
         .and_return(NitroIntelligence::ModelCatalog.new(model_config.except(:default_embedding_model)))
 
-      expect { handler.create(input: "a") }.to raise_error(ArgumentError, /Unsupported model: ''/)
+      expect { handler.create(input_type: :document, input: "a") }.to raise_error(ArgumentError, /Unsupported model: ''/)
     end
 
     it "raises the client's errors for a rejected request" do
@@ -196,15 +199,15 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
         status: 403, body: { error: { message: "no access" } }.to_json, headers: { "Content-Type" => "application/json" }
       )
 
-      expect { handler.create(input: "a") }.to raise_error(OpenAI::Errors::PermissionDeniedError)
+      expect { handler.create(input_type: :document, input: "a") }.to raise_error(OpenAI::Errors::PermissionDeniedError)
     end
 
     it "leaves a parameters hash given to the client twice unchanged" do
       parameters = { metadata: { ticket: "1" } }
       client = NitroIntelligence::Client::Base.new(client: self.client)
 
-      client.embed(input: "a", parameters:)
-      client.embed(input: "b", parameters:)
+      client.embed_query(query: "a", parameters:)
+      client.embed_documents(documents: ["b"], parameters:)
 
       expect(parameters).to eq(metadata: { ticket: "1" })
     end
@@ -246,7 +249,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
     end
 
     it "reads the gateway's cost headers off a real response" do
-      expect(handler.cost_details(handler.create(input: %w[a b], parameters: { batch_size: 1 })))
+      expect(handler.cost_details(handler.create(input_type: :document, input: %w[a b], parameters: { batch_size: 1 })))
         .to match(total: be_within(1e-12).of(2.0e-07))
     end
   end

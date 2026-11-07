@@ -9,7 +9,6 @@ module NitroIntelligence
       "decision" => DecisionModel,
       "embedding" => EmbeddingModel,
       "image" => ImageModel,
-      "rerank" => RerankModel,
       "text_to_speech" => TextToSpeechModel,
     }.freeze
 

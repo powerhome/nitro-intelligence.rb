@@ -8,7 +8,6 @@ module NitroIntelligence
                 :default_decision_model,
                 :default_embedding_model,
                 :default_image_model,
-                :default_rerank_model,
                 :default_text_model,
                 :default_text_to_speech_model
 
@@ -19,7 +18,6 @@ module NitroIntelligence
       @default_decision_model = lookup_by_name(model_config[:default_decision_model])
       @default_embedding_model = lookup_by_name(model_config[:default_embedding_model])
       @default_image_model = lookup_by_name(model_config[:default_image_model])
-      @default_rerank_model = lookup_by_name(model_config[:default_rerank_model])
       @default_text_model = lookup_by_name(model_config[:default_text_model])
       @default_text_to_speech_model = lookup_by_name(model_config[:default_text_to_speech_model])
     end

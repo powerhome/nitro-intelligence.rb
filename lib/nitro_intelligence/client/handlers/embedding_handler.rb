@@ -18,14 +18,16 @@ module NitroIntelligence
 
         DEFAULT_BATCH_SIZE = 128
 
-        def create(input:, parameters: {})
-          validate_and_resolve!(input, parameters)
-          perform_request(input:, parameters:)
+        INPUT_TYPES = %i[query document].freeze
+
+        def create(input:, input_type:, parameters: {})
+          validate_and_resolve!(input, input_type, parameters)
+          perform_request(input:, input_type:, parameters:)
         end
 
-        def perform_request(input:, parameters: {}, correlation_trace_id: nil, mask_content: false)
+        def perform_request(input:, input_type:, parameters: {}, correlation_trace_id: nil, mask_content: false)
           add_gateway_headers(parameters, correlation_trace_id:, mask_content:)
-          responses = texts(input, parameters).each_slice(parameters[:batch_size]).map do |batch|
+          responses = texts(input, input_type, parameters).each_slice(parameters[:batch_size]).map do |batch|
             @client.embeddings.create(
               input: batch, encoding_format: :float, **parameters.slice(*ALLOWED_EXTRA_PARAMETERS)
             )
@@ -33,7 +35,7 @@ module NitroIntelligence
           Embeddings.new(responses)
         end
 
-        def validate_and_resolve!(input, parameters)
+        def validate_and_resolve!(input, input_type, parameters)
           default_parameters = {
             metadata: {},
             model: NitroIntelligence.model_catalog.default_embedding_model&.name,
@@ -41,20 +43,20 @@ module NitroIntelligence
           }
 
           parameters.replace(default_parameters.merge(parameters))
-          model = Client.validate_model(parameters[:model], type: EmbeddingModel)
+          Client.validate_model(parameters[:model], type: EmbeddingModel)
+          unless INPUT_TYPES.include?(input_type)
+            raise ArgumentError, "input_type must be one of #{INPUT_TYPES.inspect}"
+          end
+
           validate_input!(input)
           validate_batch_size!(parameters[:batch_size])
-          validate_instruction!(model, parameters[:instruction])
         end
 
-        # The texts as the model receives them: each wrapped in the model's instruction format, when
-        # there is an instruction.
-        def texts(input, parameters)
-          instruction = parameters[:instruction].presence
-          return Array(input) unless instruction
-
-          model = Client.validate_model(parameters[:model], type: EmbeddingModel)
-          Array(input).map { |text| model.apply_instruction(instruction, text) }
+        # The texts as the model receives them: each after the model's prefix for queries or for
+        # documents, which is empty for a model that embeds both the same way.
+        def texts(input, input_type, parameters)
+          prefix = Client.validate_model(parameters[:model], type: EmbeddingModel).prefix_for(input_type)
+          Array(input).map { |text| "#{prefix}#{text}" }
         end
 
         # The cost of every batch, added up. A batch the gateway did not price leaves the whole call
@@ -77,15 +79,6 @@ module NitroIntelligence
           return if texts.any? && texts.all? { |text| text.is_a?(String) && text.present? }
 
           raise ArgumentError, "input must be a non-empty string or a non-empty array of non-empty strings"
-        end
-
-        # A model without an instruction format would get the instruction in a form it was not
-        # trained on, which degrades its vectors without any error to show it.
-        def validate_instruction!(model, instruction)
-          return if instruction.blank? || model.instruction_format
-
-          raise ArgumentError,
-                "Model '#{model.name}' takes no instruction: its model_config entry has no instruction_format"
         end
 
         def validate_batch_size!(batch_size)

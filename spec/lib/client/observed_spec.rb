@@ -69,24 +69,16 @@ RSpec.describe NitroIntelligence::Client::Observed do
       observed_client.decide(state: "content", questions: { q: { type: "noul" } })
     end
 
-    it "delegates #embed to the Observed::EmbeddingHandler" do
+    it "delegates #embed_query and #embed_documents to the Observed::EmbeddingHandler" do
       mock_handler = instance_double(NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler)
       allow(NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler)
         .to receive(:new).with(base_handler: instance_of(NitroIntelligence::Client::Handlers::EmbeddingHandler), observer: fake_observer)
         .and_return(mock_handler)
 
-      expect(mock_handler).to receive(:create).with(input: "a", parameters: {})
-      observed_client.embed(input: "a")
-    end
-
-    it "delegates #rerank to the Observed::RerankHandler" do
-      mock_handler = instance_double(NitroIntelligence::Client::Handlers::Observed::RerankHandler)
-      allow(NitroIntelligence::Client::Handlers::Observed::RerankHandler)
-        .to receive(:new).with(base_handler: instance_of(NitroIntelligence::Client::Handlers::RerankHandler), observer: fake_observer)
-        .and_return(mock_handler)
-
-      expect(mock_handler).to receive(:create).with(query: "q", documents: ["a"], parameters: {})
-      observed_client.rerank(query: "q", documents: ["a"])
+      expect(mock_handler).to receive(:create).with(input: "q", input_type: :query, parameters: {})
+      expect(mock_handler).to receive(:create).with(input: ["a"], input_type: :document, parameters: {})
+      observed_client.embed_query(query: "q")
+      observed_client.embed_documents(documents: ["a"])
     end
   end
 end
