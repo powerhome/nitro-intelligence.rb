@@ -15,7 +15,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
       models: [
         { name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", instruction_format: "Instruct: {instruction}\nQuery:{text}" },
         { name: "other/embedder", type: "embedding" },
-        { name: "Qwen/Qwen3-Reranker-0.6B", type: "rerank" },
+        { name: "Qwen/Qwen3.6-35B-A3B", type: "text" },
       ],
     }
   end
@@ -179,8 +179,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
     end
 
     it "raises when the requested model is not an embedding model" do
-      expect { handler.create(input: "a", parameters: { model: "Qwen/Qwen3-Reranker-0.6B" }) }
-        .to raise_error(ArgumentError, "Model 'Qwen/Qwen3-Reranker-0.6B' is not an embedding model")
+      expect { handler.create(input: "a", parameters: { model: "Qwen/Qwen3.6-35B-A3B" }) }
+        .to raise_error(ArgumentError, "Model 'Qwen/Qwen3.6-35B-A3B' is not an embedding model")
       expect(embeddings_route).not_to have_been_requested
     end
 
