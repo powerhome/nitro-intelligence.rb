@@ -316,7 +316,24 @@ candidates.values_at(*ranking.results.map(&:index))
 
 With observability enabled, each call is recorded in Cerebro as a generation, since Langfuse has no reranker type, with the query and documents as input, each document's index and score as output, and the gateway's cost. Pass `trace_documents: false` when your own trace already records the candidates, such as an embedding call or a search step in the same trace, and only their number is recorded.
 
-Neither takes a managed prompt: `prompt_name` and `prompt_variables` are ignored.
+#### Instructions From a Managed Prompt
+
+On an observed client, both take their `instruction` from a Cerebro text prompt, so it can be changed without a deploy. Name the prompt with `prompt_name`, and fill its variables with `prompt_variables`; `prompt_label`, `prompt_version` and the [fallback](#prompt-fallbacks) options choose it as they do for `chat`. The compiled prompt is sent as the `instruction`, the observation is named after the prompt unless you pass a `trace_name`, and its metadata records the prompt's name and version. A rerank, recorded as a generation, is also linked to the prompt in Cerebro, so its traces appear under the prompt's version. Langfuse links prompts only to generations, so an embedding carries the prompt in its metadata alone.
+
+Passing an `instruction` as well as a `prompt_name` raises `ArgumentError`, as does naming a chat prompt. The prompt's config is not merged into the request, as it is for `chat`: an embedding model taken from it would make vectors that cannot be compared with the ones already stored, so the model stays in code. To keep settings of your own in the same prompt, read its config with [`client.prompt`](#reading-a-prompt), and pass the version it returns to the requests that follow, so that every step uses the same version even if the label moves in between:
+
+```ruby
+client = NitroIntelligence::Client.new(observability_project_slug: "page-finder")
+search = client.prompt("Page Finder Search") # config: { "min_relevance": 0.1, "candidates": 50 }
+prompt = { prompt_name: search.name, prompt_version: search.version }
+
+vector = client.embed(input: question, parameters: { dimensions: 512, **prompt }).vector
+candidates = index.knn(vector, k: search.config[:candidates])
+ranking = client.rerank(query: question, documents: candidates.map(&:description), parameters: prompt)
+relevant = ranking.results.select { |result| result.relevance_score >= search.config[:min_relevance] }
+```
+
+A plain client, without observability, ignores `prompt_name`, as it does for every method.
 
 ### Image Editing and Generation
 
@@ -636,6 +653,8 @@ trace_url = "#{NitroIntelligence.config.observability_base_url}/project/#{projec
 request["Authorization"] = "Basic #{project.auth_token}"
 ```
 
+`project.prompt(name, label:, version:)` fetches one of the project's prompts, as [`client.prompt`](#reading-a-prompt) does.
+
 `NitroIntelligence.project_client_registry.fetch(slug)` builds each project's client once per process, and raises `NitroIntelligence::Observability::Project::NotFoundError` for a slug `observability_projects` does not configure. `NitroIntelligence::Observability::Project.find_by_slug(slug:)` reads the same configuration without building a client, and returns `nil` instead. The gem never raises `NitroIntelligence::Observability::ProjectClient::NotFoundError`; it is public only because applications raise it themselves, and is to be retired ([#182](https://github.com/powerhome/nitro-intelligence.rb/issues/182)). Rescue `Project::NotFoundError` for a project that is not configured.
 
 Traces and scores are sent to Cerebro in the background. Fetch each project in an initializer to build its client at boot, and shut them all down as the process exits so that the last ones are sent:
@@ -776,6 +795,25 @@ client.chat(
 )
 ```
 
+#### Reading a Prompt
+
+To read a prompt without making a model call, for its config or to compile its text for a request of your own, fetch it from an observed client:
+
+```ruby
+client = NitroIntelligence::Client.new(observability_project_slug: "page-finder")
+prompt = client.prompt("Page Finder Search")      # the production label
+prompt = client.prompt("Page Finder Search", label: "staging")
+prompt = client.prompt("Page Finder Search", version: 4)
+
+prompt.name    # => "Page Finder Search"
+prompt.version # => 4
+prompt.type    # => "text", or "chat"
+prompt.config  # => { min_relevance: 0.1, candidates: 50 }, keys symbolized
+prompt.compile(product: "Nitro") # the text, or the messages, with its variables filled in
+```
+
+Code that holds a project rather than a client can call `project.prompt` with the same arguments (see [Reaching Cerebro Directly](#reaching-cerebro-directly)). Either uses the same cache as a request naming the prompt: five minutes for a label, indefinitely for a version, and the last prompt fetched for a label when Cerebro cannot be reached. A missing prompt raises `ObservabilityPromptNotFoundError` and a failed lookup `ObservabilityPromptError`, as below. A client without observability has no project to fetch from, and raises `NitroIntelligence::Observability::Project::NotFoundError`.
+
 #### Prompt Errors
 
 A request naming a prompt raises when it cannot use one:
@@ -787,6 +825,7 @@ A request naming a prompt raises when it cannot use one:
 | `NitroIntelligence::Client::Handlers::Observed::ChatHandler::ObservedChatPromptError` | `#chat` has no user message for the model to answer (see [Message Shape](#message-shape)) |
 | `NitroIntelligence::Client::Handlers::Observed::AudioTranscriptionHandler::ObservedAudioTranscriptionPromptError` | `#transcribe_audio` names a prompt that is not a text prompt |
 | `NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandler::ObservedTextToSpeechPromptError` | `#text_to_speech` names a prompt that is not a text prompt |
+| `ArgumentError` | `#embed` or `#rerank` names a prompt that is not a text prompt, or passes an `instruction` as well as a `prompt_name` |
 
 On an observed client whose project does not mask content, pass an open `File` as `audio_file` to `#transcribe_audio`. If `audio_file` has no path, as with a `StringIO`, the upload to Cerebro raises `NitroIntelligence::Audio::AudioFileFormatError`. By then, the gateway has already transcribed the audio and billed the request, but your app never receives the transcript. A masked project skips the upload, so the same input works there. Every method raises `ArgumentError` for a model, or a model setting such as a voice or aspect ratio, that `model_config` does not list.
 

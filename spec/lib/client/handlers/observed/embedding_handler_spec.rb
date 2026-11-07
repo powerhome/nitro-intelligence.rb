@@ -10,7 +10,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
   let(:client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example", max_retries: 0) }
   let(:base_handler) { NitroIntelligence::Client::Handlers::EmbeddingHandler.new(client:) }
 
-  let(:fake_project) { double("Project", slug: "test-project", mask_content?: false) }
+  let(:fake_prompt_store) { double("PromptStore") }
+  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, mask_content?: false) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
   let(:fake_observer) { double("LangfuseObserver", project_client: fake_project_client) }
   let(:fake_embedding) { instance_double(Langfuse::Embedding, trace_id: "trace-123", id: "obs-1") }
@@ -114,6 +115,66 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
       expect { handler.create(input: []) }.to raise_error(ArgumentError, /non-empty/)
     end
 
+    context "with a prompt" do
+      let(:prompt) do
+        NitroIntelligence::Observability::Prompt.new(
+          name: "Page Finder Search", type: "text", version: 4,
+          prompt: "Given a question about {{product}}, find the page that answers it",
+          config: { candidates: 50, model: "Some/Other-Embedding" }
+        )
+      end
+
+      before { allow(fake_prompt_store).to receive(:get_prompt).and_return(prompt) }
+
+      it "sends the compiled prompt as the instruction, and observes it under the prompt's name" do
+        expect(fake_observer).to receive(:observe).with(
+          "embedding",
+          hash_including(
+            trace_name: "Page Finder Search", prompt:,
+            input: "Instruct: Given a question about Nitro, find the page that answers it\nQuery:a"
+          )
+        ).and_yield(fake_embedding)
+
+        handler.create(input: "a", parameters: { prompt_name: "Page Finder Search", prompt_variables: { product: "Nitro" } })
+      end
+
+      it "looks the prompt up at the label or version asked for" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_embedding)
+
+        handler.create(input: "a", parameters: { prompt_name: "Page Finder Search", prompt_version: 4 })
+
+        expect(fake_prompt_store).to have_received(:get_prompt)
+          .with(prompt_name: "Page Finder Search", prompt_label: nil, prompt_version: 4)
+      end
+
+      it "leaves the prompt's config out of the request, so the embedding model stays the one asked for" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_embedding)
+
+        handler.create(input: "a", parameters: { prompt_name: "Page Finder Search" })
+
+        expect(embeddings_route.with(body: hash_including(model: "Qwen/Qwen3-Embedding-0.6B"))).to have_been_requested
+      end
+
+      it "refuses an instruction as well, before fetching the prompt" do
+        expect do
+          handler.create(input: "a", parameters: { prompt_name: "Page Finder Search", instruction: "Find the page" })
+        end.to raise_error(ArgumentError, /either an instruction or a prompt_name/)
+
+        expect(fake_prompt_store).not_to have_received(:get_prompt)
+      end
+
+      it "refuses a chat prompt" do
+        chat_prompt = NitroIntelligence::Observability::Prompt.new(
+          name: "Assistant", type: "chat", version: 1, prompt: [{ role: "system", content: "Be brief" }]
+        )
+        allow(fake_prompt_store).to receive(:get_prompt).and_return(chat_prompt)
+
+        expect { handler.create(input: "a", parameters: { prompt_name: "Assistant" }) }
+          .to raise_error(ArgumentError, /"Assistant" is a chat prompt/)
+        expect(embeddings_route).not_to have_been_requested
+      end
+    end
+
     context "when observed for real" do
       let(:mask_content) { false }
       let(:project) do
@@ -151,6 +212,19 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
         expect(observability_client).to have_received(:observe).with("embedding", hash_including(as_type: :embedding))
         expect(recorded).to include([:update, { cost_details: { total: 1.0e-07 } }])
         expect(recorded).to include([:output=, { count: 1, dimensions: 3 }])
+      end
+
+      it "records the prompt's name and version in the observation's metadata" do
+        prompt = NitroIntelligence::Observability::Prompt.new(
+          name: "Page Finder Search", type: "text", version: 4, prompt: "Find the page"
+        )
+        allow(project.prompt_store).to receive(:get_prompt).and_return(prompt)
+
+        handler.create(input: "a", parameters: { prompt_name: "Page Finder Search" })
+
+        expect(observability_client).to have_received(:observe).with(
+          "embedding", hash_including(metadata: hash_including(prompt_name: "Page Finder Search", prompt_version: "4"))
+        )
       end
 
       context "with a project that masks content" do

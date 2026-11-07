@@ -5,6 +5,7 @@ require "nitro_intelligence/client/handlers/embedding_handler"
 require "nitro_intelligence/client/handlers/image_handler"
 require "nitro_intelligence/client/handlers/rerank_handler"
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
+require "nitro_intelligence/observability/project"
 
 module NitroIntelligence
   module Client
@@ -70,11 +71,20 @@ module NitroIntelligence
       #   one), `instruction` (the task a query is embedded for, sent in the model's
       #   `instruction_format`; give it on queries, not documents), `batch_size` (at most this
       #   many texts per request, 128 by default), `user`, `metadata` and `request_options`, and on an observed client
-      #   `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. It takes no managed prompt.
+      #   `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. On an observed client,
+      #   `prompt_name` names a text prompt to compile, with `prompt_variables`, into the
+      #   `instruction`; `prompt_label`, `prompt_version` and `prompt_fallback_name` with its own
+      #   label and version choose it as they do for {#chat}. The prompt's config is not applied.
       # @return [Embeddings]
       # @raise [ArgumentError] when the model is not one `model_config` lists with the type
       #   `embedding`, the input or any text in it is empty or not text, `batch_size` is not a
-      #   positive integer, or an `instruction` is given for a model with no `instruction_format`
+      #   positive integer, an `instruction` is given for a model with no `instruction_format`, or
+      #   on an observed client both an `instruction` and a `prompt_name` are given, or the prompt is
+      #   not a text prompt
+      # @raise [Observability::PromptStore::ObservabilityPromptNotFoundError] on an observed client,
+      #   when the named prompt, and its fallback if one is named, does not exist
+      # @raise [Observability::PromptStore::ObservabilityPromptError] on an observed client, when
+      #   Cerebro fails to return the prompt
       # @example
       #   client.embed(
       #     input: "How do I request time off?",
@@ -93,15 +103,47 @@ module NitroIntelligence
       #   `instruction` (the task, for a reranker that takes one), `metadata` and
       #   `request_options`, and on an observed client `trace_name`, `trace_seed`, `user_id`,
       #   `session_id`, `tags` and `trace_documents` (false to record only how many documents there
-      #   were, for a caller whose own trace already records them). It takes no managed prompt.
+      #   were, for a caller whose own trace already records them). On an observed client,
+      #   `prompt_name` names a text prompt to compile, with `prompt_variables`, into the
+      #   `instruction`; `prompt_label`, `prompt_version` and `prompt_fallback_name` with its own
+      #   label and version choose it as they do for {#chat}. The prompt's config is not applied.
       # @return [Ranking]
       # @raise [ArgumentError] when the model is not one `model_config` lists with the type
-      #   `rerank`, the query is empty, or the documents are empty or not text
+      #   `rerank`, the query is empty, the documents are empty or not text, or on an observed client
+      #   both an `instruction` and a `prompt_name` are given, or the prompt is not a text prompt
+      # @raise [Observability::PromptStore::ObservabilityPromptNotFoundError] on an observed client,
+      #   when the named prompt, and its fallback if one is named, does not exist
+      # @raise [Observability::PromptStore::ObservabilityPromptError] on an observed client, when
+      #   Cerebro fails to return the prompt
       # @example
       #   client.rerank(query: "How do I request time off?", documents: pages.map(&:description),
       #                 parameters: { top_n: 5 }).results.map(&:index)
       def rerank(query:, documents:, parameters: {})
         rerank_handler.create(query:, documents:, parameters: parameters.dup)
+      end
+
+      # Fetches a prompt from the client's Cerebro project without making a model call, as
+      # {Observability::Project#prompt} does.
+      #
+      # @param name [String] the prompt's name in Cerebro
+      # @param label [String, nil] the label to fetch, `"production"` when neither it nor `version`
+      #   is given
+      # @param version [Integer, nil] the version to fetch, taking precedence over `label`
+      # @return [Observability::Prompt]
+      # @raise [Observability::Project::NotFoundError] when the client has no Cerebro project: it was
+      #   built without an `observability_project_slug`, or with one `observability_projects` does
+      #   not configure
+      # @raise [Observability::PromptStore::ObservabilityPromptNotFoundError] when the prompt, at that
+      #   label or version, does not exist
+      # @raise [Observability::PromptStore::ObservabilityPromptError] when Cerebro fails to return
+      #   the prompt
+      # @example
+      #   client = NitroIntelligence::Client.new(observability_project_slug: "page-finder")
+      #   client.prompt("Page Finder Search").config[:min_relevance] # => 0.1
+      def prompt(name, label: nil, version: nil) # rubocop:disable Lint/UnusedMethodArgument
+        raise Observability::Project::NotFoundError,
+              "This client has no Cerebro project to fetch #{name.inspect} from: build it with an " \
+              "observability_project_slug that observability_projects configures"
       end
 
       # Generates an image, or edits `target_image`.

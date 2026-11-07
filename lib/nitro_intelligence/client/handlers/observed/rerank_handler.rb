@@ -10,15 +10,17 @@ module NitroIntelligence
         # @api private
         class RerankHandler < BaseHandler
           def create(query:, documents:, parameters: {})
+            prompt = resolve_instruction_prompt(parameters)
             @base_handler.validate_and_resolve!(query, documents, parameters)
 
-            trace_name = parameters[:trace_name] || project.slug
+            trace_name = parameters[:trace_name] || prompt&.name || project.slug
 
             @observer.observe(
               "rerank",
               type: :generation,
               parameters:,
               trace_name:,
+              prompt:,
               input: input(query, documents, parameters)
             ) do |generation|
               workflow(generation:, query:, documents:, parameters:)

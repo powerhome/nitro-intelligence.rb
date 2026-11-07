@@ -63,6 +63,13 @@ RSpec.describe NitroIntelligence::Client::Base do
     end
   end
 
+  describe "#prompt" do
+    it "raises, since the client has no Cerebro project to fetch from" do
+      expect { base_client.prompt("Page Finder Search") }
+        .to raise_error(NitroIntelligence::Observability::Project::NotFoundError, /no Cerebro project/)
+    end
+  end
+
   describe "method_missing delegation" do
     it "defers unknown methods to the OpenAI client" do
       expect(fake_openai_client).to receive(:models)

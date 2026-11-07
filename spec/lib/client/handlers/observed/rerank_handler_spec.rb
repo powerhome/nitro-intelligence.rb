@@ -10,7 +10,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
   let(:client) { OpenAI::Client.new(api_key: "test", base_url: "https://gateway.example", max_retries: 0) }
   let(:base_handler) { NitroIntelligence::Client::Handlers::RerankHandler.new(client:) }
 
-  let(:fake_project) { double("Project", slug: "test-project", mask_content?: false) }
+  let(:fake_prompt_store) { double("PromptStore") }
+  let(:fake_project) { double("Project", slug: "test-project", prompt_store: fake_prompt_store, mask_content?: false) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
   let(:fake_observer) { double("LangfuseObserver", project_client: fake_project_client) }
   let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-123", id: "obs-1") }
@@ -114,6 +115,45 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
       expect(fake_observer).not_to receive(:observe)
 
       expect { handler.create(query:, documents: []) }.to raise_error(ArgumentError, /documents/)
+    end
+
+    context "with a prompt" do
+      let(:prompt) do
+        NitroIntelligence::Observability::Prompt.new(
+          name: "Page Finder Search", type: "text", version: 4,
+          prompt: "Given a question about {{product}}, find the page that answers it", config: { top_n: 1 }
+        )
+      end
+
+      before { allow(fake_prompt_store).to receive(:get_prompt).and_return(prompt) }
+
+      it "sends the compiled prompt as the instruction, and observes it as the generation's prompt" do
+        instruction = "Given a question about Nitro, find the page that answers it"
+        expect(fake_observer).to receive(:observe).with(
+          "rerank",
+          hash_including(trace_name: "Page Finder Search", prompt:, input: { query:, instruction:, documents: })
+        ).and_yield(fake_generation)
+
+        handler.create(
+          query:, documents:, parameters: { prompt_name: "Page Finder Search", prompt_variables: { product: "Nitro" } }
+        )
+
+        expect(rerank_route.with(body: hash_including(instruction:))).to have_been_requested
+      end
+
+      it "leaves the prompt's config out of the request" do
+        allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+        handler.create(query:, documents:, parameters: { prompt_name: "Page Finder Search" })
+
+        expect(rerank_route.with { |request| !JSON.parse(request.body).key?("top_n") }).to have_been_requested
+      end
+
+      it "refuses an instruction as well" do
+        expect do
+          handler.create(query:, documents:, parameters: { prompt_name: "Page Finder Search", instruction: "Rank" })
+        end.to raise_error(ArgumentError, /either an instruction or a prompt_name/)
+      end
     end
 
     context "with a project that masks content, observed for real" do

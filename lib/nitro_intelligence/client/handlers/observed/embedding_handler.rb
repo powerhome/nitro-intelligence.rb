@@ -7,12 +7,16 @@ module NitroIntelligence
         # Recorded as one embedding observation per call, however many batches the input was sent
         # in, so an index rebuild is one observation rather than one for each entry.
         #
+        # Langfuse links a prompt only to a generation, so the prompt an embedding used is recorded
+        # in its metadata, where the observer puts it for every request, and not linked in Cerebro.
+        #
         # @api private
         class EmbeddingHandler < BaseHandler
           def create(input:, parameters: {})
+            prompt = resolve_instruction_prompt(parameters)
             @base_handler.validate_and_resolve!(input, parameters)
 
-            trace_name = parameters[:trace_name] || project.slug
+            trace_name = parameters[:trace_name] || prompt&.name || project.slug
             texts = @base_handler.texts(input, parameters)
 
             # The texts as the model received them, instruction included, since the instruction
@@ -22,6 +26,7 @@ module NitroIntelligence
               type: :embedding,
               parameters:,
               trace_name:,
+              prompt:,
               input: input.is_a?(Array) ? texts : texts.first
             ) do |embedding|
               workflow(embedding:, input:, parameters:)

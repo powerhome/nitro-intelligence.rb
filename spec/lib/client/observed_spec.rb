@@ -7,6 +7,17 @@ RSpec.describe NitroIntelligence::Client::Observed do
 
   let(:observed_client) { described_class.new(client: fake_openai_client, observer: fake_observer) }
 
+  describe "#prompt" do
+    it "fetches the prompt from the observer's project" do
+      prompt = instance_double(NitroIntelligence::Observability::Prompt)
+      project = instance_double(NitroIntelligence::Observability::Project)
+      allow(fake_observer).to receive(:project_client).and_return(double("ProjectClient", project:))
+      allow(project).to receive(:prompt).with("Page Finder Search", label: "staging", version: nil).and_return(prompt)
+
+      expect(observed_client.prompt("Page Finder Search", label: "staging")).to be(prompt)
+    end
+  end
+
   describe "delegation to observed handlers" do
     it "delegates #chat to the Observed::ChatHandler" do
       mock_handler = instance_double(NitroIntelligence::Client::Handlers::Observed::ChatHandler)
