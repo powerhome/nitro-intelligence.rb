@@ -2,7 +2,7 @@ require "spec_helper"
 require "nitro_intelligence/client/observers/langfuse_observer"
 
 RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
-  let(:fake_observability_client) { double("ObservabilityClient") }
+  let(:fake_observability_client) { double("ObservabilityClient", observing?: false) }
   let(:mask_content) { false }
   let(:fake_project) do
     double("Project", mask_content?: mask_content).tap do |project|

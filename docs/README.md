@@ -521,6 +521,44 @@ Two things this does not cover:
 * **The gateway's redaction is by field, and misses some.** It replaces the fields it knows about, such as `content` and `reasoning_content`, rather than the whole response, so a field a provider adds beyond those is still logged. Reasoning that a provider returns under `provider_specific_fields` is one such field today; see [powerhome/nitro-intelligence#704](https://github.com/powerhome/nitro-intelligence/issues/704).
 * **Prompts you fetch from Cerebro are unaffected.** Masking applies to traces, not to prompt management.
 
+### Tracing Application Steps
+
+Each observed request is a trace of its own by default. A feature whose work is more than one model call, such as a search that embeds a question, queries an index, reranks the results and filters them by permission, can record that work as one trace with `NitroIntelligence::Tracer`: its own steps as observations, and the gem's requests nested among them.
+
+```ruby
+tracer = NitroIntelligence::Tracer.new(observability_project_slug: "page-finder")
+client = NitroIntelligence::Client.new(observability_project_slug: "page-finder")
+
+pages = tracer.trace("Page Finder search", input: { question: }, user_id: current_user.id.to_s, session_id:) do |trace|
+  query = client.chat(message: question) # recorded inside the trace
+
+  hits = trace.observe("Elasticsearch", as_type: :retriever, input: { k: 50, boost: 2 }) do |step|
+    search(query).tap { |hits| step.output = hits.map { |hit| { id: hit.page_id, score: hit.score } } }
+  end
+
+  allowed = trace.observe("Permission filter", input: { candidates: hits.size }) do |step|
+    permitted(hits).tap { |pages| step.output = { allowed: pages.size } }
+  end
+
+  trace.output = allowed.map(&:page_id)
+  @trace_id = trace.trace_id # to score the search when the user clicks a result
+  allowed
+end
+```
+
+`Tracer#trace` records its block as a trace with the given name, user, session, tags and metadata, and the environment and release the gem's own requests record. `user_id` defaults to `observability_user_id`, as it does for a request. The input and output set on the observation it yields are the trace's input and output. `trace_seed:` gives the trace the ID `NitroIntelligence::Trace.create_id` gives for the seed; otherwise the ID is random, and `trace.trace_id` reads it.
+
+`Observation#observe` records a step inside the trace, or inside another step, around a block. `as_type` is a Langfuse [observation type](https://langfuse.com/docs/observability/features/observation-types): `:span` by default, or `:retriever`, `:tool`, `:agent`, `:chain`, `:evaluator`, `:guardrail`, `:embedding` or `:generation`. `Observation#event` records a point in time, such as the results a user was shown. An exception raised inside a block is recorded on its step at level `ERROR`, and re-raised.
+
+The gem's requests made inside the block are recorded as observations under the step that is open, not as traces of their own, when:
+
+* the client records in the same Cerebro project as the tracer. A request recorded in another project is a trace of its own there, as it would be outside the block.
+* the request passes no `trace_seed`. A seeded request is recorded in the seed's trace, as it is anywhere.
+
+Such a request records its own observation only: the trace's name, input, output, user, session and tags are the ones the tracer was given, and the request's `trace_name`, `user_id`, `session_id` and `tags` are not recorded. Its `metadata` is still recorded on its observation and sent to the inference gateway.
+
+A project that masks content records the input and output of every step and event as `[masked]`, and a failure's error class without its message, as it does for the gem's requests. Metadata, names, user, session and tags are not masked.
+
 ### Scoring
 
 You can use `NitroIntelligence::Reporter` to evaluate existing traces. Calling `NitroIntelligence::Reporter#score` lets you attach metrics to a trace in the observability platform.
@@ -541,6 +579,15 @@ document_id = "document-123"
 reporter = NitroIntelligence::Reporter.new(observability_project_slug: "fake-feature-project")
 trace_id = NitroIntelligence::Trace.create_id(seed: document_id)
 reporter.score(name: "precision", value: 0.5, trace_id:)
+```
+
+#### An Observation, Later
+
+A score can be recorded from a later request than the one that made the trace, such as a click on a search result, given the trace's ID. Pass `observation_id:` to score one observation in the trace, as `Observation#id` gives it, rather than the trace as a whole. `comment:` and `metadata:` are recorded with the score.
+
+```ruby
+reporter = NitroIntelligence::Reporter.new(observability_project_slug: "page-finder")
+reporter.score(trace_id: params[:trace_id], name: "clicked", value: true, data_type: :boolean, metadata: { position: 3 })
 ```
 
 #### Using different data types for scoring

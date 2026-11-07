@@ -127,7 +127,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
           allow(generation).to receive(:update_trace) { |attributes| recorded << [:update_trace, attributes] }
         end
       end
-      let(:observability_client) { double("ObservabilityClient") }
+      let(:observability_client) { double("ObservabilityClient", observing?: false) }
       let(:project_client) { double("ProjectClient", project:, observability_client:) }
       let(:handler) do
         described_class.new(

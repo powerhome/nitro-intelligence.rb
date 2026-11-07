@@ -22,7 +22,7 @@ module NitroIntelligence
           @project_client = project_client
         end
 
-        def observe(operation_name, type:, parameters:, trace_name:, prompt: nil, input: nil) # rubocop:disable Metrics/AbcSize
+        def observe(operation_name, type:, parameters:, trace_name:, prompt: nil, input: nil, &)
           metadata = parameters[:metadata]
           seed = parameters[:trace_seed]
           trace_id = NitroIntelligence::Trace.create_id(seed:) if seed.present?
@@ -34,32 +34,40 @@ module NitroIntelligence
           end
 
           metadata = metadata.transform_values(&:to_s)
+          # Inside a trace the application opened, the trace's name, input, output, user, session and
+          # tags are the application's, so the request records only its own observation.
+          nested = trace_id.nil? && @project_client.observability_client.observing?
+          request = { operation_name:, type:, trace_id:, trace_name:, prompt:, input:, metadata:, nested: }
+          request[:model] = parameters[:model]
 
-          Langfuse.propagate_attributes(**propagated_attributes(parameters, metadata)) do
-            @project_client.observability_client.observe(
-              operation_name,
-              as_type: type,
-              trace_id:,
-              environment: NitroIntelligence.environment.to_s,
-              model: parameters[:model],
-              metadata:
-            ) do |generation|
-              generation.update_trace(name: trace_name, release: NitroIntelligence.configuration.current_revision)
-              generation.update({ prompt: { name: prompt.name, version: prompt.version } }) if prompt
-              record_input(generation, input)
+          # Propagating sets the attributes on the active span too, which inside an application's
+          # trace is the application's own observation.
+          return record_request(**request, &) if nested
 
-              result, trace_attributes = observe_failures(generation) { yield(generation) }
-              record_result(generation, trace_attributes)
-
-              result
-            end
-          end
+          Langfuse.propagate_attributes(**propagated_attributes(parameters, metadata)) { record_request(**request, &) }
         end
 
       private
 
         def project
           @project_client.project
+        end
+
+        def record_request(operation_name:, type:, trace_id:, trace_name:, prompt:, input:, model:, metadata:, nested:) # rubocop:disable Metrics/ParameterLists
+          @project_client.observability_client.observe(
+            operation_name, as_type: type, trace_id:, environment: NitroIntelligence.environment.to_s, model:, metadata:
+          ) do |generation|
+            unless nested
+              generation.update_trace(name: trace_name, release: NitroIntelligence.configuration.current_revision)
+            end
+            generation.update({ prompt: { name: prompt.name, version: prompt.version } }) if prompt
+            record_input(generation, input, nested:)
+
+            result, trace_attributes = observe_failures(generation) { yield(generation) }
+            record_result(generation, trace_attributes, nested:)
+
+            result
+          end
         end
 
         # Applied once the response is in hand, so the observation reflects what came
@@ -69,7 +77,7 @@ module NitroIntelligence
         # the gateway omits the header entirely for a deployment it has no price for,
         # and writing a zero there would read as a free request rather than an
         # unpriced one.
-        def record_result(generation, trace_attributes)
+        def record_result(generation, trace_attributes, nested:)
           return unless trace_attributes
 
           trace_attributes = masked(trace_attributes)
@@ -86,7 +94,7 @@ module NitroIntelligence
 
           record_status(generation, trace_attributes)
 
-          generation.update_trace(input: trace_attributes[:input], output: trace_attributes[:output])
+          generation.update_trace(input: trace_attributes[:input], output: trace_attributes[:output]) unless nested
         end
 
         def masked(trace_attributes)
@@ -116,13 +124,13 @@ module NitroIntelligence
         # shows what was sent. Handlers whose input is not safe to record twice
         # (image generation sends base64 payloads that are replaced with media
         # references on success) pass no input and rely on the failure record alone.
-        def record_input(generation, input)
+        def record_input(generation, input, nested:)
           return if input.blank?
 
           input = project.mask(input)
 
           generation.input = input
-          generation.update_trace(input:)
+          generation.update_trace(input:) unless nested
         end
 
         # `session_id` and `tags` are only forwarded when set so that callers who
