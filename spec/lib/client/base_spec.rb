@@ -46,12 +46,14 @@ RSpec.describe NitroIntelligence::Client::Base do
       base_client.decide(state: "content", questions: { q: { type: "noul" } })
     end
 
-    it "delegates #embed to the EmbeddingHandler" do
+    it "delegates #embed_query and #embed_documents to the EmbeddingHandler" do
       mock_handler = instance_double(NitroIntelligence::Client::Handlers::EmbeddingHandler)
       allow(NitroIntelligence::Client::Handlers::EmbeddingHandler).to receive(:new).with(client: fake_openai_client).and_return(mock_handler)
 
-      expect(mock_handler).to receive(:create).with(input: %w[a b], parameters: { dimensions: 256 })
-      base_client.embed(input: %w[a b], parameters: { dimensions: 256 })
+      expect(mock_handler).to receive(:create).with(input: "q", input_type: :query, parameters: { dimensions: 256 })
+      expect(mock_handler).to receive(:create).with(input: %w[a b], input_type: :document, parameters: { dimensions: 256 })
+      base_client.embed_query(query: "q", parameters: { dimensions: 256 })
+      base_client.embed_documents(documents: %w[a b], parameters: { dimensions: 256 })
     end
   end
 

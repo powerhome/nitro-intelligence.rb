@@ -53,20 +53,17 @@ RSpec.describe NitroIntelligence::ModelFactory do
     it "builds an EmbeddingModel when type is 'embedding'" do
       model = described_class.build({ type: "embedding", name: "Qwen/Qwen3-Embedding-0.6B" })
       expect(model).to be_an_instance_of(NitroIntelligence::EmbeddingModel)
-      expect(model.instruction_format).to be_nil
+      expect(model.prefix_for(:query)).to eq("")
+      expect(model.prefix_for(:document)).to eq("")
     end
 
-    it "builds an EmbeddingModel with its instruction format" do
+    it "builds an EmbeddingModel with its query and document prefixes" do
       model = described_class.build(
-        { "type" => "embedding", "name" => "Qwen/Qwen3-Embedding-0.6B", "instruction_format" => "Instruct: {instruction}\nQuery:{text}" }
+        { "type" => "embedding", "name" => "e5", "query_prefix" => "query: ", "document_prefix" => "passage: " }
       )
 
-      expect(model.apply_instruction("Find", "time off")).to eq("Instruct: Find\nQuery:time off")
-    end
-
-    it "raises ArgumentError for an instruction format missing a placeholder" do
-      expect { described_class.build({ type: "embedding", name: "e", instruction_format: "Instruct: {instruction}" }) }
-        .to raise_error(ArgumentError, "instruction_format for 'e' must contain {instruction} and {text}")
+      expect(model.prefix_for(:query)).to eq("query: ")
+      expect(model.prefix_for(:document)).to eq("passage: ")
     end
 
     it "raises ArgumentError when type is unknown" do

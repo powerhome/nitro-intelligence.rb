@@ -20,7 +20,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
   let(:model_config) do
     {
       default_embedding_model: "Qwen/Qwen3-Embedding-0.6B",
-      models: [{ name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", instruction_format: "Instruct: {instruction}\nQuery:{text}" }],
+      models: [{ name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", query_prefix: "Instruct: Find the page\nQuery:" }],
     }
   end
 
@@ -46,26 +46,26 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
   end
 
   describe "#create" do
-    it "observes the request as an embedding with the text as input" do
+    it "observes documents as an embed-documents embedding with the text as input" do
       expect(fake_observer).to receive(:observe).with(
-        "embedding", hash_including(type: :embedding, trace_name: "test-project", input: "How do I request time off?")
+        "embed-documents", hash_including(type: :embedding, trace_name: "test-project", input: ["Time off: request and track PTO"])
       ).and_yield(fake_embedding)
 
-      handler.create(input: "How do I request time off?")
+      handler.create(input_type: :document, input: ["Time off: request and track PTO"])
     end
 
-    it "records the input as the model received it, instruction included" do
+    it "observes a query as an embed-query embedding, recording it as the model received it, prefix included" do
       expect(fake_observer).to receive(:observe).with(
-        "embedding", hash_including(input: ["Instruct: Find the page\nQuery:a"])
+        "embed-query", hash_including(type: :embedding, input: "Instruct: Find the page\nQuery:How do I request time off?")
       ).and_yield(fake_embedding)
 
-      handler.create(input: ["a"], parameters: { instruction: "Find the page" })
+      handler.create(input_type: :query, input: "How do I request time off?")
     end
 
     it "sends the observation's trace ID with every batch" do
       allow(fake_observer).to receive(:observe).and_yield(fake_embedding)
 
-      handler.create(input: %w[a b c], parameters: { batch_size: 2 })
+      handler.create(input_type: :document, input: %w[a b c], parameters: { batch_size: 2 })
 
       expect(embeddings_route.with(headers: { "x-litellm-trace-id" => "trace-123" })).to have_been_requested.twice
     end
@@ -73,13 +73,13 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
     it "observes a batched call once" do
       expect(fake_observer).to receive(:observe).once.and_yield(fake_embedding)
 
-      handler.create(input: Array.new(5) { |index| "page #{index}" }, parameters: { batch_size: 2 })
+      handler.create(input_type: :document, input: Array.new(5) { |index| "page #{index}" }, parameters: { batch_size: 2 })
     end
 
     it "records the model, the vectors' count and size, usage and cost summed over batches, and never the vectors" do
       allow(fake_observer).to receive(:observe).and_yield(fake_embedding)
 
-      embeddings, trace_attributes = handler.create(input: %w[a b c], parameters: { batch_size: 2 })
+      embeddings, trace_attributes = handler.create(input_type: :document, input: %w[a b c], parameters: { batch_size: 2 })
 
       expect(embeddings.vectors.size).to eq(3)
       expect(trace_attributes).to match(
@@ -95,23 +95,24 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
       response_headers.delete("x-litellm-response-cost")
       allow(fake_observer).to receive(:observe).and_yield(fake_embedding)
 
-      _, trace_attributes = handler.create(input: "a")
+      _, trace_attributes = handler.create(input_type: :document, input: "a")
 
       expect(trace_attributes[:cost_details]).to be_nil
     end
 
     it "uses the supplied trace_name instead of the project slug" do
       expect(fake_observer).to receive(:observe)
-        .with("embedding", hash_including(trace_name: "page-finder-index")).and_yield(fake_embedding)
+        .with("embed-documents", hash_including(trace_name: "page-finder-index")).and_yield(fake_embedding)
 
-      handler.create(input: "a", parameters: { trace_name: "page-finder-index" })
+      handler.create(input_type: :document, input: "a", parameters: { trace_name: "page-finder-index" })
     end
 
     it "validates the model and input before observing anything" do
       expect(fake_observer).not_to receive(:observe)
 
-      expect { handler.create(input: "a", parameters: { model: "ghost" }) }.to raise_error(ArgumentError, /Unsupported model/)
-      expect { handler.create(input: []) }.to raise_error(ArgumentError, /non-empty/)
+      expect { handler.create(input_type: :document, input: "a", parameters: { model: "ghost" }) }.to raise_error(ArgumentError, /Unsupported model/)
+      expect { handler.create(input_type: :document, input: []) }.to raise_error(ArgumentError, /non-empty/)
+      expect { handler.create(input_type: nil, input: "a") }.to raise_error(ArgumentError, /input_type/)
     end
 
     context "when observed for real" do
@@ -146,9 +147,9 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
       end
 
       it "records the cost through #update" do
-        handler.create(input: "a")
+        handler.create(input_type: :document, input: "a")
 
-        expect(observability_client).to have_received(:observe).with("embedding", hash_including(as_type: :embedding))
+        expect(observability_client).to have_received(:observe).with("embed-documents", hash_including(as_type: :embedding))
         expect(recorded).to include([:update, { cost_details: { total: 1.0e-07 } }])
         expect(recorded).to include([:output=, { count: 1, dimensions: 3 }])
       end
@@ -157,7 +158,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
         let(:mask_content) { true }
 
         it "records neither the text nor the output, and asks the gateway to redact its logs" do
-          handler.create(input: "How do I request time off?")
+          handler.create(input_type: :query, input: "How do I request time off?")
 
           expect(recorded.to_s).not_to include("time off")
           expect(recorded).to include([:input=, "[masked]"], [:output=, "[masked]"])

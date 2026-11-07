@@ -30,25 +30,19 @@ module NitroIntelligence
 
   # @api private
   class EmbeddingModel < Model
-    PLACEHOLDERS = %w[{instruction} {text}].freeze
+    # What the model expects before a query's text and before a document's, for a model trained
+    # to embed the two differently. Empty for a model that embeds both the same way.
+    attr_reader :query_prefix, :document_prefix
 
-    # How the model expects a query to carry the task it is embedded for, with `{instruction}` and
-    # `{text}` where those go, or nil for a model that takes no instruction.
-    attr_reader :instruction_format
-
-    def initialize(name:, omit_output_fields: [], instruction_format: nil, **)
+    def initialize(name:, omit_output_fields: [], query_prefix: "", document_prefix: "", **)
       super
-      @instruction_format = instruction_format.presence
-      return if @instruction_format.nil? || PLACEHOLDERS.all? { |marker| @instruction_format.include?(marker) }
-
-      raise ArgumentError, "instruction_format for '#{name}' must contain #{PLACEHOLDERS.join(' and ')}"
+      @query_prefix = query_prefix.to_s
+      @document_prefix = document_prefix.to_s
     end
 
-    # The text as the model receives it with the instruction, in one pass so an instruction that
-    # happens to contain `{text}` is sent as written.
-    def apply_instruction(instruction, text)
-      values = { "instruction" => instruction, "text" => text }
-      instruction_format.gsub(/\{(instruction|text)\}/) { values[Regexp.last_match(1)] }
+    # @param input_type [Symbol] `:query` or `:document`
+    def prefix_for(input_type)
+      input_type == :query ? query_prefix : document_prefix
     end
   end
 

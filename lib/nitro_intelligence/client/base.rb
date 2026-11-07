@@ -61,26 +61,34 @@ module NitroIntelligence
         decision_handler.create(state:, questions:, parameters: parameters.dup)
       end
 
-      # Embeds text as vectors over the gateway's `/v1/embeddings` route.
+      # Embeds a search query as a vector over the gateway's `/v1/embeddings` route, to compare
+      # with vectors from {#embed_documents}.
       #
-      # @param input [String, Array<String>] the text to embed, or a list of texts. A long list is
-      #   sent in batches of `batch_size` and recorded as one observation.
+      # @param query [String, Array<String>] the query, or several, such as an evaluation set
       # @param parameters [Hash] `model`, `dimensions` (a shorter vector, for a model that supports
-      #   one), `instruction` (the task a query is embedded for, sent in the model's
-      #   `instruction_format`; give it on queries, not documents), `batch_size` (at most this
-      #   many texts per request, 128 by default), `user`, `metadata` and `request_options`, and on an observed client
-      #   `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. It takes no managed prompt.
-      # @return [Embeddings]
+      #   one), `batch_size` (at most this many texts per request, 128 by default), `user`,
+      #   `metadata` and `request_options`, and on an observed client `trace_name`, `trace_seed`,
+      #   `user_id`, `session_id` and `tags`. It takes no managed prompt.
+      # @return [Embeddings] the query's vector in `vector`, or one per query in `vectors`
       # @raise [ArgumentError] when the model is not one `model_config` lists with the type
-      #   `embedding`, the input or any text in it is empty or not text, `batch_size` is not a
-      #   positive integer, or an `instruction` is given for a model with no `instruction_format`
+      #   `embedding`, a query is empty or not text, or `batch_size` is not a positive integer
       # @example
-      #   client.embed(
-      #     input: "How do I request time off?",
-      #     parameters: { instruction: "Find the Nitro page that answers this question" }
-      #   ).vector
-      def embed(input:, parameters: {})
-        embedding_handler.create(input:, parameters: parameters.dup)
+      #   client.embed_query(query: "How do I request time off?").vector
+      def embed_query(query:, parameters: {})
+        embedding_handler.create(input: query, input_type: :query, parameters: parameters.dup)
+      end
+
+      # Embeds documents as vectors over the gateway's `/v1/embeddings` route, for a search index.
+      #
+      # @param documents [Array<String>, String] the documents. A long list is sent in batches of
+      #   `batch_size` and recorded as one observation.
+      # @param parameters [Hash] the same as {#embed_query}'s
+      # @return [Embeddings] one vector per document in `vectors`, in the order given
+      # @raise [ArgumentError] as {#embed_query} does
+      # @example
+      #   client.embed_documents(documents: pages.map(&:description), parameters: { dimensions: 512 }).vectors
+      def embed_documents(documents:, parameters: {})
+        embedding_handler.create(input: documents, input_type: :document, parameters: parameters.dup)
       end
 
       # Generates an image, or edits `target_image`.

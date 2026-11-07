@@ -1,6 +1,6 @@
 module NitroIntelligence
-  # What {Client::Base#embed} returns: one vector for each input, in the order the inputs were
-  # given, however many requests it took to embed them.
+  # What {Client::Base#embed_query} and {Client::Base#embed_documents} return: one vector for each
+  # input, in the order the inputs were given, however many requests it took to embed them.
   class Embeddings
     # @return [String, nil] the model that embedded the input, as the gateway named it
     attr_reader :model

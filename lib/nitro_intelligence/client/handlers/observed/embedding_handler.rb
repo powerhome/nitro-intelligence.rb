@@ -9,30 +9,33 @@ module NitroIntelligence
         #
         # @api private
         class EmbeddingHandler < BaseHandler
-          def create(input:, parameters: {})
-            @base_handler.validate_and_resolve!(input, parameters)
+          OBSERVATION_NAMES = { query: "embed-query", document: "embed-documents" }.freeze
+
+          def create(input:, input_type:, parameters: {})
+            @base_handler.validate_and_resolve!(input, input_type, parameters)
 
             trace_name = parameters[:trace_name] || project.slug
-            texts = @base_handler.texts(input, parameters)
+            texts = @base_handler.texts(input, input_type, parameters)
 
-            # The texts as the model received them, instruction included, since the instruction
-            # changes the vector as much as the text does.
+            # The texts as the model received them, prefix included, since the prefix changes the
+            # vector as much as the text does.
             @observer.observe(
-              "embedding",
+              OBSERVATION_NAMES.fetch(input_type),
               type: :embedding,
               parameters:,
               trace_name:,
               input: input.is_a?(Array) ? texts : texts.first
             ) do |embedding|
-              workflow(embedding:, input:, parameters:)
+              workflow(embedding:, input:, input_type:, parameters:)
             end
           end
 
         private
 
-          def workflow(embedding:, input:, parameters:)
+          def workflow(embedding:, input:, input_type:, parameters:)
             embeddings = @base_handler.perform_request(
-              input:, parameters:, correlation_trace_id: embedding.trace_id, mask_content: project.mask_content?
+              input:, input_type:, parameters:,
+              correlation_trace_id: embedding.trace_id, mask_content: project.mask_content?
             )
 
             # The vectors are never recorded: they are large, mean nothing to read, and are the

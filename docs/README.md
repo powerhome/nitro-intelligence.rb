@@ -86,7 +86,7 @@ NitroIntelligence.configure do |config|
       {
         "name" => "Qwen/Qwen3-Embedding-0.6B",
         "type" => "embedding",
-        "instruction_format" => "Instruct: {instruction}\nQuery:{text}"
+        "query_prefix" => "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
       }
     ]
   }
@@ -109,7 +109,7 @@ end
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key). Add `"mask_content" => true` to keep a project's prompts and responses out of Cerebro and the gateway logs, see [Masking Content](#masking-content)                                                                                                                                            |
 | `observability_user_id`  | `String`      | `""`                  | User ID recorded on observed traces when a request passes no `user_id` parameter — see [Users](#users) |
 | `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String, default: `"https://assistants.powerhome.ai"`) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new`, which takes the same two defaults — see [Assistants](#assistants) |
-| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, `default_decision_model`, `default_embedding_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS, `instruction_format` for embeddings) |
+| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, `default_decision_model`, `default_embedding_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS, `query_prefix`/`document_prefix` for embeddings) |
 
 ## Basic Usage
 
@@ -272,27 +272,27 @@ The client does not limit the request. To keep a feature portable to models NIP 
 
 An embeddings model turns text into a vector, so text with similar meaning can be found by comparing vectors. Embeddings go through the gateway like any other request. The gateway must serve an embeddings model; see the [Inference Gateway docs](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md) for what it serves.
 
-`embed` takes a string or a list of strings and returns a `NitroIntelligence::Embeddings` with one vector per input, in input order:
+Many embeddings models are trained to embed a search query differently from the documents it is searched against, so the client has a method for each. `embed_documents` embeds the documents for an index, and `embed_query` the query to search it with. Both return a `NitroIntelligence::Embeddings` with one vector per input, in input order:
 
 ```ruby
-# A batch of documents, such as an index rebuild
-embeddings = client.embed(input: pages.map(&:description), parameters: { dimensions: 512 })
+# Documents, such as an index rebuild
+embeddings = client.embed_documents(documents: pages.map(&:description), parameters: { dimensions: 512 })
 embeddings.vectors # => [[0.012, -0.034, ...], ...], one per page
 
-# A query, with the task it is embedded for
-client.embed(
-  input: "How do I request time off?",
-  parameters: { dimensions: 512, instruction: "Given a question about Nitro, find the page that answers it" }
-).vector # => [0.021, 0.008, ...]
+# A query to search them with
+client.embed_query(query: "How do I request time off?", parameters: { dimensions: 512 }).vector # => [0.021, 0.008, ...]
 ```
 
-`parameters` takes `model`, `dimensions`, `instruction`, `batch_size`, `user`, `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. The model defaults to `default_embedding_model` and must be listed in `config.model_config` with the type `embedding`.
+`embed_query` also takes a list of queries, such as an evaluation set, and returns a vector for each in `vectors`. `embed_documents` also takes a single document.
+
+`parameters` takes `model`, `dimensions`, `batch_size`, `user`, `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. The model defaults to `default_embedding_model` and must be listed in `config.model_config` with the type `embedding`.
 
 * **`dimensions`** shortens the vectors, for a model that supports it, as Qwen3-Embedding does. Embed queries and documents with the same model and the same `dimensions`, or the vectors cannot be compared.
-* **`instruction`** describes the task a query is embedded for. Give it on queries and not on documents. Each model expects the instruction in the format it was trained on, so the client takes that format from the model's `instruction_format` in `config.model_config`, with `{instruction}` and `{text}` where each goes; for Qwen3-Embedding that is `"Instruct: {instruction}\nQuery:{text}"`. An `instruction` for a model with no `instruction_format` raises `ArgumentError` rather than being sent in a form the model would misread, so switching to another embeddings model only means changing its `model_config` entry. Vectors from different models cannot be compared, so switching models also means embedding your stored documents again.
 * **`batch_size`** caps how many inputs go in one request, 128 by default. A longer list is sent in several requests and returned as one result, recorded as one observation, so an index rebuild of a few thousand entries is one call.
 
-`embeddings.usage` holds `prompt_tokens` and `total_tokens` summed over every request, and `embeddings.responses` the gateway's responses, one per batch, each with its `last_response`. With observability enabled, each call is recorded in Cerebro as an embedding observation with the input as the model received it, the instruction included, the gateway's cost added up over every batch, and the number and size of the vectors as output. The vectors themselves are never recorded. If the gateway did not price every batch, the cost is left unset rather than undercounted.
+A model's `query_prefix` and `document_prefix` in `config.model_config` are what it expects before a query's text and before a document's, in the form it was trained on. Qwen3-Embedding takes an instruction before each query and nothing before a document, as in the configuration above; E5 takes `"query: "` and `"passage: "`. Leave both out for a model that embeds queries and documents the same way, such as OpenAI's. Switching to another embeddings model only means changing its `model_config` entry, but vectors from different models cannot be compared, so it also means embedding your stored documents again.
+
+`embeddings.usage` holds `prompt_tokens` and `total_tokens` summed over every request, and `embeddings.responses` the gateway's responses, one per batch, each with its `last_response`. With observability enabled, each call is recorded in Cerebro as an embedding observation named `embed-query` or `embed-documents`, with the input as the model received it, prefix included, the gateway's cost added up over every batch, and the number and size of the vectors as output. The vectors themselves are never recorded. If the gateway did not price every batch, the cost is left unset rather than undercounted.
 
 Embeddings take no managed prompt: `prompt_name` and `prompt_variables` are ignored.
 
