@@ -123,6 +123,7 @@ RSpec.describe "NitroIntelligence::Model.kind" do
       NitroIntelligence::DecisionModel => "decision",
       NitroIntelligence::EmbeddingModel => "embedding",
       NitroIntelligence::ImageModel => "image",
+      NitroIntelligence::RerankModel => "rerank",
       NitroIntelligence::TextToSpeechModel => "text-to-speech"
     )
   end

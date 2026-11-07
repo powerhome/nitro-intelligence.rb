@@ -3,6 +3,7 @@ require "nitro_intelligence/client/handlers/chat_handler"
 require "nitro_intelligence/client/handlers/decision_handler"
 require "nitro_intelligence/client/handlers/embedding_handler"
 require "nitro_intelligence/client/handlers/image_handler"
+require "nitro_intelligence/client/handlers/rerank_handler"
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
 module NitroIntelligence
@@ -91,6 +92,26 @@ module NitroIntelligence
         embedding_handler.create(input: documents, input_type: :document, parameters: parameters.dup)
       end
 
+      # Ranks documents by their relevance to a query over the gateway's rerank route,
+      # `POST /v1/rerank`.
+      #
+      # @param query [String] what the documents are ranked against
+      # @param documents [Array<String>] the candidates
+      # @param parameters [Hash] `model`, `top_n` (return only the most relevant this many),
+      #   `metadata` and `request_options`, and on an observed client `trace_name`, `trace_seed`,
+      #   `user_id`, `session_id`, `tags` and `trace_documents` (false to record only how many
+      #   documents there were, for a caller whose own trace already records them). It takes no
+      #   managed prompt.
+      # @return [Ranking]
+      # @raise [ArgumentError] when the model is not one `model_config` lists with the type
+      #   `rerank`, the query is empty, or the documents are empty or not text
+      # @example
+      #   client.rerank(query: "How do I request time off?", documents: pages.map(&:description),
+      #                 parameters: { top_n: 5 }).results.map(&:index)
+      def rerank(query:, documents:, parameters: {})
+        rerank_handler.create(query:, documents:, parameters: parameters.dup)
+      end
+
       # Generates an image, or edits `target_image`.
       #
       # @param message [String] what to generate, or how to edit the target
@@ -167,6 +188,10 @@ module NitroIntelligence
 
       def respond_to_missing?(method_name, include_private = false)
         @client.respond_to?(method_name, include_private) || super
+      end
+
+      def rerank_handler
+        @rerank_handler ||= Handlers::RerankHandler.new(client: @client)
       end
 
       def text_to_speech_handler
