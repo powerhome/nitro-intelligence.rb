@@ -54,6 +54,7 @@ NitroIntelligence.configure do |config|
     "default_image_model" => "google/gemini-3.1-flash-image",
     "default_text_to_speech_model" => "openai/gpt-4o-mini-tts",
     "default_decision_model" => "typesafe/jev-1.14",
+    "default_embedding_model" => "Qwen/Qwen3-Embedding-0.6B",
     "models" => [
       {
         "name" => "Qwen/Qwen3.6-35B-A3B",
@@ -81,6 +82,11 @@ NitroIntelligence.configure do |config|
       {
         "name" => "typesafe/jev-1.14",
         "type" => "decision"
+      },
+      {
+        "name" => "Qwen/Qwen3-Embedding-0.6B",
+        "type" => "embedding",
+        "query_prefix" => "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
       }
     ]
   }
@@ -103,7 +109,7 @@ end
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key). Add `"mask_content" => true` to keep a project's prompts and responses out of Cerebro and the gateway logs, see [Masking Content](#masking-content)                                                                                                                                            |
 | `observability_user_id`  | `String`      | `""`                  | User ID recorded on observed traces when a request passes no `user_id` parameter — see [Users](#users) |
 | `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String, default: `"https://assistants.powerhome.ai"`) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new`, which takes the same two defaults — see [Assistants](#assistants) |
-| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, `default_decision_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS) |
+| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, `default_decision_model`, `default_embedding_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS, `query_prefix`/`document_prefix` for embeddings) |
 
 ## Basic Usage
 
@@ -261,6 +267,34 @@ decision.answers[:urgency].probabilities # => {0 => 0.1, 1 => 0.1, 2 => 0.8}
 The model defaults to `default_decision_model` and must be listed in `config.model_config` with the type `decision`. `parameters` takes `model`, `assets` (images that `state` and the questions refer to, see the [System One docs](https://docs.typesafe.ai/api/system-one.md); the gateway refuses assets for a model it reaches through OpenRouter, which includes `typesafe/jev-1.14`), `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`, described under [Observability](#observability). Decisions take no managed prompt: `prompt_name` and `prompt_variables` are ignored, so put the instructions in `questions`. With observability enabled, each call is recorded in Cerebro as a generation with the state and questions as input, the answers as output, and the gateway's cost.
 
 The client does not limit the request. To keep a feature portable to models NIP hosts itself, stay within the gateway's [portable subset](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md#stay-within-what-every-backend-supports): up to 64 questions, 26 options per `choice` question and 10 levels per `score` question, with text `state`.
+
+### Embeddings
+
+An embeddings model turns text into a vector, so text with similar meaning can be found by comparing vectors. Embeddings go through the gateway like any other request. The gateway must serve an embeddings model; see the [Inference Gateway docs](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md) for what it serves.
+
+Many embeddings models are trained to embed a search query differently from the documents it is searched against, so the client has a method for each. `embed_documents` embeds the documents for an index, and `embed_query` the query to search it with. Both return a `NitroIntelligence::Embeddings` with one vector per input, in input order:
+
+```ruby
+# Documents, such as an index rebuild
+embeddings = client.embed_documents(documents: pages.map(&:description), parameters: { dimensions: 512 })
+embeddings.vectors # => [[0.012, -0.034, ...], ...], one per page
+
+# A query to search them with
+client.embed_query(query: "How do I request time off?", parameters: { dimensions: 512 }).vector # => [0.021, 0.008, ...]
+```
+
+`embed_query` also takes a list of queries, such as an evaluation set, and returns a vector for each in `vectors`. `embed_documents` also takes a single document.
+
+`parameters` takes `model`, `dimensions`, `batch_size`, `user`, `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. The model defaults to `default_embedding_model` and must be listed in `config.model_config` with the type `embedding`.
+
+* **`dimensions`** shortens the vectors, for a model that supports it, as Qwen3-Embedding does. Embed queries and documents with the same model and the same `dimensions`, or the vectors cannot be compared.
+* **`batch_size`** caps how many inputs go in one request, 128 by default. A longer list is sent in several requests and returned as one result, recorded as one observation, so an index rebuild of a few thousand entries is one call.
+
+A model's `query_prefix` and `document_prefix` in `config.model_config` are what it expects before a query's text and before a document's, in the form it was trained on. Qwen3-Embedding takes an instruction before each query and nothing before a document, as in the configuration above; E5 takes `"query: "` and `"passage: "`. Leave both out for a model that embeds queries and documents the same way, such as OpenAI's. Switching to another embeddings model only means changing its `model_config` entry, but vectors from different models cannot be compared, so it also means embedding your stored documents again.
+
+`embeddings.usage` holds `prompt_tokens` and `total_tokens` summed over every request, and `embeddings.responses` the gateway's responses, one per batch, each with its `last_response`. With observability enabled, each call is recorded in Cerebro as an embedding observation named `embed-query` or `embed-documents`, with the input as the model received it, prefix included, the gateway's cost added up over every batch, and the number and size of the vectors as output. The vectors themselves are never recorded. If the gateway did not price every batch, the cost is left unset rather than undercounted.
+
+Embeddings take no managed prompt: `prompt_name` and `prompt_variables` are ignored.
 
 ### Image Editing and Generation
 
@@ -507,7 +541,7 @@ success, so it records no input up front.
 
 A project can opt in to recording what happened without recording what was said. Set `"mask_content" => true` on its entry in `observability_projects`; projects that do not set it are unchanged.
 
-For a masked project, every observed request (chat, image generation, audio transcription, text-to-speech and decisions) is still traced, with its model, usage, cost, prompt link, tags, user, session, metadata and gateway call ID, but:
+For a masked project, every observed request (chat, image generation, audio transcription, text-to-speech, decisions and embeddings) is still traced, with its model, usage, cost, prompt link, tags, user, session, metadata and gateway call ID, but:
 
 * The input and output of the generation and of the trace are recorded as `[masked]`. The whole value is replaced, so reasoning, tool calls and anything else in a response are masked however the provider shaped it.
 * A failed request records the error class (for example `OpenAI::Errors::BadRequestError`) as its status message, without the error's own message, which can quote the request or the response.

@@ -1,6 +1,7 @@
 require "nitro_intelligence/client/handlers/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/chat_handler"
 require "nitro_intelligence/client/handlers/decision_handler"
+require "nitro_intelligence/client/handlers/embedding_handler"
 require "nitro_intelligence/client/handlers/image_handler"
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
@@ -58,6 +59,36 @@ module NitroIntelligence
       #   ).answers[:billing].noul
       def decide(state:, questions:, parameters: {})
         decision_handler.create(state:, questions:, parameters: parameters.dup)
+      end
+
+      # Embeds a search query as a vector over the gateway's `/v1/embeddings` route, to compare
+      # with vectors from {#embed_documents}.
+      #
+      # @param query [String, Array<String>] the query, or several, such as an evaluation set
+      # @param parameters [Hash] `model`, `dimensions` (a shorter vector, for a model that supports
+      #   one), `batch_size` (at most this many texts per request, 128 by default), `user`,
+      #   `metadata` and `request_options`, and on an observed client `trace_name`, `trace_seed`,
+      #   `user_id`, `session_id` and `tags`. It takes no managed prompt.
+      # @return [Embeddings] the query's vector in `vector`, or one per query in `vectors`
+      # @raise [ArgumentError] when the model is not one `model_config` lists with the type
+      #   `embedding`, a query is empty or not text, or `batch_size` is not a positive integer
+      # @example
+      #   client.embed_query(query: "How do I request time off?").vector
+      def embed_query(query:, parameters: {})
+        embedding_handler.create(input: query, input_type: :query, parameters: parameters.dup)
+      end
+
+      # Embeds documents as vectors over the gateway's `/v1/embeddings` route, for a search index.
+      #
+      # @param documents [Array<String>, String] the documents. A long list is sent in batches of
+      #   `batch_size` and recorded as one observation.
+      # @param parameters [Hash] the same as {#embed_query}'s
+      # @return [Embeddings] one vector per document in `vectors`, in the order given
+      # @raise [ArgumentError] as {#embed_query} does
+      # @example
+      #   client.embed_documents(documents: pages.map(&:description), parameters: { dimensions: 512 }).vectors
+      def embed_documents(documents:, parameters: {})
+        embedding_handler.create(input: documents, input_type: :document, parameters: parameters.dup)
       end
 
       # Generates an image, or edits `target_image`.
@@ -120,6 +151,10 @@ module NitroIntelligence
 
       def decision_handler
         @decision_handler ||= Handlers::DecisionHandler.new(client: @client)
+      end
+
+      def embedding_handler
+        @embedding_handler ||= Handlers::EmbeddingHandler.new(client: @client)
       end
 
       def image_handler

@@ -1,6 +1,7 @@
 require "nitro_intelligence/client/handlers/observed/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/observed/chat_handler"
 require "nitro_intelligence/client/handlers/observed/decision_handler"
+require "nitro_intelligence/client/handlers/observed/embedding_handler"
 require "nitro_intelligence/client/handlers/observed/image_handler"
 require "nitro_intelligence/client/handlers/observed/text_to_speech_handler"
 require "nitro_intelligence/observability/prompt_store"
@@ -34,6 +35,12 @@ module NitroIntelligence
       def decision_handler
         @decision_handler ||= Handlers::Observed::DecisionHandler.new(
           base_handler: Handlers::DecisionHandler.new(client: @client), observer: @observer
+        )
+      end
+
+      def embedding_handler
+        @embedding_handler ||= Handlers::Observed::EmbeddingHandler.new(
+          base_handler: Handlers::EmbeddingHandler.new(client: @client), observer: @observer
         )
       end
 
