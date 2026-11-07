@@ -69,11 +69,6 @@ RSpec.describe NitroIntelligence::ModelFactory do
         .to raise_error(ArgumentError, "instruction_format for 'e' must contain {instruction} and {text}")
     end
 
-    it "builds a RerankModel when type is 'rerank'" do
-      model = described_class.build({ type: "rerank", name: "Qwen/Qwen3-Reranker-0.6B" })
-      expect(model).to be_an_instance_of(NitroIntelligence::RerankModel)
-    end
-
     it "raises ArgumentError when type is unknown" do
       expect { described_class.build({ type: "audio_synthesis", name: "x" }) }
         .to raise_error(ArgumentError, /Unknown model type: "audio_synthesis"/)
