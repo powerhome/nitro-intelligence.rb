@@ -13,6 +13,10 @@ require "nitro_intelligence/langfuse_tracer_provider"
 module NitroIntelligence
   # @api private
   class LangfuseExtension
+    # Holds the client recording the {Observation} application code has open, so that observations
+    # started inside it nest under it only when they are recorded in the same project.
+    ACTIVE_OBSERVATION_KEY = OpenTelemetry::Context.create_key("nitro-intelligence-active-observation")
+
     attr_reader :config
 
     def initialize
@@ -47,6 +51,20 @@ module NitroIntelligence
       )
     end
 
+    # Whether application code has an observation open in this client, under which an observation
+    # started without a trace ID or parent nests.
+    def observing?
+      active_observation_client.equal?(self)
+    end
+
+    # Runs the block with `observation` as the active span, so that observations this client starts
+    # inside it, the gem's own included, nest under it.
+    def within(observation, &)
+      context = OpenTelemetry::Trace.context_with_span(observation.otel_span)
+      context = context.set_value(ACTIVE_OBSERVATION_KEY, self)
+      OpenTelemetry::Context.with_current(context, &)
+    end
+
     def start_observation(name, attrs = {}, as_type: :span, trace_id: nil, parent_span_context: nil, start_time: nil, # rubocop:disable Metrics/ParameterLists
                           skip_validation: false)
       parent_span_context = Langfuse.send(:resolve_trace_context, trace_id, parent_span_context)
@@ -56,6 +74,10 @@ module NitroIntelligence
       otel_tracer = @tracer_provider.tracer
       otel_span = if trace_id
                     @tracer_provider.start_root_span(name, trace_id: parent_span_context.trace_id, start_time:)
+                  elsif parent_span_context.nil? && foreign_observation_active?
+                    # The open observation is recorded in another project, where this one's parent
+                    # would not exist.
+                    @tracer_provider.start_root_span(name, trace_id: nil, start_time:)
                   else
                     Langfuse.send(:create_otel_span,
                                   name:,
@@ -86,6 +108,17 @@ module NitroIntelligence
       return observation unless block
 
       observation.send(:run_in_context, &block)
+    end
+
+  private
+
+    def active_observation_client
+      OpenTelemetry::Context.value(ACTIVE_OBSERVATION_KEY)
+    end
+
+    def foreign_observation_active?
+      client = active_observation_client
+      !client.nil? && !client.equal?(self)
     end
   end
 end
