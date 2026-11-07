@@ -33,7 +33,8 @@ module NitroIntelligence
       @results = response[:results].to_a.map do |result|
         Result.new(index: result[:index], relevance_score: result[:relevance_score])
       end
-      @results = @results.sort_by { |result| -result.relevance_score.to_f }
+      # Ties keep the order the provider gave them, since sort_by alone is not stable.
+      @results = @results.each_with_index.sort_by { |result, index| [-result.relevance_score.to_f, index] }.map(&:first)
       @meta = response[:meta].to_h.deep_dup.with_indifferent_access
     end
   end

@@ -71,11 +71,13 @@ module NitroIntelligence
 
       private
 
+        # Checked before any batch is sent, so a bad entry late in a long list cannot fail the call
+        # after the batches before it were billed.
         def validate_input!(input)
           texts = Array(input)
-          return if texts.any? && texts.all?(String)
+          return if texts.any? && texts.all? { |text| text.is_a?(String) && text.present? }
 
-          raise ArgumentError, "input must be a string or a non-empty array of strings"
+          raise ArgumentError, "input must be a non-empty string or a non-empty array of non-empty strings"
         end
 
         def validate_batch_size!(batch_size)

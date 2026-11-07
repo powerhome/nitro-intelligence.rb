@@ -132,13 +132,20 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
     end
 
     it "raises for an empty input before sending anything" do
-      expect { handler.create(input: []) }.to raise_error(ArgumentError, /non-empty array of strings/)
+      expect { handler.create(input: []) }.to raise_error(ArgumentError, /non-empty array of non-empty strings/)
       expect(embeddings_route).not_to have_been_requested
     end
 
     it "raises for input that is not text" do
-      expect { handler.create(input: ["a", 1]) }.to raise_error(ArgumentError, /non-empty array of strings/)
-      expect { handler.create(input: nil) }.to raise_error(ArgumentError, /non-empty array of strings/)
+      expect { handler.create(input: ["a", 1]) }.to raise_error(ArgumentError, /non-empty array of non-empty strings/)
+      expect { handler.create(input: nil) }.to raise_error(ArgumentError, /non-empty array of non-empty strings/)
+    end
+
+    it "raises for an empty or blank text anywhere in the input before sending any batch" do
+      expect { handler.create(input: "") }.to raise_error(ArgumentError, /non-empty strings/)
+      expect { handler.create(input: ["a", "b", " "], parameters: { batch_size: 1 }) }
+        .to raise_error(ArgumentError, /non-empty strings/)
+      expect(embeddings_route).not_to have_been_requested
     end
 
     it "raises for a batch size that is not a positive integer" do

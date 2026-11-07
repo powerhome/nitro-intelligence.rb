@@ -73,7 +73,7 @@ module NitroIntelligence
       #   `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. It takes no managed prompt.
       # @return [Embeddings]
       # @raise [ArgumentError] when the model is not one `model_config` lists with the type
-      #   `embedding`, the input is empty or not text, or `batch_size` is not a positive integer
+      #   `embedding`, the input or any text in it is empty or not text, or `batch_size` is not a positive integer
       # @example
       #   client.embed(
       #     input: "How do I request time off?",

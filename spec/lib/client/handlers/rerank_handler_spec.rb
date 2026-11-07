@@ -80,6 +80,15 @@ RSpec.describe NitroIntelligence::Client::Handlers::RerankHandler do
       expect(ranking.meta["billed_units"]["search_units"]).to eq(1)
     end
 
+    it "keeps the provider's order for documents with tied scores" do
+      response_body[:results] = [
+        { index: 2, relevance_score: 0.5 }, { index: 0, relevance_score: 0.9 }, { index: 1, relevance_score: 0.5 }
+      ]
+      stub_request(:post, "https://gateway.example/v1/rerank").to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      expect(handler.create(query:, documents:).results.map(&:index)).to eq([0, 2, 1])
+    end
+
     it "returns no results for a response that carries none" do
       stub_request(:post, "https://gateway.example/v1/rerank").to_return(status: 200, body: {}.to_json, headers: response_headers)
 
