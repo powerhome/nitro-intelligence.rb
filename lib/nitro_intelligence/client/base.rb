@@ -1,7 +1,9 @@
 require "nitro_intelligence/client/handlers/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/chat_handler"
 require "nitro_intelligence/client/handlers/decision_handler"
+require "nitro_intelligence/client/handlers/embedding_handler"
 require "nitro_intelligence/client/handlers/image_handler"
+require "nitro_intelligence/client/handlers/rerank_handler"
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
 
 module NitroIntelligence
@@ -58,6 +60,47 @@ module NitroIntelligence
       #   ).answers[:billing].noul
       def decide(state:, questions:, parameters: {})
         decision_handler.create(state:, questions:, parameters: parameters.dup)
+      end
+
+      # Embeds text as vectors over the gateway's `/v1/embeddings` route.
+      #
+      # @param input [String, Array<String>] the text to embed, or a list of texts. A long list is
+      #   sent in batches of `batch_size` and recorded as one observation.
+      # @param parameters [Hash] `model`, `dimensions` (a shorter vector, for a model that supports
+      #   one), `instruction` (the task a query is embedded for, which Qwen3-Embedding expects on
+      #   queries and not on documents), `batch_size` (at most this many texts per request, 128 by
+      #   default), `user`, `metadata` and `request_options`, and on an observed client
+      #   `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. It takes no managed prompt.
+      # @return [Embeddings]
+      # @raise [ArgumentError] when the model is not one `model_config` lists with the type
+      #   `embedding`, the input is empty or not text, or `batch_size` is not a positive integer
+      # @example
+      #   client.embed(
+      #     input: "How do I request time off?",
+      #     parameters: { instruction: "Find the Nitro page that answers this question" }
+      #   ).vector
+      def embed(input:, parameters: {})
+        embedding_handler.create(input:, parameters: parameters.dup)
+      end
+
+      # Ranks documents by their relevance to a query over the gateway's rerank route,
+      # `POST /v1/rerank`.
+      #
+      # @param query [String] what the documents are ranked against
+      # @param documents [Array<String>] the candidates
+      # @param parameters [Hash] `model`, `top_n` (return only the most relevant this many),
+      #   `instruction` (the task, for a reranker that takes one), `metadata` and
+      #   `request_options`, and on an observed client `trace_name`, `trace_seed`, `user_id`,
+      #   `session_id`, `tags` and `trace_documents` (false to record only how many documents there
+      #   were, for a caller whose own trace already records them). It takes no managed prompt.
+      # @return [Ranking]
+      # @raise [ArgumentError] when the model is not one `model_config` lists with the type
+      #   `rerank`, the query is empty, or the documents are empty or not text
+      # @example
+      #   client.rerank(query: "How do I request time off?", documents: pages.map(&:description),
+      #                 parameters: { top_n: 5 }).results.map(&:index)
+      def rerank(query:, documents:, parameters: {})
+        rerank_handler.create(query:, documents:, parameters: parameters.dup)
       end
 
       # Generates an image, or edits `target_image`.
@@ -122,6 +165,10 @@ module NitroIntelligence
         @decision_handler ||= Handlers::DecisionHandler.new(client: @client)
       end
 
+      def embedding_handler
+        @embedding_handler ||= Handlers::EmbeddingHandler.new(client: @client)
+      end
+
       def image_handler
         @image_handler ||= Handlers::ImageHandler.new(client: @client)
       end
@@ -132,6 +179,10 @@ module NitroIntelligence
 
       def respond_to_missing?(method_name, include_private = false)
         @client.respond_to?(method_name, include_private) || super
+      end
+
+      def rerank_handler
+        @rerank_handler ||= Handlers::RerankHandler.new(client: @client)
       end
 
       def text_to_speech_handler

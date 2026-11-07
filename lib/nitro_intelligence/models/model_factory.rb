@@ -7,7 +7,9 @@ module NitroIntelligence
       "text" => TextModel,
       "audio_transcription" => TextModel,
       "decision" => DecisionModel,
+      "embedding" => EmbeddingModel,
       "image" => ImageModel,
+      "rerank" => RerankModel,
       "text_to_speech" => TextToSpeechModel,
     }.freeze
 

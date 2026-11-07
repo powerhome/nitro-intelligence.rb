@@ -81,12 +81,23 @@ module NitroIntelligence
 
           RECORDED_ATTRIBUTES.each do |name|
             value = trace_attributes[name]
-            generation.public_send(:"#{name}=", value) if value
+            record_attribute(generation, name, value) if value
           end
 
           record_status(generation, trace_attributes)
 
           generation.update_trace(input: trace_attributes[:input], output: trace_attributes[:output])
+        end
+
+        # langfuse-rb's embedding observation takes its cost only through #update: unlike a
+        # generation, it has no setter for it.
+        def record_attribute(observation, name, value)
+          setter = :"#{name}="
+          if observation.respond_to?(setter)
+            observation.public_send(setter, value)
+          else
+            observation.update(name => value)
+          end
         end
 
         def masked(trace_attributes)

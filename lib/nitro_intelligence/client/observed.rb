@@ -1,7 +1,9 @@
 require "nitro_intelligence/client/handlers/observed/audio_transcription_handler"
 require "nitro_intelligence/client/handlers/observed/chat_handler"
 require "nitro_intelligence/client/handlers/observed/decision_handler"
+require "nitro_intelligence/client/handlers/observed/embedding_handler"
 require "nitro_intelligence/client/handlers/observed/image_handler"
+require "nitro_intelligence/client/handlers/observed/rerank_handler"
 require "nitro_intelligence/client/handlers/observed/text_to_speech_handler"
 require "nitro_intelligence/observability/prompt_store"
 require "nitro_intelligence/observability/upload_handler"
@@ -37,9 +39,21 @@ module NitroIntelligence
         )
       end
 
+      def embedding_handler
+        @embedding_handler ||= Handlers::Observed::EmbeddingHandler.new(
+          base_handler: Handlers::EmbeddingHandler.new(client: @client), observer: @observer
+        )
+      end
+
       def image_handler
         @image_handler ||= Handlers::Observed::ImageHandler.new(
           base_handler: Handlers::ImageHandler.new(client: @client), observer: @observer
+        )
+      end
+
+      def rerank_handler
+        @rerank_handler ||= Handlers::Observed::RerankHandler.new(
+          base_handler: Handlers::RerankHandler.new(client: @client), observer: @observer
         )
       end
 

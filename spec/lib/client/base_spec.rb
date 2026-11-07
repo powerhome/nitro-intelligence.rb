@@ -45,6 +45,22 @@ RSpec.describe NitroIntelligence::Client::Base do
       expect(mock_handler).to receive(:create).with(state: "content", questions: { q: { type: "noul" } }, parameters: {})
       base_client.decide(state: "content", questions: { q: { type: "noul" } })
     end
+
+    it "delegates #embed to the EmbeddingHandler" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::EmbeddingHandler)
+      allow(NitroIntelligence::Client::Handlers::EmbeddingHandler).to receive(:new).with(client: fake_openai_client).and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create).with(input: %w[a b], parameters: { dimensions: 256 })
+      base_client.embed(input: %w[a b], parameters: { dimensions: 256 })
+    end
+
+    it "delegates #rerank to the RerankHandler" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::RerankHandler)
+      allow(NitroIntelligence::Client::Handlers::RerankHandler).to receive(:new).with(client: fake_openai_client).and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create).with(query: "q", documents: ["a"], parameters: { top_n: 1 })
+      base_client.rerank(query: "q", documents: ["a"], parameters: { top_n: 1 })
+    end
   end
 
   describe "method_missing delegation" do

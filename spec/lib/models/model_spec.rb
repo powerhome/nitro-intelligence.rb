@@ -121,7 +121,9 @@ RSpec.describe "NitroIntelligence::Model.kind" do
     expect(NitroIntelligence::ModelFactory::TYPES.values.uniq.to_h { [_1, _1.kind] }).to eq(
       NitroIntelligence::TextModel => "text",
       NitroIntelligence::DecisionModel => "decision",
+      NitroIntelligence::EmbeddingModel => "embedding",
       NitroIntelligence::ImageModel => "image",
+      NitroIntelligence::RerankModel => "rerank",
       NitroIntelligence::TextToSpeechModel => "text-to-speech"
     )
   end

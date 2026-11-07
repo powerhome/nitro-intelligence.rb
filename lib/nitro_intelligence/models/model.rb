@@ -29,6 +29,12 @@ module NitroIntelligence
   class DecisionModel < Model; end
 
   # @api private
+  class EmbeddingModel < Model; end
+
+  # @api private
+  class RerankModel < Model; end
+
+  # @api private
   class TextModel < Model; end
 
   # @api private
