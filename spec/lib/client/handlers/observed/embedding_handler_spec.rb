@@ -227,6 +227,28 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
         )
       end
 
+      it "sets the prompt on a real langfuse-rb embedding, which Langfuse records but links only for a generation" do
+        exporter = OpenTelemetry::SDK::Trace::Export::InMemorySpanExporter.new
+        provider = OpenTelemetry::SDK::Trace::TracerProvider.new
+        provider.add_span_processor(OpenTelemetry::SDK::Trace::Export::SimpleSpanProcessor.new(exporter))
+        tracer = provider.tracer("spec")
+        span = tracer.start_span("embedding")
+        allow(observability_client).to receive(:observe).and_yield(Langfuse::Embedding.new(span, tracer))
+        prompt = NitroIntelligence::Observability::Prompt.new(
+          name: "Page Finder Search", type: "text", version: 4, prompt: "Find the page"
+        )
+        allow(project.prompt_store).to receive(:get_prompt).and_return(prompt)
+
+        handler.create(input: "a", parameters: { prompt_name: "Page Finder Search" })
+        span.finish
+
+        expect(exporter.finished_spans.first.attributes).to include(
+          "langfuse.observation.type" => "embedding",
+          "langfuse.observation.prompt.name" => "Page Finder Search",
+          "langfuse.observation.prompt.version" => 4
+        )
+      end
+
       context "with a project that masks content" do
         let(:mask_content) { true }
 
