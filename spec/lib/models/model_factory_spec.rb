@@ -53,6 +53,20 @@ RSpec.describe NitroIntelligence::ModelFactory do
     it "builds an EmbeddingModel when type is 'embedding'" do
       model = described_class.build({ type: "embedding", name: "Qwen/Qwen3-Embedding-0.6B" })
       expect(model).to be_an_instance_of(NitroIntelligence::EmbeddingModel)
+      expect(model.instruction_format).to be_nil
+    end
+
+    it "builds an EmbeddingModel with its instruction format" do
+      model = described_class.build(
+        { "type" => "embedding", "name" => "Qwen/Qwen3-Embedding-0.6B", "instruction_format" => "Instruct: {instruction}\nQuery:{text}" }
+      )
+
+      expect(model.apply_instruction("Find", "time off")).to eq("Instruct: Find\nQuery:time off")
+    end
+
+    it "raises ArgumentError for an instruction format missing a placeholder" do
+      expect { described_class.build({ type: "embedding", name: "e", instruction_format: "Instruct: {instruction}" }) }
+        .to raise_error(ArgumentError, "instruction_format for 'e' must contain {instruction} and {text}")
     end
 
     it "builds a RerankModel when type is 'rerank'" do

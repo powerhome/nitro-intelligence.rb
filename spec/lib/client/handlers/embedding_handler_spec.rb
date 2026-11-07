@@ -13,7 +13,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
     {
       default_embedding_model: "Qwen/Qwen3-Embedding-0.6B",
       models: [
-        { name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding" },
+        { name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", instruction_format: "Instruct: {instruction}\nQuery:{text}" },
         { name: "other/embedder", type: "embedding" },
         { name: "Qwen/Qwen3-Reranker-0.6B", type: "rerank" },
       ],
@@ -84,7 +84,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
       expect(requests.first["encoding_format"]).to eq("float")
     end
 
-    it "prefixes each input with the instruction in Qwen3-Embedding's query format" do
+    it "sends each input with the instruction in the model's instruction format" do
       handler.create(input: ["How do I request time off?"], parameters: { instruction: "Find the Nitro page that answers this" })
 
       expect(requests.first["input"]).to eq(["Instruct: Find the Nitro page that answers this\nQuery:How do I request time off?"])
@@ -92,6 +92,24 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
 
     it "sends the input unchanged when the instruction is blank" do
       handler.create(input: "a", parameters: { instruction: "" })
+
+      expect(requests.first["input"]).to eq(["a"])
+    end
+
+    it "sends an instruction that contains a placeholder as written" do
+      handler.create(input: "a", parameters: { instruction: "Match {text}" })
+
+      expect(requests.first["input"]).to eq(["Instruct: Match {text}\nQuery:a"])
+    end
+
+    it "raises for an instruction to a model with no instruction format, before sending anything" do
+      expect { handler.create(input: "a", parameters: { model: "other/embedder", instruction: "Find" }) }
+        .to raise_error(ArgumentError, "Model 'other/embedder' takes no instruction: its model_config entry has no instruction_format")
+      expect(requests).to be_empty
+    end
+
+    it "embeds without an instruction on a model with no instruction format" do
+      handler.create(input: "a", parameters: { model: "other/embedder" })
 
       expect(requests.first["input"]).to eq(["a"])
     end

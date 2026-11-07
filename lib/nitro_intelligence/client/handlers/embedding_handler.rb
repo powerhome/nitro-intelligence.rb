@@ -18,10 +18,6 @@ module NitroIntelligence
 
         DEFAULT_BATCH_SIZE = 128
 
-        # How Qwen3-Embedding expects a query to carry its task. Documents are embedded without one.
-        # See https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
-        INSTRUCTION_FORMAT = "Instruct: %<instruction>s\nQuery:%<text>s".freeze
-
         def create(input:, parameters: {})
           validate_and_resolve!(input, parameters)
           perform_request(input:, parameters:)
@@ -45,17 +41,20 @@ module NitroIntelligence
           }
 
           parameters.replace(default_parameters.merge(parameters))
-          Client.validate_model(parameters[:model], type: EmbeddingModel)
+          model = Client.validate_model(parameters[:model], type: EmbeddingModel)
           validate_input!(input)
           validate_batch_size!(parameters[:batch_size])
+          validate_instruction!(model, parameters[:instruction])
         end
 
-        # The texts as the model receives them: each prefixed with the instruction, when there is one.
+        # The texts as the model receives them: each wrapped in the model's instruction format, when
+        # there is an instruction.
         def texts(input, parameters)
           instruction = parameters[:instruction].presence
-          Array(input).map do |text|
-            instruction ? format(INSTRUCTION_FORMAT, instruction:, text:) : text
-          end
+          return Array(input) unless instruction
+
+          model = Client.validate_model(parameters[:model], type: EmbeddingModel)
+          Array(input).map { |text| model.apply_instruction(instruction, text) }
         end
 
         # The cost of every batch, added up. A batch the gateway did not price leaves the whole call
@@ -78,6 +77,15 @@ module NitroIntelligence
           return if texts.any? && texts.all? { |text| text.is_a?(String) && text.present? }
 
           raise ArgumentError, "input must be a non-empty string or a non-empty array of non-empty strings"
+        end
+
+        # A model without an instruction format would get the instruction in a form it was not
+        # trained on, which degrades its vectors without any error to show it.
+        def validate_instruction!(model, instruction)
+          return if instruction.blank? || model.instruction_format
+
+          raise ArgumentError,
+                "Model '#{model.name}' takes no instruction: its model_config entry has no instruction_format"
         end
 
         def validate_batch_size!(batch_size)

@@ -18,7 +18,10 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
   let(:handler) { described_class.new(base_handler:, observer: fake_observer) }
 
   let(:model_config) do
-    { default_embedding_model: "Qwen/Qwen3-Embedding-0.6B", models: [{ name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding" }] }
+    {
+      default_embedding_model: "Qwen/Qwen3-Embedding-0.6B",
+      models: [{ name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", instruction_format: "Instruct: {instruction}\nQuery:{text}" }],
+    }
   end
 
   let(:response_headers) { { "Content-Type" => "application/json", "x-litellm-response-cost" => "1.0e-07" } }

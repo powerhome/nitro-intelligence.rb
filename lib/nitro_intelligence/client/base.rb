@@ -67,13 +67,14 @@ module NitroIntelligence
       # @param input [String, Array<String>] the text to embed, or a list of texts. A long list is
       #   sent in batches of `batch_size` and recorded as one observation.
       # @param parameters [Hash] `model`, `dimensions` (a shorter vector, for a model that supports
-      #   one), `instruction` (the task a query is embedded for, which Qwen3-Embedding expects on
-      #   queries and not on documents), `batch_size` (at most this many texts per request, 128 by
-      #   default), `user`, `metadata` and `request_options`, and on an observed client
+      #   one), `instruction` (the task a query is embedded for, sent in the model's
+      #   `instruction_format`; give it on queries, not documents), `batch_size` (at most this
+      #   many texts per request, 128 by default), `user`, `metadata` and `request_options`, and on an observed client
       #   `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. It takes no managed prompt.
       # @return [Embeddings]
       # @raise [ArgumentError] when the model is not one `model_config` lists with the type
-      #   `embedding`, the input or any text in it is empty or not text, or `batch_size` is not a positive integer
+      #   `embedding`, the input or any text in it is empty or not text, `batch_size` is not a
+      #   positive integer, or an `instruction` is given for a model with no `instruction_format`
       # @example
       #   client.embed(
       #     input: "How do I request time off?",

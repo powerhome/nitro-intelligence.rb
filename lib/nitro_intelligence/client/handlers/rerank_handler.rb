@@ -16,8 +16,8 @@ module NitroIntelligence
         PATH_AFTER_V1 = "rerank".freeze
 
         # Rerank request fields other than the model, query and documents, taken from `parameters`.
-        # `instruction` is the task Qwen3-Reranker is given, which the gateway passes on to the
-        # providers that take one.
+        # `instruction` is the task, for a reranker that takes one, which the gateway passes on to
+        # the provider as given.
         BODY_PARAMETERS = %i[top_n instruction].freeze
 
         # Declaring a model, rather than taking the decoded hash, is what gets the response its

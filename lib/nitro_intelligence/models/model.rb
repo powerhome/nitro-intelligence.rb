@@ -29,7 +29,28 @@ module NitroIntelligence
   class DecisionModel < Model; end
 
   # @api private
-  class EmbeddingModel < Model; end
+  class EmbeddingModel < Model
+    PLACEHOLDERS = %w[{instruction} {text}].freeze
+
+    # How the model expects a query to carry the task it is embedded for, with `{instruction}` and
+    # `{text}` where those go, or nil for a model that takes no instruction.
+    attr_reader :instruction_format
+
+    def initialize(name:, omit_output_fields: [], instruction_format: nil, **)
+      super
+      @instruction_format = instruction_format.presence
+      return if @instruction_format.nil? || PLACEHOLDERS.all? { |marker| @instruction_format.include?(marker) }
+
+      raise ArgumentError, "instruction_format for '#{name}' must contain #{PLACEHOLDERS.join(' and ')}"
+    end
+
+    # The text as the model receives it with the instruction, in one pass so an instruction that
+    # happens to contain `{text}` is sent as written.
+    def apply_instruction(instruction, text)
+      values = { "instruction" => instruction, "text" => text }
+      instruction_format.gsub(/\{(instruction|text)\}/) { values[Regexp.last_match(1)] }
+    end
+  end
 
   # @api private
   class RerankModel < Model; end
