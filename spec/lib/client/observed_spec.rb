@@ -69,5 +69,15 @@ RSpec.describe NitroIntelligence::Client::Observed do
       observed_client.embed_query(query: "q")
       observed_client.embed_documents(documents: ["a"])
     end
+
+    it "delegates #rerank to the Observed::RerankHandler" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::Observed::RerankHandler)
+      allow(NitroIntelligence::Client::Handlers::Observed::RerankHandler)
+        .to receive(:new).with(base_handler: instance_of(NitroIntelligence::Client::Handlers::RerankHandler), observer: fake_observer)
+        .and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create).with(query: "q", documents: ["a"], parameters: {})
+      observed_client.rerank(query: "q", documents: ["a"])
+    end
   end
 end

@@ -11,6 +11,7 @@ RSpec.describe NitroIntelligence::ModelCatalog do
         { name: "tts-1", type: "text_to_speech" },
         { name: "jev", type: "decision" },
         { name: "qwen-embedding", type: "embedding" },
+        { name: "qwen-reranker", type: "rerank" },
       ],
       default_audio_transcription_model: "whisper-1",
       default_image_model: "dall-e-3",
@@ -18,6 +19,7 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       default_text_to_speech_model: "tts-1",
       default_decision_model: "jev",
       default_embedding_model: "qwen-embedding",
+      default_rerank_model: "qwen-reranker",
     }
   end
 
@@ -27,6 +29,7 @@ RSpec.describe NitroIntelligence::ModelCatalog do
   let(:fake_tts) { double("TextToSpeechModel", name: "tts-1") }
   let(:fake_jev) { double("DecisionModel", name: "jev") }
   let(:fake_embedding) { double("EmbeddingModel", name: "qwen-embedding") }
+  let(:fake_reranker) { double("RerankModel", name: "qwen-reranker") }
 
   before do
     # Stub the ModelFactory to return our fake models for easy testing
@@ -53,12 +56,18 @@ RSpec.describe NitroIntelligence::ModelCatalog do
     allow(NitroIntelligence::ModelFactory).to receive(:build)
       .with({ name: "qwen-embedding", type: "embedding" })
       .and_return(fake_embedding)
+
+    allow(NitroIntelligence::ModelFactory).to receive(:build)
+      .with({ name: "qwen-reranker", type: "rerank" })
+      .and_return(fake_reranker)
   end
 
   describe "#initialize" do
     it "builds models using the ModelFactory" do
       catalog = described_class.new(model_config)
-      expect(catalog.models).to contain_exactly(fake_gpt4, fake_dalle, fake_whisper, fake_tts, fake_jev, fake_embedding)
+      expect(catalog.models).to contain_exactly(
+        fake_gpt4, fake_dalle, fake_whisper, fake_tts, fake_jev, fake_embedding, fake_reranker
+      )
     end
 
     it "sets the default models by performing lookups" do
@@ -70,6 +79,7 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       expect(catalog.default_text_to_speech_model).to eq(fake_tts)
       expect(catalog.default_decision_model).to eq(fake_jev)
       expect(catalog.default_embedding_model).to eq(fake_embedding)
+      expect(catalog.default_rerank_model).to eq(fake_reranker)
     end
 
     it "accepts string-keyed configuration" do
