@@ -557,6 +557,8 @@ The gem's requests made inside the block are recorded as observations under the 
 
 Such a request records its own observation only: the trace's name, input, output, user, session and tags are the ones the tracer was given, and the request's `trace_name`, `user_id`, `session_id` and `tags` are not recorded. Its `metadata` is still recorded on its observation and sent to the inference gateway.
 
+A trace of its own started inside the block (a request to another project, a seeded request, or another `Tracer#trace`) neither takes the open trace's user, session, tags and metadata nor changes them. It takes only what the application propagated before opening the trace, such as with `Langfuse.propagate_attributes`, as it would outside the block.
+
 A project that masks content records the input and output of every step and event as `[masked]`, and a failure's error class without its message, as it does for the gem's requests. Metadata, names, user, session and tags are not masked.
 
 ### Scoring

@@ -53,7 +53,9 @@ module NitroIntelligence
       end
 
       propagated = propagated_attributes(metadata:, user_id:, session_id:, tags:)
-      Langfuse.propagate_attributes(**propagated) { start(name, as_type:, input:, trace_seed:).run(&) }
+      LangfuseExtension.in_new_trace do
+        Langfuse.propagate_attributes(**propagated) { start(name, as_type:, input:, trace_seed:).run(&) }
+      end
     end
 
   private

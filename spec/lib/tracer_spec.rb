@@ -159,6 +159,51 @@ RSpec.describe NitroIntelligence::Tracer do
     expect(span(spans, "inner").trace_id).not_to eq(span(spans, "outer").trace_id)
   end
 
+  it "keeps a trace inside another apart from it" do
+    tracer.trace("outer", user_id: "outer-user", session_id: "outer-session", tags: ["outer"],
+                          metadata: { outer: "yes" }) do
+      tracer.trace("inner", user_id: "inner-user", metadata: { inner: "yes" }) { nil }
+    end
+
+    spans = wire_spans
+    expect(attributes(span(spans, "outer"))).to include("user.id" => "outer-user", "session.id" => "outer-session")
+    expect(attributes(span(spans, "outer")).keys).not_to include("langfuse.trace.metadata.inner")
+    expect(attributes(span(spans, "inner"))).to include("user.id" => "inner-user")
+    expect(attributes(span(spans, "inner")).keys).not_to include(
+      "session.id", "langfuse.trace.tags", "langfuse.trace.metadata.outer"
+    )
+  end
+
+  it "keeps the application's own propagated attributes on a trace" do
+    Langfuse.propagate_attributes(session_id: "app-session") { tracer.trace("search") { nil } }
+
+    expect(attributes(wire_spans.fetch(0))).to include("session.id" => "app-session")
+  end
+
+  it "keeps a seeded request apart from the trace it is made in" do
+    tracer.trace("search", user_id: "user-1", session_id: "session-1", metadata: { feature: "page-finder" }) do
+      request("seeded", trace_seed: "document-1", user_id: "someone-else")
+    end
+
+    spans = wire_spans
+    expect(attributes(span(spans, "search"))).to include("user.id" => "user-1")
+    expect(attributes(span(spans, "search")).keys).not_to include("langfuse.trace.metadata.request")
+    expect(attributes(span(spans, "seeded"))).to include("user.id" => "someone-else")
+    expect(attributes(span(spans, "seeded")).keys).not_to include("session.id", "langfuse.trace.metadata.feature")
+  end
+
+  it "keeps a request to another project apart from the trace it is made in" do
+    other = NitroIntelligence::Client::Observers::LangfuseObserver.new(project_client: project_clients.fetch("other-project"))
+    tracer.trace("search", user_id: "user-1", session_id: "session-1") do
+      request("elsewhere", observer: other, user_id: "someone-else")
+    end
+
+    expect(attributes(span(wire_spans, "search"))).to include("user.id" => "user-1")
+    elsewhere = attributes(span(wire_spans("other-project"), "elsewhere"))
+    expect(elsewhere).to include("user.id" => "someone-else")
+    expect(elsewhere.keys).not_to include("session.id")
+  end
+
   it "keeps a seeded request in its own trace" do
     tracer.trace("search") { request("seeded", trace_seed: "document-1") }
 

@@ -44,7 +44,10 @@ module NitroIntelligence
           # trace is the application's own observation.
           return record_request(**request, &) if nested
 
-          Langfuse.propagate_attributes(**propagated_attributes(parameters, metadata)) { record_request(**request, &) }
+          propagated = propagated_attributes(parameters, metadata)
+          LangfuseExtension.in_new_trace do
+            Langfuse.propagate_attributes(**propagated) { record_request(**request, &) }
+          end
         end
 
       private

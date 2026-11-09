@@ -17,6 +17,29 @@ module NitroIntelligence
     # started inside it nest under it only when they are recorded in the same project.
     ACTIVE_OBSERVATION_KEY = OpenTelemetry::Context.create_key("nitro-intelligence-active-observation")
 
+    # Holds the context the application had before it opened the trace it has open now.
+    TRACE_BASE_KEY = OpenTelemetry::Context.create_key("nitro-intelligence-trace-base")
+
+    # What a trace the application opens adds to the context, besides its active span.
+    TRACE_KEYS = [*Langfuse::Propagation::CONTEXT_KEYS.values, ACTIVE_OBSERVATION_KEY, TRACE_BASE_KEY].freeze
+
+    # Runs the block for a trace of its own. Inside a trace the application opened, the block runs
+    # without that trace's active span and propagated attributes, as it would outside the trace:
+    # `Langfuse.propagate_attributes` writes onto the active span and merges into what the context
+    # already propagates, so a trace started inside another would otherwise change it and inherit
+    # from it.
+    def self.in_new_trace(&)
+      context = OpenTelemetry::Context.current
+      base = context.value(TRACE_BASE_KEY)
+      unless base.nil?
+        context = OpenTelemetry::Trace.context_with_span(OpenTelemetry::Trace.current_span(base),
+                                                         parent_context: context)
+        context = TRACE_KEYS.reduce(context) { |restored, key| restored.set_value(key, base.value(key)) }
+      end
+
+      OpenTelemetry::Context.with_current(context.set_value(TRACE_BASE_KEY, context), &)
+    end
+
     attr_reader :config
 
     def initialize
@@ -74,10 +97,6 @@ module NitroIntelligence
       otel_tracer = @tracer_provider.tracer
       otel_span = if trace_id
                     @tracer_provider.start_root_span(name, trace_id: parent_span_context.trace_id, start_time:)
-                  elsif parent_span_context.nil? && foreign_observation_active?
-                    # The open observation is recorded in another project, where this one's parent
-                    # would not exist.
-                    @tracer_provider.start_root_span(name, trace_id: nil, start_time:)
                   else
                     Langfuse.send(:create_otel_span,
                                   name:,
@@ -114,11 +133,6 @@ module NitroIntelligence
 
     def active_observation_client
       OpenTelemetry::Context.value(ACTIVE_OBSERVATION_KEY)
-    end
-
-    def foreign_observation_active?
-      client = active_observation_client
-      !client.nil? && !client.equal?(self)
     end
   end
 end
