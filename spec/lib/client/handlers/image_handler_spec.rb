@@ -18,10 +18,6 @@ RSpec.describe NitroIntelligence::Client::Handlers::ImageHandler do
 
   before do
     allow(NitroIntelligence::ImageGeneration).to receive(:new).and_yield(double.as_null_object).and_return(fake_image_generation)
-
-    fake_catalog = double("ModelCatalog")
-    allow(fake_catalog).to receive(:exists?).and_return(true)
-    allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_catalog)
   end
 
   describe "#create" do

@@ -28,7 +28,9 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
   end
 
   let(:fake_catalog) do
-    instance_double(NitroIntelligence::ModelCatalog, default_text_to_speech_model: tts_model)
+    NitroIntelligence::ModelCatalog.new({}).tap do |catalog|
+      allow(catalog).to receive(:default_text_to_speech_model).and_return(tts_model)
+    end
   end
 
   let(:fake_tts_response) { StringIO.new("fake_audio_bytes") }

@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.1.1](https://github.com/powerhome/nitro-intelligence.rb/compare/v4.1.0...v4.1.1) (2026-11-05)
+
+
+### Fixed
+
+* reject a model of the wrong type before sending a request ([#181](https://github.com/powerhome/nitro-intelligence.rb/issues/181)) ([c84955d](https://github.com/powerhome/nitro-intelligence.rb/commit/c84955d9b3751f1c456ff1e03df48fa962204b7e))
+
+## [4.1.0] - 2026-11-04
 
 ### Added
 
@@ -221,7 +228,7 @@ Each warns through `NitroIntelligence.deprecator`, and is removed in 5.0. See [U
 - Require Ruby 3.3 or later (#10)
 - Upgrade langfuse-rb to 0.7.0. (#12)
 
-[Unreleased]: https://github.com/powerhome/nitro-intelligence.rb/compare/v4.0.0-nitro_intelligence...HEAD
+[4.1.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v4.0.0-nitro_intelligence...v4.1.0-nitro_intelligence
 [4.0.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.1.0-nitro_intelligence...v4.0.0-nitro_intelligence
 [3.1.0]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.2-nitro_intelligence...v3.1.0-nitro_intelligence
 [3.0.2]: https://github.com/powerhome/nitro-intelligence.rb/compare/v3.0.0-nitro_intelligence...v3.0.2-nitro_intelligence

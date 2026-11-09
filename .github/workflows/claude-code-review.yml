@@ -2,7 +2,7 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
     # Optional: Only run on specific file changes
     # paths:
     #   - "src/**/*.ts"
@@ -11,11 +11,14 @@ on:
     #   - "src/**/*.jsx"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  # A title or description edit runs only the title review, so it must not cancel a code review
+  # in progress.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}-${{ github.event.action == 'edited' && 'title' || 'code' }}
   cancel-in-progress: true
 
 jobs:
   claude-review:
+    if: github.event.action != 'edited'
     # Optional: Filter by PR author
     # if: |
     #   github.event.pull_request.user.login == 'external-contributor' ||
@@ -43,7 +46,7 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true
           use_sticky_comment: true
-          allowed_bots: "renovate[bot],dependabot[bot],Copilot,copilot-swe-agent[bot]"
+          allowed_bots: "renovate[bot],dependabot[bot],Copilot,copilot-swe-agent[bot],nip-release-manager[bot]"
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
@@ -51,3 +54,40 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr comment:*),mcp__github_inline_comment__create_inline_comment"'
+
+  # The PR title check enforces only the format. This checks the title's type and `!` against what
+  # the PR changes, since release-please versions and describes the release from them, so a
+  # mistyped change or an unmarked breaking change is caught before it merges.
+  title-review:
+    # release-please's own release PR has nothing to check.
+    if: >-
+      !startsWith(github.head_ref, 'release-please--') &&
+      (github.event.action != 'edited' || github.event.changes.title || github.event.changes.body)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Check the title against the change
+        uses: anthropics/claude-code-action@d535f5172dec02b204866b393d6b20b9b2aaf98d # v1.0.266
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "renovate[bot],dependabot[bot],Copilot,copilot-swe-agent[bot]"
+          prompt: |
+            Check the title of ${{ github.repository }} pull request #${{ github.event.pull_request.number }} against what it changes. Read it with `gh pr view` and `gh pr diff`, and AGENTS.md's release and pull request sections for this repository's conventions.
+
+            The title is a Conventional Commit that becomes the squash commit on main, and the description becomes its body. release-please versions the next release and writes its changelog from them. Check that:
+
+            - the type is `feat` if consumers of this repository can now do something they couldn't, `fix` if something they rely on was wrong and is now right, and another type only if consumers see no change;
+            - a change that breaks consumers, such as removed or renamed API fields or chart values, or behaviour they depend on, has `!` after the type and a `BREAKING CHANGE:` paragraph in the description;
+            - every other change consumers would see is listed as a `feat:` or `fix:` line of its own at the bottom of the description.
+
+            If all of that holds, do nothing. Otherwise post one comment with `gh pr comment` that says what to change and gives the corrected title or lines. Don't repeat a comment you've already made on this PR that still applies, and don't comment on anything else.
+          claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"'

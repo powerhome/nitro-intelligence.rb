@@ -14,9 +14,7 @@ module NitroIntelligence
         end
 
         def perform_request(parameters: {}, correlation_trace_id: nil, mask_content: false)
-          add_request_headers(parameters, REQUESTED_MODEL_HEADER => parameters[:model])
-          add_correlation_headers(parameters, trace_id: correlation_trace_id)
-          add_message_redaction_header(parameters, mask_content:)
+          add_gateway_headers(parameters, correlation_trace_id:, mask_content:)
           @client.chat.completions.create(**parameters.slice(*ALLOWED_EXTRA_PARAMETERS))
         end
 
@@ -33,7 +31,7 @@ module NitroIntelligence
           }
 
           parameters.replace(default_parameters.merge(parameters))
-          Client.validate_model(parameters[:model])
+          Client.validate_model(parameters[:model], type: TextModel)
         end
       end
     end
