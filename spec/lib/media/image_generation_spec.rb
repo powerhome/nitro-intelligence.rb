@@ -196,5 +196,33 @@ RSpec.describe NitroIntelligence::ImageGeneration do
       expect(generator.parse_file(empty_completion)).to be_nil
       expect(generator.generated_image).to be_nil
     end
+
+    it "builds the last image when the model also returns interim thought images" do
+      draft_result = "data:image/png;base64,draft_b64_string"
+      completion_with_draft = double("ChatCompletion", choices: [
+                                       double("Choice", message: double("Message", to_h: {
+                                                                          images: [
+                                                                            { image_url: { url: draft_result } },
+                                                                            { image_url: { url: base64_result } },
+                                                                          ],
+                                                                        })),
+                                     ])
+      allow(NitroIntelligence::Image).to receive(:from_base64).with(draft_result)
+
+      result = generator.parse_file(completion_with_draft)
+
+      expect(result).to eq(mock_generated_image)
+      expect(generator.generated_image).to eq(mock_generated_image)
+      expect(NitroIntelligence::Image).not_to have_received(:from_base64).with(draft_result)
+    end
+
+    it "returns nil when the message has no images" do
+      completion_without_images = double("ChatCompletion", choices: [
+                                           double("Choice", message: double("Message", to_h: { content: "No image" })),
+                                         ])
+
+      expect(generator.parse_file(completion_without_images)).to be_nil
+      expect(generator.generated_image).to be_nil
+    end
   end
 end
