@@ -529,24 +529,24 @@ Each observed request is a trace of its own by default. A feature whose work is 
 tracer = NitroIntelligence::Tracer.new(observability_project_slug: "page-finder")
 client = NitroIntelligence::Client.new(observability_project_slug: "page-finder")
 
-pages = tracer.trace("Page Finder search", input: { question: }, user_id: current_user.id.to_s, session_id:) do |trace|
+pages = tracer.trace("Page Finder search", input: { question: }, user_id: current_user.id.to_s, session_id:) do |root_observation|
   query = client.chat(message: question) # recorded inside the trace
 
-  hits = trace.observe("Elasticsearch", as_type: :retriever, input: { k: 50, boost: 2 }) do |step|
+  hits = root_observation.observe("Elasticsearch", as_type: :retriever, input: { k: 50, boost: 2 }) do |step|
     search(query).tap { |hits| step.output = hits.map { |hit| { id: hit.page_id, score: hit.score } } }
   end
 
-  allowed = trace.observe("Permission filter", input: { candidates: hits.size }) do |step|
+  allowed = root_observation.observe("Permission filter", input: { candidates: hits.size }) do |step|
     permitted(hits).tap { |pages| step.output = { allowed: pages.size } }
   end
 
-  trace.output = allowed.map(&:page_id)
-  @trace_id = trace.trace_id # to score the search when the user clicks a result
+  root_observation.output = allowed.map(&:page_id)
+  @trace_id = root_observation.trace_id # to score the search when the user clicks a result
   allowed
 end
 ```
 
-`Tracer#trace` records its block as a trace with the given name, user, session, tags and metadata, and the environment and release the gem's own requests record. `user_id` defaults to `observability_user_id`, as it does for a request. The input and output set on the observation it yields are the trace's input and output. `trace_seed:` gives the trace the ID `NitroIntelligence::Trace.create_id` gives for the seed; otherwise the ID is random, and `trace.trace_id` reads it.
+`Tracer#trace` records its block as a trace with the given name, user, session, tags and metadata, and the environment and release the gem's own requests record. `user_id` defaults to `observability_user_id`, as it does for a request. It yields the trace's root observation: the input and output set on it are the trace's input and output too, while metadata set on it is recorded on that observation only. `trace_seed:` gives the trace the ID `NitroIntelligence::Trace.create_id` gives for the seed; otherwise the ID is random, and `root_observation.trace_id` reads it.
 
 `Observation#observe` records a step inside the trace, or inside another step, around a block. `as_type` is a Langfuse [observation type](https://langfuse.com/docs/observability/features/observation-types): `:span` by default, or `:retriever`, `:tool`, `:agent`, `:chain`, `:evaluator`, `:guardrail`, `:embedding` or `:generation`. `Observation#event` records a point in time, such as the results a user was shown. An exception raised inside a block is recorded on its step at level `ERROR`, and re-raised.
 

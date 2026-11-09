@@ -9,12 +9,12 @@ module NitroIntelligence
   #   tracer = NitroIntelligence::Tracer.new(observability_project_slug: "page-finder")
   #   client = NitroIntelligence::Client.new(observability_project_slug: "page-finder")
   #
-  #   tracer.trace("Page Finder search", input: { question: }, user_id: current_user.id.to_s) do |trace|
+  #   tracer.trace("Page Finder search", input: { question: }, user_id: current_user.id.to_s) do |root_observation|
   #     query = client.chat(message: question) # recorded inside the trace
-  #     hits = trace.observe("Elasticsearch", as_type: :retriever, input: { k: 50 }) do |step|
+  #     hits = root_observation.observe("Elasticsearch", as_type: :retriever, input: { k: 50 }) do |step|
   #       search(query).tap { |hits| step.output = hits.map(&:page_id) }
   #     end
-  #     trace.output = hits.map(&:page_id)
+  #     root_observation.output = hits.map(&:page_id)
   #   end
   class Tracer
     # @param observability_project_slug [String] the Cerebro project to record in. The gem's
@@ -42,7 +42,7 @@ module NitroIntelligence
     # @param tags [Array<String>, nil] labels the trace for filtering
     # @param trace_seed [String, nil] gives the trace the ID {Trace.create_id} gives for the seed,
     #   rather than a random one
-    # @yieldparam trace [Observation] the trace's root observation
+    # @yieldparam root_observation [Observation] the trace's root observation
     # @return [Object] the block's value
     # @raise [ArgumentError] when `as_type` is not one of {Observation::TYPES}, or no block is given
     def trace(name, as_type: :span, input: nil, metadata: {}, user_id: nil, session_id: nil, tags: nil, # rubocop:disable Metrics/ParameterLists

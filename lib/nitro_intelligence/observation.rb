@@ -67,7 +67,7 @@ module NitroIntelligence
     # @return [Object] the block's value
     # @raise [ArgumentError] when `as_type` is not one of {TYPES}, or no block is given
     # @example
-    #   hits = trace.observe("Elasticsearch", as_type: :retriever, input: { k: 50 }) do |step|
+    #   hits = root_observation.observe("Elasticsearch", as_type: :retriever, input: { k: 50 }) do |step|
     #     search(question).tap { |hits| step.output = hits.map(&:page_id) }
     #   end
     def observe(name, as_type: :span, input: nil, metadata: nil, &)
