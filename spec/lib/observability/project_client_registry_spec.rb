@@ -39,12 +39,14 @@ RSpec.describe NitroIntelligence::Observability::ProjectClientRegistry do
         expect(registry.fetch(slug)).to eq(fake_session)
       end
 
-      it "configures the LangfuseExtension with the correct credentials and flush interval" do
+      it "configures the LangfuseExtension with the correct credentials, release and flush interval" do
+        allow(NitroIntelligence.configuration).to receive(:current_revision).and_return("rev-1")
         config_double = double("LangfuseConfig")
         expect(config_double).to receive(:public_key=).with("pk_123")
         expect(config_double).to receive(:secret_key=).with("sk_123")
         expect(config_double).to receive(:base_url=).with(base_url)
         expect(config_double).to receive(:flush_interval=).with(120)
+        expect(config_double).to receive(:release=).with("rev-1")
 
         # FIX: Added .and_return(fake_observability_client) here so it doesn't return 120!
         expect(NitroIntelligence::LangfuseExtension).to receive(:new)

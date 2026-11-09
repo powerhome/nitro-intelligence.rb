@@ -60,14 +60,12 @@ module NitroIntelligence
           @project_client.observability_client.observe(
             operation_name, as_type: type, trace_id:, environment: NitroIntelligence.environment.to_s, model:, metadata:
           ) do |generation|
-            unless nested
-              generation.update_trace(name: trace_name, release: NitroIntelligence.configuration.current_revision)
-            end
+            generation.update_trace(name: trace_name) unless nested
             generation.update({ prompt: { name: prompt.name, version: prompt.version } }) if prompt
-            record_input(generation, input, nested:)
+            record_input(generation, input)
 
             result, trace_attributes = observe_failures(generation) { yield(generation) }
-            record_result(generation, trace_attributes, nested:)
+            record_result(generation, trace_attributes)
 
             result
           end
@@ -80,7 +78,7 @@ module NitroIntelligence
         # the gateway omits the header entirely for a deployment it has no price for,
         # and writing a zero there would read as a free request rather than an
         # unpriced one.
-        def record_result(generation, trace_attributes, nested:)
+        def record_result(generation, trace_attributes)
           return unless trace_attributes
 
           trace_attributes = masked(trace_attributes)
@@ -96,8 +94,6 @@ module NitroIntelligence
           end
 
           record_status(generation, trace_attributes)
-
-          generation.update_trace(input: trace_attributes[:input], output: trace_attributes[:output]) unless nested
         end
 
         def masked(trace_attributes)
@@ -127,13 +123,10 @@ module NitroIntelligence
         # shows what was sent. Handlers whose input is not safe to record twice
         # (image generation sends base64 payloads that are replaced with media
         # references on success) pass no input and rely on the failure record alone.
-        def record_input(generation, input, nested:)
+        def record_input(generation, input)
           return if input.blank?
 
-          input = project.mask(input)
-
-          generation.input = input
-          generation.update_trace(input:) unless nested
+          generation.input = project.mask(input)
         end
 
         # `session_id` and `tags` are only forwarded when set so that callers who

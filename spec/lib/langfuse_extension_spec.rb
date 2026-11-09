@@ -12,6 +12,7 @@ RSpec.describe NitroIntelligence::LangfuseExtension do
       config.base_url = "http://127.0.0.1:1"
       config.public_key = "synthetic-public"
       config.secret_key = "synthetic-secret"
+      config.release = "synthetic-revision"
       config.tracing_async = true
       config.flush_interval = 3600
       config.logger = Logger.new(File::NULL)
@@ -147,12 +148,14 @@ RSpec.describe NitroIntelligence::LangfuseExtension do
 
     span = wire_spans.fetch(0)
     expect(span.parent_span_id).to be_empty
+    # Cerebro takes the trace's input and output from its root observation.
     expect(attributes(span)).to include(
       "langfuse.trace.name" => "trace-ordinary",
       "langfuse.release" => "synthetic-revision",
-      "langfuse.trace.input" => '"input-ordinary"',
-      "langfuse.trace.output" => '"output-ordinary"'
+      "langfuse.observation.input" => '"input-ordinary"',
+      "langfuse.observation.output" => '"output-ordinary"'
     )
+    expect(attributes(span).keys).not_to include("langfuse.trace.input", "langfuse.trace.output")
   end
 
   it "exports repeated seeded generations as real roots in the same trace" do
@@ -169,8 +172,6 @@ RSpec.describe NitroIntelligence::LangfuseExtension do
       expect(attributes(span)).to include(
         "langfuse.trace.name" => "trace-#{span.name}",
         "langfuse.release" => "synthetic-revision",
-        "langfuse.trace.input" => "input-#{span.name}".to_json,
-        "langfuse.trace.output" => "output-#{span.name}".to_json,
         "langfuse.observation.input" => "input-#{span.name}".to_json,
         "langfuse.observation.output" => "output-#{span.name}".to_json,
         "session.id" => "synthetic-session"

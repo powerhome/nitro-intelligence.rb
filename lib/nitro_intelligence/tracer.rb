@@ -67,10 +67,10 @@ module NitroIntelligence
       langfuse_observation = observability_client.start_observation(
         name, { environment: NitroIntelligence.environment.to_s }, as_type:, trace_id:
       )
-      langfuse_observation.update_trace(name:, release: NitroIntelligence.configuration.current_revision)
+      langfuse_observation.update_trace(name:)
 
       Observation.new(
-        langfuse_observation, observability_client:, project: @project_client.project, root: true
+        langfuse_observation, observability_client:, project: @project_client.project
       ).tap { |observation| observation.input = input unless input.nil? }
     end
 

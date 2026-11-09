@@ -11,6 +11,7 @@ RSpec.describe NitroIntelligence::Tracer do
         config.base_url = "http://127.0.0.1:1"
         config.public_key = "#{slug}-public"
         config.secret_key = "#{slug}-secret"
+        config.release = "synthetic-revision"
         config.flush_interval = 3600
         config.logger = Logger.new(File::NULL)
       end
@@ -104,13 +105,13 @@ RSpec.describe NitroIntelligence::Tracer do
       "langfuse.trace.name" => "search",
       "langfuse.release" => "synthetic-revision",
       "langfuse.environment" => "test",
-      "langfuse.trace.input" => { question: "where?" }.to_json,
-      "langfuse.trace.output" => %w[b].to_json,
+      "langfuse.observation.input" => { question: "where?" }.to_json,
       "langfuse.observation.output" => %w[b].to_json,
       "user.id" => "user-1",
       "session.id" => "session-1",
       "langfuse.trace.metadata.feature" => "page-finder"
     )
+    expect(attributes(root).keys).not_to include("langfuse.trace.input", "langfuse.trace.output")
     expect(attributes(retriever)).to include(
       "langfuse.observation.type" => "retriever",
       "langfuse.observation.input" => { k: 50 }.to_json,
@@ -255,7 +256,6 @@ RSpec.describe NitroIntelligence::Tracer do
 
       spans = wire_spans
       expect(attributes(span(spans, "search"))).to include(
-        "langfuse.trace.input" => '"[masked]"',
         "langfuse.observation.input" => '"[masked]"',
         "langfuse.trace.metadata.feature" => "page-finder"
       )

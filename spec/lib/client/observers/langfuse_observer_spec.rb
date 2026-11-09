@@ -64,7 +64,7 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
         metadata: {}
       ).and_yield(fake_generation)
 
-      expect(fake_generation).to receive(:update_trace).with(name: "test-trace", release: "rev-v1.0")
+      expect(fake_generation).to receive(:update_trace).with(name: "test-trace")
 
       result = observer.observe("chat-completion", **default_args) do |generation|
         expect(generation).to eq(fake_generation)
@@ -91,7 +91,7 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
         metadata: { custom_key: "value", another_key: "another_value" }
       ).and_yield(fake_generation)
 
-      expect(fake_generation).to receive(:update_trace).with(name: "test-trace", release: "rev-v1.0")
+      expect(fake_generation).to receive(:update_trace).with(name: "test-trace")
 
       result = observer.observe(
         "chat-completion",
@@ -188,7 +188,6 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
         expect(fake_generation).to receive(:usage_details=).with({ total_tokens: 42 })
         expect(fake_generation).to receive(:input=).with("input text")
         expect(fake_generation).to receive(:output=).with("output text")
-        expect(fake_generation).to receive(:update_trace).with(input: "input text", output: "output text")
 
         observer.observe("chat-completion", **default_args) do
           ["result", trace_attrs]
@@ -212,7 +211,6 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
           }
 
           expect(fake_generation).to receive(:output=).with(expected_truncated_output)
-          expect(fake_generation).to receive(:update_trace).with(input: "input text", output: expected_truncated_output)
 
           observer.observe("chat-completion", **default_args) do
             ["result", { model: "gpt-4", input: "input text", output: original_output }]
@@ -282,9 +280,9 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
     end
 
     describe "recording the input before the request runs" do
-      it "records input on the observation and the trace up front" do
+      it "records input on the observation up front, which the trace takes from its root observation" do
         expect(fake_generation).to receive(:input=).with([{ role: "user", content: "hi" }])
-        expect(fake_generation).to receive(:update_trace).with(input: [{ role: "user", content: "hi" }])
+        expect(fake_generation).not_to receive(:update_trace).with(hash_including(:input))
 
         observer.observe("chat-completion", **default_args, input: [{ role: "user", content: "hi" }]) do
           ["result", nil]
@@ -380,7 +378,6 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
 
       it "records the input up front as masked" do
         expect(fake_generation).to receive(:input=).with("[masked]")
-        expect(fake_generation).to receive(:update_trace).with(input: "[masked]")
 
         observer.observe("chat-completion", **default_args, input: [{ role: "user", content: "hi" }]) do
           ["result", nil]
@@ -391,7 +388,6 @@ RSpec.describe NitroIntelligence::Client::Observers::LangfuseObserver do
         output = { content: "hello", reasoning_content: "thinking", provider_specific_fields: { reasoning: "thinking" } }
 
         expect(fake_generation).to receive(:output=).with("[masked]")
-        expect(fake_generation).to receive(:update_trace).with(input: nil, output: "[masked]")
 
         observer.observe("chat-completion", **default_args) do
           ["result", { model: "gpt-4", output: }]

@@ -11,11 +11,10 @@ module NitroIntelligence
     MAX_STATUS_MESSAGE_LENGTH = 2000
 
     # @api private
-    def initialize(langfuse_observation, observability_client:, project:, root: false)
+    def initialize(langfuse_observation, observability_client:, project:)
       @observation = langfuse_observation
       @observability_client = observability_client
       @project = project
-      @root = root
     end
 
     # @return [String] the observation's ID, for scoring it with {Reporter#score}
@@ -33,9 +32,7 @@ module NitroIntelligence
     #
     # @param value [Object] anything that serializes to JSON
     def input=(value)
-      value = @project.mask(value)
-      @observation.input = value
-      @observation.update_trace(input: value) if @root
+      @observation.input = @project.mask(value)
     end
 
     # Records what the step produced. On the observation {Tracer#trace} yields, this is the
@@ -43,9 +40,7 @@ module NitroIntelligence
     #
     # @param value [Object] anything that serializes to JSON
     def output=(value)
-      value = @project.mask(value)
-      @observation.output = value
-      @observation.update_trace(output: value) if @root
+      @observation.output = @project.mask(value)
     end
 
     # Records metadata on the observation. It is not masked.
