@@ -24,6 +24,11 @@ module NitroIntelligence
       @tracer_provider = NitroIntelligence::LangfuseTracerProvider.new(config)
     end
 
+    # @api private
+    def flush(timeout: 30)
+      @tracer_provider.force_flush(timeout:)
+    end
+
     def shutdown(timeout: 30)
       @client.shutdown
       @tracer_provider.shutdown(timeout:)

@@ -18,6 +18,27 @@ module NitroIntelligence
         @observability_client = observability_client
       end
 
+      # Wait for this project's queued and in-flight observation exports.
+      #
+      # Wakes the export worker and waits until its queue and in-flight batch are empty.
+      # Includes observations completed while waiting, but does not end active observations.
+      # Reports failures from exports it waits for, including an export already in flight;
+      # concurrent callers waiting on the same failed export all receive false. Earlier failures
+      # are not retained, and discarded observations are not retried. A timeout leaves exports
+      # running and the client usable. Returns false if shutdown starts or the client is stopped.
+      # Queued scores, Cerebro ingestion and evaluator results are not included.
+      #
+      # @param timeout [Numeric] maximum time in seconds to wait, including in-flight exports
+      #   and concurrent flushes; reaching it does not cancel an export
+      # @return [Boolean] true if the exports this call waits for succeed (including an empty
+      #   buffer), false for an export failure, observations dropped while waiting, timeout or shutdown
+      # @example Export before submitting observation IDs for review
+      #   client = NitroIntelligence.project_client_registry.fetch("my-feature-project")
+      #   raise "Observation export failed or timed out" unless client.flush(timeout: 30)
+      def flush(timeout: 30) # rubocop:disable Naming/PredicateMethod
+        @observability_client.flush(timeout:) == OpenTelemetry::SDK::Trace::Export::SUCCESS
+      end
+
       # @api private
       def shutdown
         @observability_client.shutdown

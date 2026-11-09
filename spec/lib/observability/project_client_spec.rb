@@ -30,4 +30,20 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient do
       session.shutdown
     end
   end
+
+  describe "#flush" do
+    subject(:session) { described_class.new(project: fake_project, observability_client: fake_observability_client) }
+
+    it "passes the default timeout to the project's tracing client" do
+      expect(fake_observability_client).to receive(:flush).with(timeout: 30).and_return(OpenTelemetry::SDK::Trace::Export::SUCCESS)
+
+      expect(session.flush).to be(true)
+    end
+
+    it "passes a custom timeout to the project's tracing client" do
+      expect(fake_observability_client).to receive(:flush).with(timeout: 2.5).and_return(OpenTelemetry::SDK::Trace::Export::SUCCESS)
+
+      expect(session.flush(timeout: 2.5)).to be(true)
+    end
+  end
 end

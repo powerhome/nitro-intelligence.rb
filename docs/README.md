@@ -343,6 +343,25 @@ client.chat(
 
 If no `prompt_label` or `prompt_version` is provided, the 'production' prompt is used by default.
 
+### Exporting Completed Observations
+
+Observed requests are exported in the background. A job that needs to export before submitting observation IDs for human review can flush the shared client for its project after completing its observations:
+
+```ruby
+project_client = NitroIntelligence.project_client_registry.fetch("my-feature-project")
+raise "Observation export failed or timed out" unless project_client.flush(timeout: 30)
+
+# Submit the completed observations' IDs to the annotation queue here.
+```
+
+`flush` blocks the calling thread until this project's queued and in-flight observation exports finish, including roots and SDK-generated children recorded through the same client. It wakes the background exporter and also includes observations completed while it waits. It leaves the client, tracer provider and background workers running for later and overlapping jobs, and does not end active observations. Use the shared registry client for a job's tracing and flushing.
+
+It returns `true` when the exports it waits for succeed, including when there is nothing to export. It returns `false` for an export failure, observations dropped because the buffer filled while waiting, a timeout, or a client that is stopping or stopped. Concurrent flush calls waiting on the same failed export each receive `false`. Failures that finished before the call are not retained or reported, and discarded observations are not retried. The result covers the shared project's outstanding export attempts; it does not certify delivery of every observation previously created by a particular job. Handle `false` before queue submission.
+
+The timeout defaults to 30 seconds and bounds how long the caller waits, including for an export already in progress. On timeout, exports continue in the background; their eventual result is only reported to flush calls still waiting for them. Concurrently completed observations can extend the work to drain, but each caller keeps its own deadline. If shutdown starts while a flush is waiting, the flush returns `false` and shutdown handles the remaining exports. Cerebro ingestion is asynchronous, so successful export still does not guarantee immediate API or annotation-queue visibility.
+
+This method flushes observation exports only. It does not flush queued scores, wait for LLM-as-a-judge evaluation, or change the supported APIs for prompt fetching or root observation creation. Reserve `NitroIntelligence.project_client_registry.shutdown_all` for process teardown, not individual jobs in a long-lived worker.
+
 ### Prompt Fallbacks
 
 Pass `prompt_fallback_name` to name a second prompt to use when the one you asked for isn't there. The prompt in `prompt_name` is tried first; if it doesn't exist, or its lookup fails, the fallback is used instead:
