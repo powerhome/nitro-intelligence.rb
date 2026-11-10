@@ -1,11 +1,12 @@
 PATH
   remote: .
   specs:
-    nitro_intelligence (4.1.1)
+    nitro_intelligence (4.2.0)
       activesupport (~> 7.1)
       langfuse-rb (= 0.7.0)
       mini_magick (~> 4.10)
       openai (~> 0.86)
+      opentelemetry-sdk (>= 1.10, < 1.14)
 
 GEM
   remote: https://rubygems.org/
@@ -67,7 +68,7 @@ GEM
       rake (~> 13.3)
     googleapis-common-protos-types (1.25.0)
       google-protobuf (~> 4.26)
-    hashdiff (1.2.1)
+    hashdiff (1.2.2)
     i18n (1.15.2)
       concurrent-ruby (~> 1.0)
     json (2.21.2)
@@ -146,15 +147,15 @@ GEM
       rspec-core (~> 3.13.0)
       rspec-expectations (~> 3.13.0)
       rspec-mocks (~> 3.13.0)
-    rspec-core (3.13.6)
+    rspec-core (3.13.7)
       rspec-support (~> 3.13.0)
-    rspec-expectations (3.13.5)
+    rspec-expectations (3.13.6)
       diff-lcs (>= 1.2.0, < 2.0)
       rspec-support (~> 3.13.0)
-    rspec-mocks (3.13.8)
+    rspec-mocks (3.13.9)
       diff-lcs (>= 1.2.0, < 2.0)
       rspec-support (~> 3.13.0)
-    rspec-support (3.13.7)
+    rspec-support (3.13.8)
     rubocop (1.82.1)
       json (~> 2.3)
       language_server-protocol (~> 3.17.0.2)

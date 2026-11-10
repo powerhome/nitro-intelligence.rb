@@ -16,6 +16,7 @@ require "nitro_intelligence/media/image_generation"
 require "nitro_intelligence/models/model_catalog"
 require "nitro_intelligence/observability/project_client_registry"
 require "nitro_intelligence/reporter"
+require "nitro_intelligence/tracer"
 
 # The Ruby client for the Nitro Intelligence Platform.
 #
@@ -27,6 +28,8 @@ module NitroIntelligence
   #   @api private
   #   @return [Class<Configuration>]
   mattr_accessor :configuration, default: Configuration
+
+  @project_client_registry_mutex = Mutex.new
 
   class << self
     # @!method configure
@@ -76,13 +79,15 @@ module NitroIntelligence
       @model_catalog ||= ModelCatalog.new(configuration.model_config)
     end
 
-    # Each Cerebro project's client.
+    # Each Cerebro project's client, through a registry shared by all threads.
     #
     # @return [Observability::ProjectClientRegistry]
     def project_client_registry
-      @project_client_registry ||= Observability::ProjectClientRegistry.new(
-        base_url: configuration.observability_base_url
-      )
+      @project_client_registry_mutex.synchronize do
+        @project_client_registry ||= Observability::ProjectClientRegistry.new(
+          base_url: configuration.observability_base_url
+        )
+      end
     end
   end
 end
