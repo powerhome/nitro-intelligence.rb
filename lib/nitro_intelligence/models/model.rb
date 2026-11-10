@@ -29,6 +29,24 @@ module NitroIntelligence
   class DecisionModel < Model; end
 
   # @api private
+  class EmbeddingModel < Model
+    # What the model expects before a query's text and before a document's, for a model trained
+    # to embed the two differently. Empty for a model that embeds both the same way.
+    attr_reader :query_prefix, :document_prefix
+
+    def initialize(name:, omit_output_fields: [], query_prefix: "", document_prefix: "", **)
+      super
+      @query_prefix = query_prefix.to_s
+      @document_prefix = document_prefix.to_s
+    end
+
+    # @param input_type [Symbol] `:query` or `:document`
+    def prefix_for(input_type)
+      input_type == :query ? query_prefix : document_prefix
+    end
+  end
+
+  # @api private
   class TextModel < Model; end
 
   # @api private

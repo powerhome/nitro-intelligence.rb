@@ -1,8 +1,8 @@
 require "nitro_intelligence/client/factory"
 
 module NitroIntelligence
-  # Inference through the inference gateway: chat, image generation and editing, audio
-  # transcription and text-to-speech. See the README's "Basic Usage".
+  # Inference through the inference gateway: chat, decisions, embeddings, image generation and
+  # editing, audio transcription and text-to-speech. See the README's "Basic Usage".
   module Client
     # Builds a client, which records every request in Cerebro when given a project to report to.
     #

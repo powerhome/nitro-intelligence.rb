@@ -50,6 +50,22 @@ RSpec.describe NitroIntelligence::ModelFactory do
       expect(model).to be_an_instance_of(NitroIntelligence::DecisionModel)
     end
 
+    it "builds an EmbeddingModel when type is 'embedding'" do
+      model = described_class.build({ type: "embedding", name: "Qwen/Qwen3-Embedding-0.6B" })
+      expect(model).to be_an_instance_of(NitroIntelligence::EmbeddingModel)
+      expect(model.prefix_for(:query)).to eq("")
+      expect(model.prefix_for(:document)).to eq("")
+    end
+
+    it "builds an EmbeddingModel with its query and document prefixes" do
+      model = described_class.build(
+        { "type" => "embedding", "name" => "e5", "query_prefix" => "query: ", "document_prefix" => "passage: " }
+      )
+
+      expect(model.prefix_for(:query)).to eq("query: ")
+      expect(model.prefix_for(:document)).to eq("passage: ")
+    end
+
     it "raises ArgumentError when type is unknown" do
       expect { described_class.build({ type: "audio_synthesis", name: "x" }) }
         .to raise_error(ArgumentError, /Unknown model type: "audio_synthesis"/)
