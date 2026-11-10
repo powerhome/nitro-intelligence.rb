@@ -234,6 +234,54 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
       expect(exported_spans.map(&:name)).to eq(%w[queued-before-startup-failure queued-after-startup-failure])
     end
 
+    {
+      "error handler" => [OpenTelemetry, :handle_error],
+      "metrics reporter" => [OpenTelemetry::SDK::Trace::Export::MetricsReporter, :add_to_counter],
+    }.each do |name, (reporter, method)|
+      it "lets another flush time out while the startup #{name} is blocked" do
+        reporting = Queue.new
+        release_reporting = Queue.new
+        export_started = Queue.new
+        release_export = Queue.new
+        allow(Thread).to receive(:new).and_wrap_original do |original, *args, &block|
+          raise startup_error if Thread.current[:fail_worker_start]
+
+          original.call(*args, &block)
+        end
+        allow(reporter).to receive(method) do
+          next unless Thread.current[:fail_worker_start]
+
+          reporting << true
+          release_reporting.pop
+        end
+        allow(exporter).to receive(:send_bytes) do |bytes, **_kwargs|
+          export_started << true
+          release_export.pop
+          packets << bytes
+          OpenTelemetry::SDK::Trace::Export::SUCCESS
+        end
+        first = Thread.new do
+          Thread.current[:fail_worker_start] = true
+          client.flush
+        end
+        expect(reporting.pop(timeout: 5)).to be(true)
+        second = Thread.new { client.flush(timeout: 0.1) }
+
+        expect(second.join(1)&.value).to be(false)
+        expect(export_started.pop(timeout: 1)).to be(true)
+        release_export.close
+        expect(client.flush).to be(true)
+        expect(exported_spans.map(&:name)).to eq(["queued-before-startup-failure"])
+        release_reporting.close
+        expect(first.join(5)&.value).to be(false)
+      ensure
+        release_reporting&.close
+        release_export&.close
+        first&.join(5)
+        second&.join(5)
+      end
+    end
+
     context "when the worker has never started" do
       let(:start_thread_on_boot) { false }
 

@@ -29,8 +29,9 @@ module NitroIntelligence
 
       def force_flush(timeout: nil)
         start_time = OpenTelemetry::Common::Utilities.timeout_timestamp
+        startup_error = nil
 
-        lock do
+        result = lock do
           return OpenTelemetry::SDK::Trace::Export::FAILURE unless @keep_running
 
           remaining = OpenTelemetry::Common::Utilities.maybe_timeout(timeout, start_time)
@@ -41,10 +42,18 @@ module NitroIntelligence
           end
 
           reset_on_fork(restart_thread: false)
-          return OpenTelemetry::SDK::Trace::Export::FAILURE unless start_worker
+          begin
+            start_worker
+          rescue ThreadError => e
+            startup_error = e
+            next OpenTelemetry::SDK::Trace::Export::FAILURE
+          end
 
           wait_for_exports(timeout, start_time)
         end
+        # Reporting can block; release the queue lock before invoking either callback.
+        report_startup_error(startup_error) if startup_error
+        result
       end
 
       # Preserve the SDK's teardown, but wake waiting flush callers and use the
@@ -73,10 +82,11 @@ module NitroIntelligence
         return @thread if @thread&.alive?
 
         @thread = Thread.new { work }
-      rescue ThreadError => e
+      end
+
+      def report_startup_error(error)
         @metrics_reporter.add_to_counter("otel.bsp.error", labels: { "reason" => "ThreadError" })
-        OpenTelemetry.handle_error(exception: e, message: "unexpected error in BatchSpanProcessor#start_worker")
-        nil
+        OpenTelemetry.handle_error(exception: error, message: "unexpected error in BatchSpanProcessor#start_worker")
       end
 
       def wait_for_exports(timeout, start_time)
