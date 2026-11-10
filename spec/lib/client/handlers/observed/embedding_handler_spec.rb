@@ -169,7 +169,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
           allow(embedding).to receive(:update_trace) { |attributes| recorded << [:update_trace, attributes] }
         end
       end
-      let(:observability_client) { double("ObservabilityClient") }
+      let(:observability_client) { double("ObservabilityClient", observing?: false) }
       let(:handler) do
         described_class.new(
           base_handler:,
