@@ -55,6 +55,14 @@ RSpec.describe NitroIntelligence::Client::Base do
       base_client.embed_query(query: "q", parameters: { dimensions: 256 })
       base_client.embed_documents(documents: %w[a b], parameters: { dimensions: 256 })
     end
+
+    it "delegates #rerank to the RerankHandler" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::RerankHandler)
+      allow(NitroIntelligence::Client::Handlers::RerankHandler).to receive(:new).with(client: fake_openai_client).and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create).with(query: "q", documents: ["a"], parameters: { top_n: 1 })
+      base_client.rerank(query: "q", documents: ["a"], parameters: { top_n: 1 })
+    end
   end
 
   describe "method_missing delegation" do
