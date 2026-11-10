@@ -7,6 +7,9 @@ module NitroIntelligence
     # The OTLP exporter sends synchronously and its force_flush is a no-op, so finishing
     # the worker's export also finishes that batch's delivery attempt.
     #
+    # Upstream fix requested in https://github.com/open-telemetry/opentelemetry-ruby/issues/2497;
+    # once it ships, this subclass can be replaced by the SDK's own force_flush.
+    #
     # @api private
     class BatchSpanProcessor < OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor
       # Each call captures a prefix of the FIFO queue and the current export, if any.
