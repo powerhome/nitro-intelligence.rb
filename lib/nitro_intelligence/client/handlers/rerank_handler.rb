@@ -39,7 +39,7 @@ module NitroIntelligence
             model: Response,
             options: parameters[:request_options]
           )
-          Ranking.new(response)
+          Ranking.new(response, top_n: parameters[:top_n])
         end
 
         def validate_and_resolve!(query, documents, parameters)

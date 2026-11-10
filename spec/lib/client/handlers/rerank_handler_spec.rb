@@ -80,6 +80,17 @@ RSpec.describe NitroIntelligence::Client::Handlers::RerankHandler do
       expect(ranking.meta["billed_units"]["search_units"]).to eq(1)
     end
 
+    it "keeps only the top_n most relevant results when the provider returns every document" do
+      ranking = handler.create(query:, documents:, parameters: { top_n: 1 })
+
+      expect(rerank_route.with(body: hash_including(top_n: 1))).to have_been_requested
+      expect(ranking.results).to eq([NitroIntelligence::Ranking::Result.new(index: 1, relevance_score: 0.97)])
+    end
+
+    it "keeps every result when top_n exceeds the number returned" do
+      expect(handler.create(query:, documents:, parameters: { top_n: 10 }).results.map(&:index)).to eq([1, 0, 2])
+    end
+
     it "keeps the provider's order for documents with tied scores" do
       response_body[:results] = [
         { index: 2, relevance_score: 0.5 }, { index: 0, relevance_score: 0.9 }, { index: 1, relevance_score: 0.5 }

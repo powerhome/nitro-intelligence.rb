@@ -28,7 +28,9 @@ module NitroIntelligence
     delegate :last_response, to: :response
 
     # @api private
-    def initialize(response)
+    # @param top_n [Integer, nil] how many results to keep, applied here because not every
+    #   provider honours it
+    def initialize(response, top_n: nil)
       @response = response
       @id = response[:id]
       @results = response[:results].to_a.map do |result|
@@ -38,6 +40,7 @@ module NitroIntelligence
       @results = @results.each_with_index.sort_by do |result, index|
         [-(result.relevance_score || -Float::INFINITY), index]
       end.map(&:first)
+      @results = @results.first(top_n) if top_n
       @meta = response[:meta].to_h.deep_dup.with_indifferent_access
     end
   end
