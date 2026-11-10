@@ -560,6 +560,42 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
     context "with later exports controlled independently" do
       let(:later_export_results) { Queue.new }
 
+      it "uses flush boundaries registered while the worker is waking" do
+        sleeping = Queue.new
+        woken = Queue.new
+        resume_worker = Queue.new
+        allow(processor.instance_variable_get(:@condition)).to receive(:wait).and_wrap_original do |original, mutex, timeout|
+          sleeping << true
+          original.call(mutex, timeout)
+          # Allow both flush calls to capture their work before the worker resumes.
+          mutex.unlock
+          begin
+            woken << true
+            resume_worker.pop(timeout: 5)
+          ensure
+            mutex.lock
+          end
+        end
+        release_export << true
+        expect(sleeping.pop(timeout: 5)).to be(true)
+        emit("first-job")
+        earlier = start_flush
+        expect(woken.pop(timeout: 5)).to be(true)
+        emit("second-job")
+        later = start_flush
+        resume_worker << true
+
+        expect(export_started.pop(timeout: 5)).to be(true)
+        expect(exported_spans.map(&:name)).to eq(%w[automatic-export first-job])
+        later_export_results << OpenTelemetry::SDK::Trace::Export::SUCCESS
+        expect(earlier.join(1)&.value).to be(true)
+        expect(export_started.pop(timeout: 5)).to be(true)
+        later_export_results << OpenTelemetry::SDK::Trace::Export::FAILURE
+        expect(later.join(5)&.value).to be(false)
+      ensure
+        resume_worker&.close
+      end
+
       it "finishes its captured work before timeout while other jobs keep adding observations" do
         3.times { |index| emit("captured-#{index}") }
         start_flush(timeout: 0.5)
