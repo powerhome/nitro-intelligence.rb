@@ -18,27 +18,22 @@ module NitroIntelligence
         @observability_client = observability_client
       end
 
-      # Wait for this project's observation exports that are queued or in flight when the call starts.
+      # Wait for this project's observation exports queued or in flight when called.
       #
-      # Captures the queued observations and current export together under the queue lock,
-      # wakes the worker and waits for that work only. Observations completed later are
-      # excluded from its wait and result, and active observations are not ended.
-      # Reports failed exports or dropped observations within the captured work; concurrent
-      # callers covering the same failed export all receive false. Earlier failures are not
-      # retained, and discarded observations are not retried. A timeout leaves exports running
-      # and the client usable. A completed result takes precedence over timeout or shutdown
-      # when the caller resumes. Returns false if shutdown interrupts pending work or the
-      # client is already stopping or stopped when called. If the export worker cannot start,
-      # returns false and reports the error through OpenTelemetry; queued observations remain
-      # available for a later flush.
-      # Queued scores, Cerebro ingestion and evaluator results are not included.
+      # Observations completed later are excluded from this call's wait and result. The client
+      # remains usable, and active observations are not ended. Queued scores and evaluator
+      # results are not covered. Success does not guarantee immediate visibility in Cerebro.
       #
-      # @param timeout [Numeric] maximum time in seconds to wait, including in-flight exports
-      #   and concurrent flushes; reaching it does not cancel an export. With zero, succeeds
-      #   only for a running client with no queued or in-flight exports.
-      # @return [Boolean] true if the exports this call waits for succeed (including an empty
-      #   buffer), false for a captured export failure or dropped observation, worker startup
-      #   failure, timeout or shutdown
+      # Earlier export failures are not reported, and discarded observations are not retried.
+      # Concurrent calls have independent timeouts. Completed results take precedence over
+      # timeout or shutdown.
+      #
+      # @param timeout [Numeric] maximum wait in seconds (default: 30). Exports continue after
+      #   timeout. With zero, succeeds only for a running client with no pending exports.
+      # @return [Boolean] true if this call's exports succeed or none are pending; false if
+      #   exporting fails or cannot start, an observation being flushed is dropped, the wait
+      #   times out, or shutdown interrupts pending work. Calls made while the client is
+      #   stopping or stopped return false.
       # @example Export before submitting observation IDs for review
       #   client = NitroIntelligence.project_client_registry.fetch("my-feature-project")
       #   raise "Observation export failed or timed out" unless client.flush(timeout: 30)
