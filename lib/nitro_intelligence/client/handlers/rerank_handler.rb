@@ -51,12 +51,25 @@ module NitroIntelligence
           parameters.replace(default_parameters.merge(parameters))
           Client.validate_model(parameters[:model], type: RerankModel)
           raise ArgumentError, "query must be a non-empty string" unless query.is_a?(String) && query.present?
-          return if documents.is_a?(Array) && documents.any? && documents.all?(String)
 
-          raise ArgumentError, "documents must be a non-empty array of strings"
+          validate_documents!(documents)
+          validate_top_n!(parameters[:top_n])
         end
 
       private
+
+        def validate_documents!(documents)
+          texts = documents.is_a?(Array) && documents.any? && documents.all?(String)
+          return if texts && documents.all?(&:present?)
+
+          raise ArgumentError, "documents must be a non-empty array of non-empty strings"
+        end
+
+        def validate_top_n!(top_n)
+          return if top_n.nil? || (top_n.is_a?(Integer) && top_n.positive?)
+
+          raise ArgumentError, "top_n must be a positive integer, not #{top_n.inspect}"
+        end
 
         # Both reach `/v1/rerank`: the whole route on a base URL without a version, or only the
         # rest of it on one that already ends in `/v1`.

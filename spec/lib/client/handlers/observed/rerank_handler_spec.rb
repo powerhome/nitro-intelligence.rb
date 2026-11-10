@@ -75,6 +75,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
 
       expect(ranking.results.first.index).to eq(1)
       expect(trace_attributes).to eq(
+        model: "Qwen/Qwen3-Reranker-0.6B",
         output: [{ index: 1, relevance_score: 0.97 }, { index: 0, relevance_score: 0.12 }],
         usage_details: { prompt_tokens: 42, total_tokens: 42, search_units: 1 },
         cost_details: { total: 4.2e-07 }
@@ -88,6 +89,17 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
 
       _, trace_attributes = handler.create(query:, documents:)
 
+      expect(trace_attributes[:usage_details]).to eq(prompt_tokens: 30, total_tokens: 30)
+    end
+
+    it "leaves out counts the provider sent in another shape, and still returns the ranking" do
+      response_body[:meta] = { tokens: 12, billed_units: { search_units: "1", total_tokens: 30 } }
+      stub_request(:post, "https://gateway.example/v1/rerank").to_return(status: 200, body: response_body.to_json, headers: response_headers)
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+      ranking, trace_attributes = handler.create(query:, documents:)
+
+      expect(ranking.results.map(&:index)).to eq([1, 0])
       expect(trace_attributes[:usage_details]).to eq(prompt_tokens: 30, total_tokens: 30)
     end
 
@@ -143,6 +155,15 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
         expect(recorded.to_s).not_to include("time off", "Payroll", "0.97")
         expect(recorded).to include([:input=, "[masked]"], [:output=, "[masked]"], [:cost_details=, { total: 4.2e-07 }])
         expect(rerank_route.with(headers: { "x-litellm-enable-message-redaction" => "true" })).to have_been_requested
+      end
+
+      it "records the model on the generation, for Langfuse to price its usage" do
+        handler.create(query:, documents:)
+
+        expect(observability_client).to have_received(:observe)
+          .with("rerank", hash_including(as_type: :generation, model: "Qwen/Qwen3-Reranker-0.6B"))
+        expect(recorded).to include([:model=, "Qwen/Qwen3-Reranker-0.6B"])
+        expect(recorded).not_to include([:model=, nil])
       end
     end
   end

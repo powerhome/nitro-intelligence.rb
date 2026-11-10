@@ -104,7 +104,8 @@ module NitroIntelligence
       #   managed prompt.
       # @return [Ranking]
       # @raise [ArgumentError] when the model is not one `model_config` lists with the type
-      #   `rerank`, the query is empty, or the documents are empty or not text
+      #   `rerank`, the query is empty, the documents are empty or not text, or `top_n` is not a
+      #   positive integer
       # @example
       #   client.rerank(query: "How do I request time off?", documents: pages.map(&:description),
       #                 parameters: { top_n: 5 }).results.map(&:index)

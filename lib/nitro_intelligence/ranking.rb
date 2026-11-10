@@ -6,7 +6,8 @@ module NitroIntelligence
     # @!attribute [r] index
     #   @return [Integer] the document's position in the `documents` given to {Client::Base#rerank}
     # @!attribute [r] relevance_score
-    #   @return [Float] how relevant the document is to the query, from 0 to 1
+    #   @return [Float, nil] how relevant the document is to the query, from 0 to 1, or nil when the
+    #     provider sent no score, which ranks the document last
     Result = Data.define(:index, :relevance_score)
 
     # @return [String, nil] the gateway's identifier for the request
@@ -31,10 +32,12 @@ module NitroIntelligence
       @response = response
       @id = response[:id]
       @results = response[:results].to_a.map do |result|
-        Result.new(index: result[:index], relevance_score: result[:relevance_score])
+        Result.new(index: result[:index], relevance_score: Float(result[:relevance_score], exception: false))
       end
       # Ties keep the order the provider gave them, since sort_by alone is not stable.
-      @results = @results.each_with_index.sort_by { |result, index| [-result.relevance_score.to_f, index] }.map(&:first)
+      @results = @results.each_with_index.sort_by do |result, index|
+        [-(result.relevance_score || -Float::INFINITY), index]
+      end.map(&:first)
       @meta = response[:meta].to_h.deep_dup.with_indifferent_access
     end
   end

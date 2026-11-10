@@ -44,6 +44,7 @@ module NitroIntelligence
             )
 
             trace_attributes = {
+              model: parameters[:model],
               output: ranking.results.map(&:to_h),
               usage_details: usage_details(ranking.meta),
               cost_details: @base_handler.cost_details(ranking),
@@ -52,14 +53,20 @@ module NitroIntelligence
             [ranking, trace_attributes]
           end
 
-          # Providers report a rerank's size as tokens, search units, or both.
+          # Providers report a rerank's size as tokens, search units, or both. A count the provider
+          # sent in some other shape is left out, rather than failing a request already paid for.
           def usage_details(meta)
-            input_tokens = meta.dig(:tokens, :input_tokens) || meta.dig(:billed_units, :total_tokens)
+            input_tokens = count(meta, :tokens, :input_tokens) || count(meta, :billed_units, :total_tokens)
             {
               prompt_tokens: input_tokens,
               total_tokens: input_tokens,
-              search_units: meta.dig(:billed_units, :search_units),
+              search_units: count(meta, :billed_units, :search_units),
             }.compact.presence
+          end
+
+          def count(meta, section, key)
+            value = meta[section][key] if meta[section].is_a?(Hash)
+            value if value.is_a?(Numeric)
           end
         end
       end

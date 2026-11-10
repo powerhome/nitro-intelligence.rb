@@ -318,7 +318,7 @@ ranking.results.first.relevance_score # => 0.97, from 0 to 1
 candidates.values_at(*ranking.results.map(&:index))
 ```
 
-`parameters` takes `model`, `top_n` (return only the most relevant this many), `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id`, `tags` and `trace_documents`. The model defaults to `default_rerank_model` and must be listed in `config.model_config` with the type `rerank`. `ranking.meta` holds what the provider billed, and `ranking.last_response` the HTTP response, including the gateway's headers.
+`parameters` takes `model`, `top_n` (return only the most relevant this many, a positive integer), `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id`, `tags` and `trace_documents`. The model defaults to `default_rerank_model` and must be listed in `config.model_config` with the type `rerank`. `ranking.meta` holds what the provider billed, and `ranking.last_response` the HTTP response, including the gateway's headers.
 
 With observability enabled, each call is recorded in Cerebro as a generation, since Langfuse has no reranker type, with the query and documents as input, each document's index and score as output, and the gateway's cost. Pass `trace_documents: false` when your own trace already records the candidates, such as an embedding call or a search step in the same trace, and only their number is recorded. Reranking takes no managed prompt: `prompt_name` and `prompt_variables` are ignored.
 

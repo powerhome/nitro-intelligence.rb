@@ -144,11 +144,32 @@ RSpec.describe NitroIntelligence::Client::Handlers::RerankHandler do
 
     it "raises for an empty query or empty documents before sending anything" do
       expect { handler.create(query: "", documents:) }.to raise_error(ArgumentError, "query must be a non-empty string")
-      expect { handler.create(query:, documents: []) }
-        .to raise_error(ArgumentError, "documents must be a non-empty array of strings")
-      expect { handler.create(query:, documents: ["a", nil]) }
-        .to raise_error(ArgumentError, "documents must be a non-empty array of strings")
+      [[], ["a", nil], ["a", ""], ["a", " "]].each do |bad|
+        expect { handler.create(query:, documents: bad) }
+          .to raise_error(ArgumentError, "documents must be a non-empty array of non-empty strings")
+      end
       expect(rerank_route).not_to have_been_requested
+    end
+
+    it "raises for a top_n that is not a positive integer before sending anything" do
+      [0, -1, "5", 2.0].each do |top_n|
+        expect { handler.create(query:, documents:, parameters: { top_n: }) }
+          .to raise_error(ArgumentError, "top_n must be a positive integer, not #{top_n.inspect}")
+      end
+      expect(rerank_route).not_to have_been_requested
+    end
+
+    it "ranks a result the provider sent without a score last, with no score" do
+      response_body[:results] = [{ index: 0 }, { index: 1, relevance_score: 0.2 }, { index: 2, relevance_score: "0.9" }]
+      stub_request(:post, "https://gateway.example/v1/rerank").to_return(status: 200, body: response_body.to_json, headers: response_headers)
+
+      expect(handler.create(query:, documents:).results).to eq(
+        [
+          NitroIntelligence::Ranking::Result.new(index: 2, relevance_score: 0.9),
+          NitroIntelligence::Ranking::Result.new(index: 1, relevance_score: 0.2),
+          NitroIntelligence::Ranking::Result.new(index: 0, relevance_score: nil),
+        ]
+      )
     end
 
     it "uses the explicitly provided model" do
