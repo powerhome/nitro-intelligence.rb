@@ -13,7 +13,11 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
   let(:fake_project) { double("Project", slug: "test-project", mask_content?: false) }
   let(:fake_project_client) { double("ProjectClient", project: fake_project) }
   let(:fake_observer) { double("LangfuseObserver", project_client: fake_project_client) }
-  let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-123", id: "obs-1") }
+  let(:fake_generation) do
+    instance_double(Langfuse::Generation, trace_id: "trace-123", id: "obs-1").tap do |generation|
+      allow(generation).to receive(:metadata=)
+    end
+  end
 
   let(:handler) { described_class.new(base_handler:, observer: fake_observer) }
 
@@ -77,9 +81,39 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
       expect(trace_attributes).to eq(
         model: "Qwen/Qwen3-Reranker-0.6B",
         output: [{ index: 1, relevance_score: 0.97 }, { index: 0, relevance_score: 0.12 }],
-        usage_details: { prompt_tokens: 42, total_tokens: 42, search_units: 1 },
+        usage_details: { input: 42, total: 42 },
         cost_details: { total: 4.2e-07 }
       )
+    end
+
+    # Langfuse totals every counter when no `total` is given, and keeps OpenAI's key names as
+    # separate counters without `completion_tokens`, so the input tokens would be counted twice.
+    it "gives Langfuse its own input and total keys, so the input tokens are counted once" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+      _, trace_attributes = handler.create(query:, documents:)
+
+      expect(trace_attributes[:usage_details]).to eq(input: 42, total: 42)
+      expect(trace_attributes[:usage_details].except(:total).values.sum).to eq(trace_attributes[:usage_details][:total])
+    end
+
+    it "records search units in the metadata, apart from the token usage" do
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+      handler.create(query:, documents:)
+
+      expect(fake_generation).to have_received(:metadata=).with(search_units: 1)
+    end
+
+    it "records only search units when the provider reports no tokens" do
+      response_body[:meta] = { billed_units: { search_units: 2 } }
+      stub_request(:post, "https://gateway.example/v1/rerank").to_return(status: 200, body: response_body.to_json, headers: response_headers)
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+
+      _, trace_attributes = handler.create(query:, documents:)
+
+      expect(trace_attributes[:usage_details]).to be_nil
+      expect(fake_generation).to have_received(:metadata=).with(search_units: 2)
     end
 
     it "takes the token count from the billed units when the provider reports no tokens" do
@@ -89,7 +123,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
 
       _, trace_attributes = handler.create(query:, documents:)
 
-      expect(trace_attributes[:usage_details]).to eq(prompt_tokens: 30, total_tokens: 30)
+      expect(trace_attributes[:usage_details]).to eq(input: 30, total: 30)
     end
 
     it "leaves out counts the provider sent in another shape, and still returns the ranking" do
@@ -100,7 +134,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
       ranking, trace_attributes = handler.create(query:, documents:)
 
       expect(ranking.results.map(&:index)).to eq([1, 0])
-      expect(trace_attributes[:usage_details]).to eq(prompt_tokens: 30, total_tokens: 30)
+      expect(trace_attributes[:usage_details]).to eq(input: 30, total: 30)
     end
 
     it "leaves usage and cost unset when the gateway reports neither" do
@@ -128,7 +162,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
       let(:generation) do
         double("Generation", trace_id: "trace-123", id: "obs-1").tap do |generation|
           allow(generation).to receive(:update)
-          %i[model= model_parameters= usage_details= cost_details= input= output=].each do |setter|
+          %i[model= model_parameters= usage_details= cost_details= input= output= metadata=].each do |setter|
             allow(generation).to receive(setter) { |value| recorded << [setter, value] }
           end
           allow(generation).to receive(:update_trace) { |attributes| recorded << [:update_trace, attributes] }

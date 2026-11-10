@@ -43,6 +43,9 @@ module NitroIntelligence
               mask_content: project.mask_content?
             )
 
+            search_units = count(ranking.meta, :billed_units, :search_units)
+            generation.metadata = { search_units: } if search_units
+
             trace_attributes = {
               model: parameters[:model],
               output: ranking.results.map(&:to_h),
@@ -53,15 +56,15 @@ module NitroIntelligence
             [ranking, trace_attributes]
           end
 
-          # Providers report a rerank's size as tokens, search units, or both. A count the provider
-          # sent in some other shape is left out, rather than failing a request already paid for.
+          # Providers report a rerank's size as tokens, search units, or both. The tokens are recorded
+          # under Langfuse's own `input` and `total` keys: OpenAI's names are only recognised alongside
+          # `completion_tokens`, which a rerank has none of, and Langfuse would otherwise total every
+          # counter it was given, adding input tokens to themselves. Search units are not tokens, so
+          # they go in the metadata instead. A count the provider sent in some other shape is left
+          # out, rather than failing a request already paid for.
           def usage_details(meta)
             input_tokens = count(meta, :tokens, :input_tokens) || count(meta, :billed_units, :total_tokens)
-            {
-              prompt_tokens: input_tokens,
-              total_tokens: input_tokens,
-              search_units: count(meta, :billed_units, :search_units),
-            }.compact.presence
+            { input: input_tokens, total: input_tokens } if input_tokens
           end
 
           def count(meta, section, key)
