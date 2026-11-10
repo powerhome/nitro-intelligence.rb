@@ -169,6 +169,65 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
     expect(exported_spans.map(&:name)).to eq(["pending-export"])
   end
 
+  context "when starting the export worker fails" do
+    let(:startup_error) { ThreadError.new("can't create Thread: Resource temporarily unavailable") }
+    let(:start_thread_on_boot) { true }
+    let(:metrics_reporter) { OpenTelemetry::SDK::Trace::Export::MetricsReporter }
+    let(:processor) do
+      client.observability_client.instance_variable_get(:@tracer_provider).instance_variable_get(:@batch_processor)
+    end
+
+    before do
+      allow(NitroIntelligence::Observability::BatchSpanProcessor).to receive(:new).and_wrap_original do |original, *args, **kwargs|
+        original.call(*args, **kwargs, start_thread_on_boot:)
+      end
+      processor.instance_variable_get(:@thread)&.kill&.join
+      allow(Thread).to receive(:new).and_raise(startup_error)
+      allow(OpenTelemetry).to receive(:handle_error)
+      allow(metrics_reporter).to receive(:add_to_counter).and_call_original
+      emit("queued-before-startup-failure")
+    end
+
+    it "returns false and reports a failed worker restart" do
+      expect(client.flush).to be(false)
+      expect(packets).to be_empty
+      expect(OpenTelemetry).to have_received(:handle_error)
+        .with(exception: startup_error, message: /BatchSpanProcessor/).once
+      expect(metrics_reporter).to have_received(:add_to_counter)
+        .with("otel.bsp.error", labels: { "reason" => "ThreadError" }).once
+    end
+
+    it "keeps queued observations and lets a later flush restart the worker" do
+      expect(client.flush).to be(false)
+      allow(Thread).to receive(:new).and_call_original
+      emit("queued-after-startup-failure")
+
+      expect(client.flush).to be(true)
+      expect(exported_spans.map(&:name)).to eq(%w[queued-before-startup-failure queued-after-startup-failure])
+    end
+
+    context "when the worker has never started" do
+      let(:start_thread_on_boot) { false }
+
+      it "returns false instead of raising" do
+        expect(client.flush).to be(false)
+        expect(packets).to be_empty
+      end
+    end
+
+    it "attempts startup once and reports the failure when flush detects a fork" do
+      # Simulate a changed PID after the original worker has stopped.
+      processor.instance_variable_set(:@pid, -1)
+
+      expect(client.flush).to be(false)
+      expect(Thread).to have_received(:new).once
+      expect(OpenTelemetry).to have_received(:handle_error)
+        .with(exception: startup_error, message: /BatchSpanProcessor/).once
+      expect(metrics_reporter).to have_received(:add_to_counter)
+        .with("otel.bsp.error", labels: { "reason" => "ThreadError" }).once
+    end
+  end
+
   context "with an automatic export in flight" do
     let(:export_started) { Queue.new }
     let(:release_export) { Queue.new }

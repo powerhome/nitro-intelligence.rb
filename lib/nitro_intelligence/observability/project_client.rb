@@ -28,13 +28,16 @@ module NitroIntelligence
       # retained, and discarded observations are not retried. A timeout leaves exports running
       # and the client usable. A completed result takes precedence over timeout or shutdown
       # when the caller resumes. Returns false if shutdown interrupts pending work or the
-      # client is already stopping or stopped when called.
+      # client is already stopping or stopped when called. If the export worker cannot start,
+      # returns false and reports the error through OpenTelemetry; queued observations remain
+      # available for a later flush.
       # Queued scores, Cerebro ingestion and evaluator results are not included.
       #
       # @param timeout [Numeric] maximum time in seconds to wait, including in-flight exports
       #   and concurrent flushes; reaching it does not cancel an export
       # @return [Boolean] true if the exports this call waits for succeed (including an empty
-      #   buffer), false for a captured export failure or dropped observation, timeout or shutdown
+      #   buffer), false for a captured export failure or dropped observation, worker startup
+      #   failure, timeout or shutdown
       # @example Export before submitting observation IDs for review
       #   client = NitroIntelligence.project_client_registry.fetch("my-feature-project")
       #   raise "Observation export failed or timed out" unless client.flush(timeout: 30)

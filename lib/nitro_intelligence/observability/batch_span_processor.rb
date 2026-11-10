@@ -35,8 +35,9 @@ module NitroIntelligence
         lock do
           return OpenTelemetry::SDK::Trace::Export::FAILURE unless @keep_running
 
-          reset_on_fork
-          @thread = Thread.new { work } unless @thread&.alive?
+          reset_on_fork(restart_thread: false)
+          return OpenTelemetry::SDK::Trace::Export::FAILURE unless start_worker
+
           wait_for_exports(timeout, start_time)
         end
       end
@@ -62,6 +63,16 @@ module NitroIntelligence
       end
 
     private
+
+      def start_worker
+        return @thread if @thread&.alive?
+
+        @thread = Thread.new { work }
+      rescue ThreadError => e
+        @metrics_reporter.add_to_counter("otel.bsp.error", labels: { "reason" => "ThreadError" })
+        OpenTelemetry.handle_error(exception: e, message: "unexpected error in BatchSpanProcessor#start_worker")
+        nil
+      end
 
       def wait_for_exports(timeout, start_time)
         waiter = FlushWaiter.new(spans.size, @exporting, OpenTelemetry::SDK::Trace::Export::SUCCESS)
