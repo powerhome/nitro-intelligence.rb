@@ -45,13 +45,31 @@ RSpec.describe NitroIntelligence::Reporter do
       expect(fake_langfuse_client).to receive(:create_score).with(
         id: "trace-id-test-score",
         trace_id: "trace-id",
+        observation_id: nil,
         name: "test-score",
         value: 0.9,
         environment: "test",
-        data_type: :numeric
+        data_type: :numeric,
+        comment: nil,
+        metadata: nil
       )
 
       handler.score(trace_id: "trace-id", name: "test-score", value: 0.9)
+    end
+
+    it "scores an observation in the trace, with a comment and metadata" do
+      expect(fake_langfuse_client).to receive(:create_score).with(
+        hash_including(
+          id: "trace-id-observation-id-clicked",
+          trace_id: "trace-id",
+          observation_id: "observation-id",
+          comment: "third result",
+          metadata: { position: 3 }
+        )
+      )
+
+      handler.score(trace_id: "trace-id", observation_id: "observation-id", name: "clicked", value: 1,
+                    comment: "third result", metadata: { position: 3 })
     end
 
     it "allows overriding the score id" do

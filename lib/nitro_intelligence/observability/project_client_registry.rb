@@ -17,15 +17,17 @@ module NitroIntelligence
       def initialize(base_url:)
         @base_url = base_url
         @project_clients = {}
+        @mutex = Mutex.new
       end
 
       # The client for the project configured under `slug`, built on first use.
+      # Concurrent fetches for the same project share one client.
       #
       # @param slug [String]
       # @return [ProjectClient]
       # @raise [Project::NotFoundError] when `observability_projects` does not configure the project
       def fetch(slug)
-        @project_clients[slug] ||= build_project_client(slug)
+        @mutex.synchronize { @project_clients[slug] ||= build_project_client(slug) }
       end
 
       # Sends what each client still holds to Cerebro, and stops it. Call it as the process exits, or
@@ -33,7 +35,8 @@ module NitroIntelligence
       #
       # @return [void]
       def shutdown_all
-        @project_clients.values.each(&:shutdown)
+        clients = @mutex.synchronize { @project_clients.values }
+        clients.each(&:shutdown)
       end
 
     private
@@ -50,6 +53,7 @@ module NitroIntelligence
           config.public_key = project.public_key
           config.secret_key = project.secret_key
           config.base_url = @base_url
+          config.release = NitroIntelligence.configuration.current_revision
           # Default flush of 60 seconds can be too quick when
           # dealing with longer responses like image gen
           config.flush_interval = 120

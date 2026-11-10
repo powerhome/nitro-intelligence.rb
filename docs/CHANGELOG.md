@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0](https://github.com/powerhome/nitro-intelligence.rb/compare/v4.1.1...v4.2.0) (2026-11-10)
+
+
+### Added
+
+* let applications trace their own steps alongside the gem's requests ([#198](https://github.com/powerhome/nitro-intelligence.rb/issues/198)) ([dd45726](https://github.com/powerhome/nitro-intelligence.rb/commit/dd457262545752064030755591cd40b265b1cae3))
+* let Reporter#score take observation_id, comment and metadata to ([dd45726](https://github.com/powerhome/nitro-intelligence.rb/commit/dd457262545752064030755591cd40b265b1cae3))
+* **observability:** add project client flush ([#206](https://github.com/powerhome/nitro-intelligence.rb/issues/206)) ([0303034](https://github.com/powerhome/nitro-intelligence.rb/commit/0303034e5586e3fdfa0704be1899b93cbf8b90ce))
+
+
+### Fixed
+
+* **observability:** share one project client registry and one client per ([0303034](https://github.com/powerhome/nitro-intelligence.rb/commit/0303034e5586e3fdfa0704be1899b93cbf8b90ce))
+* use the final image when Gemini also returns thought images ([#205](https://github.com/powerhome/nitro-intelligence.rb/issues/205)) ([1ce6b50](https://github.com/powerhome/nitro-intelligence.rb/commit/1ce6b501e7d374de6b39a1d7cabe3314de69c01c))
+
 ## [4.1.1](https://github.com/powerhome/nitro-intelligence.rb/compare/v4.1.0...v4.1.1) (2026-11-05)
 
 
