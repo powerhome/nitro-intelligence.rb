@@ -335,7 +335,7 @@ client = NitroIntelligence::Client.new
 result = client.generate_image(message: "Create an image of a bear installing a window.")
 ```
 
-`result` is a `NitroIntelligence::ImageGeneration` object, and the generated image can be accessed via `result.generated_image` which returns a `NitroIntelligence::Image`.
+`result` is a `NitroIntelligence::ImageGeneration` object, and the generated image can be accessed via `result.generated_image` which returns a `NitroIntelligence::Image`. Gemini image models that think can return their interim drafts alongside the final render; `generated_image` is always the final one.
 
 With observability enabled, `result.trace_id` and `result.observation_id` identify the trace and generation observation. Both are `nil` without observability.
 

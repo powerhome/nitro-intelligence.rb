@@ -64,8 +64,13 @@ module NitroIntelligence
     end
 
     # @api private
+    #
+    # Takes the last entry in `message.images`. Gemini image models that think put their interim
+    # thought images ahead of the final render in the same list, and Google documents the last image
+    # as the final one.
     def parse_file(chat_completion)
-      base64_string = chat_completion.choices.first&.message.to_h.fetch(:images, {})&.first&.dig(:image_url, :url)
+      images = chat_completion.choices.first&.message.to_h[:images]
+      base64_string = Array(images).last&.dig(:image_url, :url)
 
       return unless base64_string
 
