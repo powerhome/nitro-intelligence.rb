@@ -47,6 +47,9 @@ module NitroIntelligence
   end
 
   # @api private
+  class RerankModel < Model; end
+
+  # @api private
   class TextModel < Model; end
 
   # @api private

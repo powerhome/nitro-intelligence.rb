@@ -55,6 +55,7 @@ NitroIntelligence.configure do |config|
     "default_text_to_speech_model" => "openai/gpt-4o-mini-tts",
     "default_decision_model" => "typesafe/jev-1.14",
     "default_embedding_model" => "Qwen/Qwen3-Embedding-0.6B",
+    "default_rerank_model" => "Qwen/Qwen3-Reranker-0.6B",
     "models" => [
       {
         "name" => "Qwen/Qwen3.6-35B-A3B",
@@ -87,6 +88,10 @@ NitroIntelligence.configure do |config|
         "name" => "Qwen/Qwen3-Embedding-0.6B",
         "type" => "embedding",
         "query_prefix" => "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
+      },
+      {
+        "name" => "Qwen/Qwen3-Reranker-0.6B",
+        "type" => "rerank"
       }
     ]
   }
@@ -109,7 +114,7 @@ end
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key). Add `"mask_content" => true` to keep a project's prompts and responses out of Cerebro and the gateway logs, see [Masking Content](#masking-content)                                                                                                                                            |
 | `observability_user_id`  | `String`      | `""`                  | User ID recorded on observed traces when a request passes no `user_id` parameter — see [Users](#users) |
 | `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String, default: `"https://assistants.powerhome.ai"`) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new`, which takes the same two defaults — see [Assistants](#assistants) |
-| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, `default_decision_model`, `default_embedding_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS, and for embeddings the optional, model-specific `query_prefix` and `document_prefix`: Qwen3-Embedding takes only `query_prefix`, E5 both, OpenAI's models neither, as [Embeddings](#embeddings) describes) |
+| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, `default_decision_model`, `default_embedding_model`, `default_rerank_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS, and for embeddings the optional, model-specific `query_prefix` and `document_prefix`: Qwen3-Embedding takes only `query_prefix`, E5 both, OpenAI's models neither, as [Embeddings](#embeddings) describes) |
 
 ## Basic Usage
 
@@ -295,6 +300,27 @@ A model's `query_prefix` and `document_prefix` in `config.model_config` are what
 `embeddings.usage` holds `prompt_tokens` and `total_tokens` summed over every request, and `embeddings.responses` the gateway's responses, one per batch, each with its `last_response`. With observability enabled, each call is recorded in Cerebro as an embedding observation named `embed-query` or `embed-documents`, with the input as the model received it, prefix included, the gateway's cost added up over every batch, and the number and size of the vectors as output. The vectors themselves are never recorded. If the gateway did not price every batch, the cost is left unset rather than undercounted. If a batch fails after others succeeded, the failed call still records what those cost before the error is raised.
 
 Embeddings take no managed prompt: `prompt_name` and `prompt_variables` are ignored.
+
+### Reranking
+
+A reranker scores how relevant each of a list of documents is to a query. It is more accurate than comparing vectors, and suits reordering the few dozen candidates a vector search returned. The gateway must serve a reranker; see the [Inference Gateway docs](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md) for what it serves.
+
+`rerank` takes a query and a list of documents and returns a `NitroIntelligence::Ranking`, most relevant first:
+
+```ruby
+ranking = client.rerank(
+  query: "How do I request time off?",
+  documents: candidates.map(&:description),
+  parameters: { top_n: 5 }
+)
+ranking.results.first.index           # => 3, the position in `documents`
+ranking.results.first.relevance_score # => 0.97, from 0 to 1
+candidates.values_at(*ranking.results.map(&:index))
+```
+
+`parameters` takes `model`, `top_n` (return only the most relevant this many, a positive integer, applied after sorting even when the provider ignores it), `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id`, `tags` and `trace_documents`. The model defaults to `default_rerank_model` and must be listed in `config.model_config` with the type `rerank`. `ranking.meta` holds what the provider billed, and `ranking.last_response` the HTTP response, including the gateway's headers.
+
+With observability enabled, each call is recorded in Cerebro as a generation, since Langfuse has no reranker type, with the query and documents as input, each document's index and score as output, the input tokens as usage, any search units the provider billed in the metadata, and the gateway's cost. Pass `trace_documents: false` when your own trace already records the candidates, such as an embedding call or a search step in the same trace, and only their number is recorded. Reranking takes no managed prompt: `prompt_name` and `prompt_variables` are ignored.
 
 ### Image Editing and Generation
 
@@ -560,7 +586,7 @@ success, so it records no input up front.
 
 A project can opt in to recording what happened without recording what was said. Set `"mask_content" => true` on its entry in `observability_projects`; projects that do not set it are unchanged.
 
-For a masked project, every observed request (chat, image generation, audio transcription, text-to-speech, decisions and embeddings) is still traced, with its model, usage, cost, prompt link, tags, user, session, metadata and gateway call ID, but:
+For a masked project, every observed request (chat, image generation, audio transcription, text-to-speech, decisions, embeddings and reranking) is still traced, with its model, usage, cost, prompt link, tags, user, session, metadata and gateway call ID, but:
 
 * The input and output of the generation and of the trace are recorded as `[masked]`. The whole value is replaced, so reasoning, tool calls and anything else in a response are masked however the provider shaped it.
 * A failed request records the error class (for example `OpenAI::Errors::BadRequestError`) as its status message, without the error's own message, which can quote the request or the response.
