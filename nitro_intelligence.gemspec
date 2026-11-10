@@ -24,5 +24,8 @@ Gem::Specification.new do |s|
   # gateway reports cost in - on every response, the binary ones text-to-speech
   # returns included. On anything older the cost is silently never recorded.
   s.add_dependency "openai", "~> 0.86"
+  # BatchSpanProcessor overrides private SDK internals verified on 1.10.0-1.13.1.
+  # Recheck those internals and the flush specs before raising this ceiling.
+  s.add_dependency "opentelemetry-sdk", ">= 1.10", "< 1.14"
   s.metadata["rubygems_mfa_required"] = "true"
 end
