@@ -50,6 +50,7 @@ module NitroIntelligence
           config.public_key = project.public_key
           config.secret_key = project.secret_key
           config.base_url = @base_url
+          config.release = NitroIntelligence.configuration.current_revision
           # Default flush of 60 seconds can be too quick when
           # dealing with longer responses like image gen
           config.flush_interval = 120

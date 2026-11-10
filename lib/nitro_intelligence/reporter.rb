@@ -53,24 +53,36 @@ module NitroIntelligence
       response
     end
 
-    # Scores a trace. Scoring it again under the same `id` replaces the score.
+    # Scores a trace, or an observation in it. Scoring it again under the same `id` replaces the
+    # score.
     #
-    # @param trace_id [String] the trace, such as {Trace.create_id} gives for a seed
+    # @param trace_id [String] the trace, such as {Trace.create_id} gives for a seed, or
+    #   {Observation#trace_id}
     # @param name [String] what the score measures
     # @param value [Numeric, String, Boolean] the score: a number, `true` or `false` for `:boolean`,
     #   or the category's name for `:categorical`
+    # @param observation_id [String, nil] the observation in the trace to score, as
+    #   {Observation#id} gives it, rather than the trace as a whole
     # @param id [String] identifies the score, so that recording it again replaces it. Defaults to
-    #   one per trace and name.
+    #   one per trace, observation and name.
     # @param data_type [Symbol] `:numeric`, `:boolean` or `:categorical`
+    # @param comment [String, nil]
+    # @param metadata [Hash, nil]
     # @return [void]
     # @raise [ArgumentError] when `value` does not suit `data_type`
-    def score(trace_id:, name:, value:, id: "#{trace_id}-#{name}", data_type: :numeric)
+    # @example Scoring a search result the user clicked, from the request that records the click
+    #   reporter.score(trace_id: params[:trace_id], name: "clicked", value: 1, metadata: { position: 3 })
+    def score(trace_id:, name:, value:, observation_id: nil, id: [trace_id, observation_id, name].compact.join("-"), # rubocop:disable Metrics/ParameterLists
+              data_type: :numeric, comment: nil, metadata: nil)
       @project_client.observability_client.create_score(
         id:,
         trace_id:,
+        observation_id:,
         name:,
         value:,
         data_type:,
+        comment:,
+        metadata:,
         environment: NitroIntelligence.environment
       )
     end
