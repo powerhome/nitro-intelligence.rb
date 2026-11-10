@@ -257,6 +257,22 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
       thread
     end
 
+    def pause_flush_on_wakeup(paused, resume)
+      condition = processor.instance_variable_get(:@flush_condition)
+      allow(condition).to receive(:wait).and_wrap_original do |original, mutex, timeout|
+        Thread.current[:flush_started]&.push(true)
+        original.call(mutex, timeout)
+        # Let other threads progress before this caller checks its completed result.
+        mutex.unlock
+        begin
+          paused << true
+          resume.pop(timeout: 5)
+        ensure
+          mutex.lock
+        end
+      end
+    end
+
     it "waits for the in-flight export even when the buffer is empty" do
       start_flush
       expect(flush_results.pop(timeout: 0.05)).to be_nil
@@ -328,6 +344,42 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
       start_shutdown
 
       expect(flush_results.pop(timeout: 1)).to be(false)
+    end
+
+    it "keeps a completed flush's success when its caller resumes after the deadline" do
+      paused = Queue.new
+      resume = Queue.new
+      pause_flush_on_wakeup(paused, resume)
+      now = 0.0
+      # Advance only the flush caller's clock after its captured export completes.
+      allow(OpenTelemetry::Common::Utilities).to receive(:timeout_timestamp).and_wrap_original do |original|
+        Thread.current[:flush_started] ? now : original.call
+      end
+      flushing = start_flush(timeout: 30)
+      release_export << true
+      expect(paused.pop(timeout: 5)).to be(true)
+      now = 31.0
+      resume << true
+
+      expect(flushing.join(5)&.value).to be(true)
+    ensure
+      resume&.close
+    end
+
+    it "keeps a completed flush's success when shutdown starts before its caller resumes" do
+      paused = Queue.new
+      resume = Queue.new
+      pause_flush_on_wakeup(paused, resume)
+      flushing = start_flush
+      release_export << true
+      expect(paused.pop(timeout: 5)).to be(true)
+      shutting_down = start_shutdown
+      expect(shutting_down.join(5)).to eq(shutting_down)
+      resume << true
+
+      expect(flushing.join(5)&.value).to be(true)
+    ensure
+      resume&.close
     end
 
     context "when the in-flight export fails" do
@@ -484,19 +536,7 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
       it "keeps a completed flush's success when later exports fail before its caller resumes" do
         paused = Queue.new
         resume = Queue.new
-        condition = processor.instance_variable_get(:@flush_condition)
-        allow(condition).to receive(:wait).and_wrap_original do |original, mutex, timeout|
-          Thread.current[:flush_started]&.push(true)
-          original.call(mutex, timeout)
-          # Let the worker finish newer exports before this caller checks its result.
-          mutex.unlock
-          begin
-            paused << true
-            resume.pop(timeout: 5)
-          ensure
-            mutex.lock
-          end
-        end
+        pause_flush_on_wakeup(paused, resume)
         start_flush
         emit("later-failure")
         release_export << true

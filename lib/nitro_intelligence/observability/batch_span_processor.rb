@@ -69,11 +69,11 @@ module NitroIntelligence
         @condition.signal
 
         loop do
+          return waiter.result unless waiter.pending?
           return OpenTelemetry::SDK::Trace::Export::FAILURE unless @keep_running
 
           remaining = OpenTelemetry::Common::Utilities.maybe_timeout(timeout, start_time)
           return OpenTelemetry::SDK::Trace::Export::TIMEOUT if remaining&.zero?
-          return waiter.result unless waiter.pending?
 
           @flush_condition.wait(@mutex, remaining)
         end

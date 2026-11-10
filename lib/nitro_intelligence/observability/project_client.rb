@@ -26,7 +26,9 @@ module NitroIntelligence
       # Reports failed exports or dropped observations within the captured work; concurrent
       # callers covering the same failed export all receive false. Earlier failures are not
       # retained, and discarded observations are not retried. A timeout leaves exports running
-      # and the client usable. Returns false if shutdown starts or the client is stopped.
+      # and the client usable. A completed result takes precedence over timeout or shutdown
+      # when the caller resumes. Returns false if shutdown interrupts pending work or the
+      # client is already stopping or stopped when called.
       # Queued scores, Cerebro ingestion and evaluator results are not included.
       #
       # @param timeout [Numeric] maximum time in seconds to wait, including in-flight exports
