@@ -81,7 +81,7 @@ module NitroIntelligence
 
       def wait_for_exports(timeout, start_time)
         waiter = FlushWaiter.new(spans.size, @exporting, OpenTelemetry::SDK::Trace::Export::SUCCESS)
-        @flush_waiters[waiter] = waiter
+        @flush_waiters.add(waiter)
         @condition.signal
 
         loop do
@@ -97,8 +97,17 @@ module NitroIntelligence
         @flush_waiters.delete(waiter)
       end
 
+      # Find the batch limit while collecting waiters; Set iteration order is unspecified.
       def queued_flushes
-        @flush_waiters.each_value.select { |waiter| waiter.queued.positive? }
+        waiters = []
+        limit = batch_size
+        @flush_waiters.each do |waiter|
+          next unless waiter.queued.positive?
+
+          waiters << waiter
+          limit = waiter.queued if waiter.queued < limit
+        end
+        [waiters, limit]
       end
 
       # Unlike the upstream worker, a waiting flush bypasses the scheduled delay for
@@ -106,16 +115,16 @@ module NitroIntelligence
       def work
         loop do
           batch = lock do
-            waiters = queued_flushes
+            waiters, limit = queued_flushes
             if spans.size < batch_size && @keep_running && waiters.empty?
               @condition.wait(@mutex, @delay_seconds)
               @condition.wait(@mutex, @delay_seconds) while spans.empty? && @keep_running
               # Waiting releases the lock; callers may register or time out before we resume.
-              waiters = queued_flushes
+              waiters, limit = queued_flushes
             end
             return unless @keep_running
 
-            take_batch(waiters)
+            take_batch(waiters, limit)
           end
 
           export_and_notify(batch)
@@ -123,10 +132,9 @@ module NitroIntelligence
       end
 
       # Split at the earliest flush boundary so a batch never mixes that call's
-      # captured observations with later work. Waiters retain capture order, so the
-      # first queued waiter has the earliest boundary. This runs under the queue lock.
-      def take_batch(waiters)
-        batch = spans.shift([batch_size, waiters.first&.queued || batch_size].min)
+      # captured observations with later work. This runs under the queue lock.
+      def take_batch(waiters, limit)
+        batch = spans.shift(limit)
         waiters.each do |waiter|
           waiter.queued -= batch.size
           waiter.exporting = true
@@ -141,7 +149,7 @@ module NitroIntelligence
         result = export_batch(batch)
       ensure
         lock do
-          @flush_waiters.each_value do |waiter|
+          @flush_waiters.each do |waiter|
             next unless waiter.exporting
 
             unless result == OpenTelemetry::SDK::Trace::Export::SUCCESS
@@ -158,7 +166,7 @@ module NitroIntelligence
       # reported outside it, and are delivered to waiters by export_and_notify.
       def report_dropped_spans(dropped_spans, reason:, **kwargs)
         if reason == "buffer-full" && dropped_spans.any?
-          @flush_waiters.each_value do |waiter|
+          @flush_waiters.each do |waiter|
             next unless waiter.queued.positive?
 
             waiter.queued = [waiter.queued - dropped_spans.size, 0].max
@@ -173,9 +181,7 @@ module NitroIntelligence
         return if @pid == Process.pid
 
         @flush_condition = ConditionVariable.new
-        # Struct equality and hashes change as a waiter progresses. Identity keeps
-        # equal concurrent calls distinct and lets timed-out callers remove themselves.
-        @flush_waiters = {}.compare_by_identity
+        @flush_waiters = Set.new.compare_by_identity
         @exporting = false
         super
       end

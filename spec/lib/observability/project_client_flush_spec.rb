@@ -413,6 +413,7 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
 
       release_export << true
       expect(flush_results.pop(timeout: 5)).to be(true)
+      expect(processor.instance_variable_get(:@flush_waiters)).to be_empty
     end
 
     it "rejects flush during shutdown even when the buffer is empty" do
@@ -635,6 +636,30 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
         later_export_results << OpenTelemetry::SDK::Trace::Export::FAILURE
         expect(later.join(5)&.value).to be(false)
         expect(client.flush).to be(true)
+      end
+
+      it "preserves flush boundaries when waiters are enumerated in reverse capture order" do
+        waiters = processor.instance_variable_get(:@flush_waiters)
+        # Set does not guarantee capture order; exercise another valid enumeration order.
+        allow(waiters).to receive(:each).and_wrap_original do |original, &block|
+          entries = []
+          original.call { |waiter| entries << waiter }
+          entries.reverse_each(&block)
+        end
+        emit("first-job")
+        earlier = start_flush
+        emit("second-job")
+        later = start_flush
+        release_export << true
+
+        expect(export_started.pop(timeout: 5)).to be(true)
+        expect(exported_spans.map(&:name)).to eq(%w[automatic-export first-job])
+        later_export_results << OpenTelemetry::SDK::Trace::Export::SUCCESS
+        expect(earlier.join(1)&.value).to be(true)
+        expect(export_started.pop(timeout: 5)).to be(true)
+        later_export_results << OpenTelemetry::SDK::Trace::Export::FAILURE
+        expect(later.join(5)&.value).to be(false)
+        expect(waiters).to be_empty
       end
 
       it "finishes after captured observations are exported or dropped while later exports remain blocked" do
