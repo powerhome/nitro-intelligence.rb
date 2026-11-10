@@ -343,6 +343,25 @@ client.chat(
 
 If no `prompt_label` or `prompt_version` is provided, the 'production' prompt is used by default.
 
+### Exporting Completed Observations
+
+Observations are exported in the background. Use the same shared project client for tracing and flushing when a job needs to export completed observations before submitting their IDs for human review:
+
+```ruby
+project_client = NitroIntelligence.project_client_registry.fetch("my-feature-project")
+raise "Observation export failed or timed out" unless project_client.flush(timeout: 30)
+
+# Submit the completed observations' IDs to the annotation queue here.
+```
+
+`flush` waits only for this project's observations queued or in flight when called. Observations completed later do not extend the wait. The client remains usable, and active observations are not ended.
+
+It returns `true` when those exports succeed or nothing needs exporting. It returns `false` if exporting fails or cannot start, an observation being flushed is dropped, the wait times out, or shutdown prevents completion. Calls made during or after shutdown return `false`. Earlier export failures are not reported.
+
+The timeout defaults to 30 seconds; exports continue after a caller times out. With `timeout: 0`, a running client succeeds only if nothing is queued or in flight.
+
+It does not flush queued scores or wait for evaluators, and successful export does not guarantee immediate visibility in Cerebro or annotation queues. Reserve `NitroIntelligence.project_client_registry.shutdown_all` for process teardown. See the [ProjectClient#flush API reference](https://www.rubydoc.info/gems/nitro_intelligence/NitroIntelligence/Observability/ProjectClient#flush-instance_method) for details.
+
 ### Prompt Fallbacks
 
 Pass `prompt_fallback_name` to name a second prompt to use when the one you asked for isn't there. The prompt in `prompt_name` is tried first; if it doesn't exist, or its lookup fails, the fallback is used instead:

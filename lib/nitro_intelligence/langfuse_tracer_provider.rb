@@ -1,3 +1,5 @@
+require "nitro_intelligence/observability/batch_span_processor"
+
 module NitroIntelligence
   # This is an adaptation of https://github.com/simplepractice/langfuse-rb/blob/main/lib/langfuse/otel_setup.rb
   # that lets users create multiple Langfuse clients in the same process.
@@ -14,6 +16,13 @@ module NitroIntelligence
 
     def tracer
       @tracer_provider.tracer("langfuse-rb", Langfuse::VERSION)
+    end
+
+    # @api private
+    def force_flush(timeout: 30)
+      # Langfuse's other span processor only adds attributes; its flush is a no-op.
+      # Calling our processor directly also avoids the provider's unbounded flush mutex.
+      @batch_processor.force_flush(timeout:)
     end
 
     def shutdown(timeout: 30)
@@ -50,7 +59,7 @@ module NitroIntelligence
         compression: "gzip"
       )
 
-      processor = OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(
+      @batch_processor = Observability::BatchSpanProcessor.new(
         exporter,
         max_queue_size: config.batch_size * 2,
         schedule_delay: config.flush_interval * 1000,
@@ -58,7 +67,7 @@ module NitroIntelligence
       )
 
       tracer_provider = OpenTelemetry::SDK::Trace::TracerProvider.new(id_generator: self)
-      tracer_provider.add_span_processor(processor)
+      tracer_provider.add_span_processor(@batch_processor)
       span_processor = Langfuse::SpanProcessor.new(config:)
       tracer_provider.add_span_processor(span_processor)
 

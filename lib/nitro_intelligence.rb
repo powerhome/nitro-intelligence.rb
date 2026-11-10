@@ -29,6 +29,8 @@ module NitroIntelligence
   #   @return [Class<Configuration>]
   mattr_accessor :configuration, default: Configuration
 
+  @project_client_registry_mutex = Mutex.new
+
   class << self
     # @!method configure
     #   Sets the configuration, normally once, from an initializer.
@@ -77,13 +79,15 @@ module NitroIntelligence
       @model_catalog ||= ModelCatalog.new(configuration.model_config)
     end
 
-    # Each Cerebro project's client.
+    # Each Cerebro project's client, through a registry shared by all threads.
     #
     # @return [Observability::ProjectClientRegistry]
     def project_client_registry
-      @project_client_registry ||= Observability::ProjectClientRegistry.new(
-        base_url: configuration.observability_base_url
-      )
+      @project_client_registry_mutex.synchronize do
+        @project_client_registry ||= Observability::ProjectClientRegistry.new(
+          base_url: configuration.observability_base_url
+        )
+      end
     end
   end
 end

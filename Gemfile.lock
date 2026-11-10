@@ -6,6 +6,7 @@ PATH
       langfuse-rb (= 0.7.0)
       mini_magick (~> 4.10)
       openai (~> 0.86)
+      opentelemetry-sdk (>= 1.10, < 1.14)
 
 GEM
   remote: https://rubygems.org/
