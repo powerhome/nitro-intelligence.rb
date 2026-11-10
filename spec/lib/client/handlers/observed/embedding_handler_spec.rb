@@ -91,6 +91,44 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
       expect(trace_attributes.to_s).not_to include("0.25")
     end
 
+    context "when a batch fails after others were billed" do
+      let(:billed_batch) do
+        {
+          status: 200,
+          headers: response_headers,
+          body: {
+            object: "list", model: "Qwen/Qwen3-Embedding-0.6B",
+            data: [0, 1].map { |index| { object: "embedding", index:, embedding: [0.25] } },
+            usage: { prompt_tokens: 8, total_tokens: 8 }
+          }.to_json,
+        }
+      end
+      let(:rate_limited) do
+        { status: 429, body: { error: { message: "slow down" } }.to_json, headers: { "Content-Type" => "application/json" } }
+      end
+
+      before { allow(fake_observer).to receive(:observe).and_yield(fake_embedding) }
+
+      it "records the billed batches' usage and cost, then raises the original error" do
+        stub_request(:post, "https://gateway.example/embeddings").to_return(billed_batch).then.to_return(rate_limited)
+        allow(fake_embedding).to receive(:update)
+
+        expect { handler.create(input_type: :document, input: %w[a b c], parameters: { batch_size: 2 }) }
+          .to raise_error(OpenAI::Errors::RateLimitError)
+        expect(fake_embedding).to have_received(:update)
+          .with(usage_details: { prompt_tokens: 8, total_tokens: 8 }, cost_details: { total: 1.0e-07 })
+      end
+
+      it "records nothing more when the first batch fails" do
+        stub_request(:post, "https://gateway.example/embeddings").to_return(rate_limited)
+        allow(fake_embedding).to receive(:update)
+
+        expect { handler.create(input_type: :document, input: %w[a b c], parameters: { batch_size: 2 }) }
+          .to raise_error(OpenAI::Errors::RateLimitError)
+        expect(fake_embedding).not_to have_received(:update)
+      end
+    end
+
     it "leaves the cost unset when the gateway did not price the request" do
       response_headers.delete("x-litellm-response-cost")
       allow(fake_observer).to receive(:observe).and_yield(fake_embedding)

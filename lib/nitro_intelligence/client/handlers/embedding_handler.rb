@@ -25,10 +25,13 @@ module NitroIntelligence
           perform_request(input:, input_type:, parameters:)
         end
 
-        def perform_request(input:, input_type:, parameters: {}, correlation_trace_id: nil, mask_content: false)
+        # Each batch's response is added to `responses` as it arrives, so a caller can still
+        # account for the batches already billed when a later one raises.
+        def perform_request(input:, input_type:, parameters: {}, correlation_trace_id: nil, mask_content: false,
+                            responses: [])
           add_gateway_headers(parameters, correlation_trace_id:, mask_content:)
-          responses = texts(input, input_type, parameters).each_slice(parameters[:batch_size]).map do |batch|
-            @client.embeddings.create(
+          texts(input, input_type, parameters).each_slice(parameters[:batch_size]) do |batch|
+            responses << @client.embeddings.create(
               input: batch, encoding_format: :float, **parameters.slice(*ALLOWED_EXTRA_PARAMETERS)
             )
           end

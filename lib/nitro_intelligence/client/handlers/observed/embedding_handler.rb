@@ -33,9 +33,10 @@ module NitroIntelligence
         private
 
           def workflow(embedding:, input:, input_type:, parameters:)
+            responses = []
             embeddings = @base_handler.perform_request(
               input:, input_type:, parameters:,
-              correlation_trace_id: embedding.trace_id, mask_content: project.mask_content?
+              correlation_trace_id: embedding.trace_id, mask_content: project.mask_content?, responses:
             )
 
             # The vectors are never recorded: they are large, mean nothing to read, and are the
@@ -48,6 +49,22 @@ module NitroIntelligence
             }
 
             [embeddings, trace_attributes]
+          rescue
+            record_billed_batches(embedding, responses)
+            raise
+          end
+
+          # A batch that fails after others succeeded leaves those billed, so the failed call still
+          # records what they used and cost, rather than nothing, before the error is raised.
+          def record_billed_batches(embedding, responses)
+            return if responses.empty?
+
+            billed = Embeddings.new(responses)
+            attributes = {
+              usage_details: billed.usage.to_h.symbolize_keys.presence,
+              cost_details: @base_handler.cost_details(billed),
+            }.compact
+            embedding.update(attributes) if attributes.any?
           end
         end
       end
