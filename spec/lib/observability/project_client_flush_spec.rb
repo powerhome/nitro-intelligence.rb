@@ -172,10 +172,13 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
   context "with an automatic export in flight" do
     let(:export_started) { Queue.new }
     let(:release_export) { Queue.new }
-    let(:flush_started) { Queue.new }
     let(:flush_results) { Queue.new }
     let(:flush_threads) { [] }
     let(:first_export_result) { OpenTelemetry::SDK::Trace::Export::SUCCESS }
+    let(:later_export_results) { nil }
+    let(:processor) do
+      client.observability_client.instance_variable_get(:@tracer_provider).instance_variable_get(:@batch_processor)
+    end
 
     before do
       allow(NitroIntelligence::LangfuseExtension).to receive(:new).and_wrap_original do |original, &configure|
@@ -194,24 +197,48 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
 
           first_export_result
         else
-          OpenTelemetry::SDK::Trace::Export::SUCCESS
+          next_export_result
         end
       end
       emit("automatic-export")
       expect(export_started.pop(timeout: 5)).to be(true)
+      # Signal only once flush has captured its work and is about to release the
+      # queue lock. Later observations can then be added without a timing race.
+      allow(processor.instance_variable_get(:@flush_condition)).to receive(:wait).and_wrap_original do |original, *args|
+        Thread.current[:flush_started]&.push(true)
+        original.call(*args)
+      end
     end
 
     after do
       release_export << true
+      later_export_results&.close
       flush_threads.each { |thread| thread.join(5) }
     end
 
+    def next_export_result
+      return OpenTelemetry::SDK::Trace::Export::SUCCESS unless later_export_results
+
+      result = later_export_results.pop(timeout: 5)
+      raise "Test did not release the export" if result.nil? && !later_export_results.closed?
+
+      result || OpenTelemetry::SDK::Trace::Export::SUCCESS
+    end
+
     def start_flush(timeout: 2)
-      flush_threads << Thread.new do
-        flush_started << true
-        flush_results << client.flush(timeout:)
+      started = Queue.new
+      thread = Thread.new do
+        Thread.current[:flush_started] = started
+        result = client.flush(timeout:)
+        flush_results << result
+        result
+      ensure
+        Thread.current[:flush_started] = nil
+        started << true
       end
-      expect(flush_started.pop(timeout: 5)).to be(true)
+      flush_threads << thread
+      expect(started.pop(timeout: 5)).to be(true)
+      thread
     end
 
     def start_shutdown
@@ -238,12 +265,12 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
       expect(flush_results.pop(timeout: 5)).to be(true)
     end
 
-    it "also drains buffered batches and permits new observations while waiting" do
-      start_flush
+    it "also drains batches queued before the call without ending active observations" do
       emit("queued-1")
       emit("queued-2")
       emit("queued-3")
       active = client.observability_client.start_observation("still-active")
+      start_flush
       expect(flush_results.pop(timeout: 0.05)).to be_nil
 
       release_export << true
@@ -351,15 +378,140 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
       end
     end
 
-    it "reports observations dropped when the buffer fills while flush is waiting" do
+    it "reports captured observations dropped when the buffer fills while flush is waiting" do
+      emit("captured-before-flush")
       start_flush
-      expect(flush_results.pop(timeout: 0.05)).to be_nil
       5.times { |index| emit("queued-#{index}") }
       release_export << true
 
       expect(flush_results.pop(timeout: 5)).to be(false)
       expect(exported_spans.map(&:name)).to eq(%w[automatic-export queued-1 queued-2 queued-3 queued-4])
       expect(client.flush).to be(true)
+    end
+
+    it "ignores dropped observations that were added after the call" do
+      start_flush
+      5.times { |index| emit("queued-#{index}") }
+      release_export << true
+
+      expect(flush_results.pop(timeout: 5)).to be(true)
+    end
+
+    it "reports dropped observations only to flushes that captured them" do
+      earlier = start_flush
+      emit("captured-by-later-flush")
+      later = start_flush
+      5.times { |index| emit("queued-#{index}") }
+      release_export << true
+
+      expect(earlier.join(5)&.value).to be(true)
+      expect(later.join(5)&.value).to be(false)
+    end
+
+    context "with later exports controlled independently" do
+      let(:later_export_results) { Queue.new }
+
+      it "finishes its captured work before timeout while other jobs keep adding observations" do
+        3.times { |index| emit("captured-#{index}") }
+        start_flush(timeout: 0.5)
+
+        # Keep the queue nonempty as each captured batch is sent. The final
+        # later export is not released until this flush returns.
+        emit("later-0")
+        release_export << true
+        expect(export_started.pop(timeout: 5)).to be(true)
+        emit("later-1")
+        emit("later-2")
+        later_export_results << OpenTelemetry::SDK::Trace::Export::SUCCESS
+        expect(export_started.pop(timeout: 5)).to be(true)
+        emit("later-3")
+        later_export_results << OpenTelemetry::SDK::Trace::Export::SUCCESS
+        expect(export_started.pop(timeout: 5)).to be(true)
+
+        expect(flush_results.pop(timeout: 2)).to be(true)
+        expect(exported_spans.map(&:name)).to include("later-0")
+      end
+
+      it "splits a batch at the earlier flush boundary and reports a later failure only to the later flush" do
+        emit("first-job")
+        earlier = start_flush
+        emit("second-job")
+        later = start_flush
+        release_export << true
+
+        expect(export_started.pop(timeout: 5)).to be(true)
+        expect(exported_spans.map(&:name)).to eq(%w[automatic-export first-job])
+        later_export_results << OpenTelemetry::SDK::Trace::Export::SUCCESS
+        expect(export_started.pop(timeout: 5)).to be(true)
+        expect(earlier.join(1)&.value).to be(true)
+        expect(flush_results.pop(timeout: 1)).to be(true)
+        expect(flush_results.pop(timeout: 0.05)).to be_nil
+
+        later_export_results << OpenTelemetry::SDK::Trace::Export::FAILURE
+        expect(later.join(5)&.value).to be(false)
+        expect(client.flush).to be(true)
+      end
+
+      it "finishes after captured observations are exported or dropped while later exports remain blocked" do
+        3.times { |index| emit("captured-#{index}") }
+        flushing = start_flush
+        emit("later-0")
+        emit("later-1") # Overflows the queue and drops captured-0.
+        release_export << true
+
+        expect(export_started.pop(timeout: 5)).to be(true)
+        expect(exported_spans.map(&:name)).to eq(%w[automatic-export captured-1 captured-2])
+        later_export_results << OpenTelemetry::SDK::Trace::Export::SUCCESS
+        expect(export_started.pop(timeout: 5)).to be(true)
+
+        expect(flushing.join(1)&.value).to be(false)
+      end
+
+      it "lets a later flush finish its captured work after an earlier flush times out" do
+        emit("first-job")
+        earlier = start_flush(timeout: 0.05)
+        emit("second-job")
+        later = start_flush
+        expect(earlier.join(1)&.value).to be(false)
+        release_export << true
+
+        expect(export_started.pop(timeout: 5)).to be(true)
+        later_export_results << OpenTelemetry::SDK::Trace::Export::SUCCESS
+
+        expect(later.join(1)&.value).to be(true)
+      end
+
+      it "keeps a completed flush's success when later exports fail before its caller resumes" do
+        paused = Queue.new
+        resume = Queue.new
+        condition = processor.instance_variable_get(:@flush_condition)
+        allow(condition).to receive(:wait).and_wrap_original do |original, mutex, timeout|
+          Thread.current[:flush_started]&.push(true)
+          original.call(mutex, timeout)
+          # Let the worker finish newer exports before this caller checks its result.
+          mutex.unlock
+          begin
+            paused << true
+            resume.pop(timeout: 5)
+          ensure
+            mutex.lock
+          end
+        end
+        start_flush
+        emit("later-failure")
+        release_export << true
+        expect(paused.pop(timeout: 5)).to be(true)
+        expect(export_started.pop(timeout: 5)).to be(true)
+        emit("after-failure")
+        later_export_results << OpenTelemetry::SDK::Trace::Export::FAILURE
+        # Starting another batch proves the failed batch's result was processed.
+        expect(export_started.pop(timeout: 5)).to be(true)
+        resume << true
+
+        expect(flush_results.pop(timeout: 1)).to be(true)
+      ensure
+        resume&.close
+      end
     end
   end
 end

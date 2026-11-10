@@ -3,12 +3,22 @@ module NitroIntelligence
     # Coordinates flush with the existing export worker instead of exporting a separate
     # queue snapshot. OpenTelemetry Ruby 1.13.1's force_flush misses in-flight batches
     # and waits for export locks without a deadline. Keep its queue, exporter and metrics;
-    # wake its worker to drain the queue and wait for completion with a deadline.
+    # wake its worker and wait for the work captured at the call's start with a deadline.
     # The OTLP exporter sends synchronously and its force_flush is a no-op, so finishing
     # the worker's export also finishes that batch's delivery attempt.
     #
     # @api private
     class BatchSpanProcessor < OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor
+      # Each call captures a prefix of the FIFO queue and the current export, if any.
+      # Counts shrink on dequeue or overflow; later spans never extend a call's work.
+      #
+      # @api private
+      FlushWaiter = Struct.new(:queued, :exporting, :result) do
+        def pending?
+          queued.positive? || exporting
+        end
+      end
+
       # Shutdown needs the upstream synchronous drain after stopping the worker.
       # Public flush calls must never take that path, which ignores in-flight batches.
       alias flush_at_shutdown force_flush
@@ -51,8 +61,8 @@ module NitroIntelligence
     private
 
       def wait_for_exports(timeout, start_time)
-        waiter = Object.new
-        @flush_waiters[waiter] = OpenTelemetry::SDK::Trace::Export::SUCCESS
+        waiter = FlushWaiter.new(spans.size, @exporting, OpenTelemetry::SDK::Trace::Export::SUCCESS)
+        @flush_waiters[waiter] = waiter
         @condition.signal
 
         loop do
@@ -60,7 +70,7 @@ module NitroIntelligence
 
           remaining = OpenTelemetry::Common::Utilities.maybe_timeout(timeout, start_time)
           return OpenTelemetry::SDK::Trace::Export::TIMEOUT if remaining&.zero?
-          return @flush_waiters.fetch(waiter) if spans.empty? && !@exporting
+          return waiter.result unless waiter.pending?
 
           @flush_condition.wait(@mutex, remaining)
         end
@@ -68,25 +78,37 @@ module NitroIntelligence
         @flush_waiters.delete(waiter)
       end
 
-      def fail_waiters
-        @flush_waiters.transform_values! { OpenTelemetry::SDK::Trace::Export::FAILURE }
+      def queued_flushes
+        @flush_waiters.each_value.select { |waiter| waiter.queued.positive? }
       end
 
       # Unlike the upstream worker, a waiting flush bypasses the scheduled delay for
-      # every remaining batch. @exporting covers dequeue through result reporting.
+      # its remaining batches. @exporting covers dequeue through result reporting.
       def work
         loop do
           batch = lock do
-            @condition.wait(@mutex, @delay_seconds) if spans.size < batch_size && @keep_running && @flush_waiters.empty?
+            @condition.wait(@mutex, @delay_seconds) if spans.size < batch_size && @keep_running && queued_flushes.empty?
             @condition.wait(@mutex, @delay_seconds) while spans.empty? && @keep_running
             return unless @keep_running
 
-            @exporting = true
-            spans.shift(batch_size)
+            take_batch
           end
 
           export_and_notify(batch)
         end
+      end
+
+      # Split at the earliest flush boundary so a batch never mixes that call's
+      # captured observations with later work. This runs under the queue lock.
+      def take_batch
+        waiters = queued_flushes
+        batch = spans.shift([batch_size, *waiters.map(&:queued)].min)
+        waiters.each do |waiter|
+          waiter.queued -= batch.size
+          waiter.exporting = true
+        end
+        @exporting = true
+        batch
       end
 
       def export_and_notify(batch)
@@ -95,7 +117,14 @@ module NitroIntelligence
         result = export_batch(batch)
       ensure
         lock do
-          fail_waiters unless result == OpenTelemetry::SDK::Trace::Export::SUCCESS
+          @flush_waiters.each_value do |waiter|
+            next unless waiter.exporting
+
+            unless result == OpenTelemetry::SDK::Trace::Export::SUCCESS
+              waiter.result = OpenTelemetry::SDK::Trace::Export::FAILURE
+            end
+            waiter.exporting = false
+          end
           @exporting = false
           @flush_condition.broadcast
         end
@@ -104,7 +133,13 @@ module NitroIntelligence
       # Queue overflow is reported inside the queue lock. Export failures are
       # reported outside it, and are delivered to waiters by export_and_notify.
       def report_dropped_spans(dropped_spans, reason:, **kwargs)
-        fail_waiters if reason == "buffer-full" && dropped_spans.any?
+        if reason == "buffer-full" && dropped_spans.any?
+          queued_flushes.each do |waiter|
+            waiter.queued = [waiter.queued - dropped_spans.size, 0].max
+            waiter.result = OpenTelemetry::SDK::Trace::Export::FAILURE
+          end
+          @flush_condition.broadcast
+        end
         super
       end
 
@@ -112,7 +147,9 @@ module NitroIntelligence
         return if @pid == Process.pid
 
         @flush_condition = ConditionVariable.new
-        @flush_waiters = {}
+        # Struct equality and hashes change as a waiter progresses. Identity keeps
+        # equal concurrent calls distinct and lets timed-out callers remove themselves.
+        @flush_waiters = {}.compare_by_identity
         @exporting = false
         super
       end
