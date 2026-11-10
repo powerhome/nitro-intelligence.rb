@@ -136,6 +136,34 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
     expect(packets).to be_empty
   end
 
+  it "succeeds with a zero timeout when the running client has no pending exports" do
+    expect(client.flush(timeout: 0)).to be(true)
+    expect(packets).to be_empty
+
+    emit("after-idle-flush")
+    expect(client.flush).to be(true)
+    expect(exported_spans.map(&:name)).to eq(["after-idle-flush"])
+    expect(client.flush(timeout: 0)).to be(true)
+  end
+
+  it "succeeds with a zero timeout without ending active observations" do
+    active = client.observability_client.start_observation("still-recording")
+
+    expect(client.flush(timeout: 0)).to be(true)
+    expect(active.otel_span).to be_recording
+    expect(packets).to be_empty
+  ensure
+    active&.end
+  end
+
+  it "rejects a zero timeout flush on a stopped client with no pending exports" do
+    allow(OpenTelemetry.logger).to receive(:warn)
+    client.shutdown
+
+    expect(client.flush(timeout: 0)).to be(false)
+    expect(packets).to be_empty
+  end
+
   it "reports an export failure" do
     allow(exporter).to receive(:send_bytes).and_return(OpenTelemetry::SDK::Trace::Export::FAILURE)
     allow(OpenTelemetry).to receive(:handle_error)
@@ -160,7 +188,7 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
     expect(client.flush).to be(false)
   end
 
-  it "reports an exhausted timeout without stopping subsequent exports" do
+  it "reports a zero timeout with queued observations without stopping subsequent exports" do
     emit("pending-export")
 
     expect(client.flush(timeout: 0)).to be(false)
@@ -340,6 +368,15 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
       expect(flush_results.pop(timeout: 5)).to be(true)
     end
 
+    it "reports a zero timeout while an export is in flight even when the buffer is empty" do
+      start_flush(timeout: 0)
+      expect(flush_results.pop(timeout: 1)).to be(false)
+
+      release_export << true
+      expect(client.flush).to be(true)
+      expect(client.flush(timeout: 0)).to be(true)
+    end
+
     it "also drains batches queued before the call without ending active observations" do
       emit("queued-1")
       emit("queued-2")
@@ -380,6 +417,7 @@ RSpec.describe NitroIntelligence::Observability::ProjectClient, "#flush" do
 
     it "rejects flush during shutdown even when the buffer is empty" do
       start_shutdown
+      expect(client.flush(timeout: 0)).to be(false)
       start_flush(timeout: 0.05)
 
       expect(flush_results.pop(timeout: 1)).to be(false)

@@ -29,11 +29,16 @@ module NitroIntelligence
 
       def force_flush(timeout: nil)
         start_time = OpenTelemetry::Common::Utilities.timeout_timestamp
-        remaining = OpenTelemetry::Common::Utilities.maybe_timeout(timeout, start_time)
-        return OpenTelemetry::SDK::Trace::Export::TIMEOUT if remaining&.zero?
 
         lock do
           return OpenTelemetry::SDK::Trace::Export::FAILURE unless @keep_running
+
+          remaining = OpenTelemetry::Common::Utilities.maybe_timeout(timeout, start_time)
+          if remaining&.zero?
+            return OpenTelemetry::SDK::Trace::Export::SUCCESS if spans.empty? && !@exporting
+
+            return OpenTelemetry::SDK::Trace::Export::TIMEOUT
+          end
 
           reset_on_fork(restart_thread: false)
           return OpenTelemetry::SDK::Trace::Export::FAILURE unless start_worker

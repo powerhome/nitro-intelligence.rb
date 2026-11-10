@@ -34,7 +34,8 @@ module NitroIntelligence
       # Queued scores, Cerebro ingestion and evaluator results are not included.
       #
       # @param timeout [Numeric] maximum time in seconds to wait, including in-flight exports
-      #   and concurrent flushes; reaching it does not cancel an export
+      #   and concurrent flushes; reaching it does not cancel an export. With zero, succeeds
+      #   only for a running client with no queued or in-flight exports.
       # @return [Boolean] true if the exports this call waits for succeed (including an empty
       #   buffer), false for a captured export failure or dropped observation, worker startup
       #   failure, timeout or shutdown
