@@ -13,6 +13,33 @@ require "nitro_intelligence/langfuse_tracer_provider"
 module NitroIntelligence
   # @api private
   class LangfuseExtension
+    # Holds the client recording the {Observation} application code has open, so that observations
+    # started inside it nest under it only when they are recorded in the same project.
+    ACTIVE_OBSERVATION_KEY = OpenTelemetry::Context.create_key("nitro-intelligence-active-observation")
+
+    # Holds the context the application had before it opened the trace it has open now.
+    TRACE_BASE_KEY = OpenTelemetry::Context.create_key("nitro-intelligence-trace-base")
+
+    # What a trace the application opens adds to the context, besides its active span.
+    TRACE_KEYS = [*Langfuse::Propagation::CONTEXT_KEYS.values, ACTIVE_OBSERVATION_KEY, TRACE_BASE_KEY].freeze
+
+    # Runs the block for a trace of its own. Inside a trace the application opened, the block runs
+    # without that trace's active span and propagated attributes, as it would outside the trace:
+    # `Langfuse.propagate_attributes` writes onto the active span and merges into what the context
+    # already propagates, so a trace started inside another would otherwise change it and inherit
+    # from it.
+    def self.in_new_trace(&)
+      context = OpenTelemetry::Context.current
+      base = context.value(TRACE_BASE_KEY)
+      unless base.nil?
+        context = OpenTelemetry::Trace.context_with_span(OpenTelemetry::Trace.current_span(base),
+                                                         parent_context: context)
+        context = TRACE_KEYS.reduce(context) { |restored, key| restored.set_value(key, base.value(key)) }
+      end
+
+      OpenTelemetry::Context.with_current(context.set_value(TRACE_BASE_KEY, context), &)
+    end
+
     attr_reader :config
 
     def initialize
@@ -45,6 +72,20 @@ module NitroIntelligence
         dataset_run_id:,
         config_id:
       )
+    end
+
+    # Whether application code has an observation open in this client, under which an observation
+    # started without a trace ID or parent nests.
+    def observing?
+      active_observation_client.equal?(self)
+    end
+
+    # Runs the block with `observation` as the active span, so that observations this client starts
+    # inside it, the gem's own included, nest under it.
+    def within(observation, &)
+      context = OpenTelemetry::Trace.context_with_span(observation.otel_span)
+      context = context.set_value(ACTIVE_OBSERVATION_KEY, self)
+      OpenTelemetry::Context.with_current(context, &)
     end
 
     def start_observation(name, attrs = {}, as_type: :span, trace_id: nil, parent_span_context: nil, start_time: nil, # rubocop:disable Metrics/ParameterLists
@@ -86,6 +127,12 @@ module NitroIntelligence
       return observation unless block
 
       observation.send(:run_in_context, &block)
+    end
+
+  private
+
+    def active_observation_client
+      OpenTelemetry::Context.value(ACTIVE_OBSERVATION_KEY)
     end
   end
 end

@@ -16,6 +16,7 @@ require "nitro_intelligence/media/image_generation"
 require "nitro_intelligence/models/model_catalog"
 require "nitro_intelligence/observability/project_client_registry"
 require "nitro_intelligence/reporter"
+require "nitro_intelligence/tracer"
 
 # The Ruby client for the Nitro Intelligence Platform.
 #
