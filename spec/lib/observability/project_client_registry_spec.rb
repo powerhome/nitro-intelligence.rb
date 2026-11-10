@@ -1,4 +1,5 @@
 require "spec_helper"
+require "timeout"
 require "nitro_intelligence/observability/project_client_registry"
 
 RSpec.describe NitroIntelligence::Observability::ProjectClientRegistry do
@@ -39,6 +40,65 @@ RSpec.describe NitroIntelligence::Observability::ProjectClientRegistry do
         expect(registry.fetch(slug)).to eq(fake_session)
       end
 
+      it "shares one client between concurrent first-time fetches and shuts it down" do
+        building = Queue.new
+        release = Queue.new
+        allow(NitroIntelligence::Observability::Project).to receive(:find_by_slug).with(slug:) do
+          building << true
+          release.pop
+          fake_project
+        end
+        allow(fake_session).to receive(:shutdown)
+        first = Thread.new { registry.fetch(slug) }
+        expect(building.pop(timeout: 5)).to be(true)
+        second = Thread.new { registry.fetch(slug) }
+        # The second fetch must reach either the registry lock or the blocked builder.
+        Timeout.timeout(5) { Thread.pass until second.status == "sleep" }
+        release.close
+
+        expect(first.join(5)&.value).to equal(fake_session)
+        expect(second.join(5)&.value).to equal(fake_session)
+        expect(NitroIntelligence::LangfuseExtension).to have_received(:new).once
+        expect(NitroIntelligence::Observability::ProjectClient).to have_received(:new).once
+        registry.shutdown_all
+        expect(fake_session).to have_received(:shutdown).once
+      ensure
+        release&.close
+        first&.join(5)
+        second&.join(5)
+      end
+
+      it "lets a waiting fetch retry after client construction fails" do
+        building = Queue.new
+        release = Queue.new
+        attempts = 0
+        allow(NitroIntelligence::Observability::Project).to receive(:find_by_slug).with(slug:) do
+          attempts += 1
+          if attempts == 1
+            building << true
+            release.pop
+            raise IOError, "client construction failed"
+          end
+          fake_project
+        end
+        first = Thread.new do
+          registry.fetch(slug)
+        rescue IOError => e
+          e
+        end
+        expect(building.pop(timeout: 5)).to be(true)
+        second = Thread.new { registry.fetch(slug) }
+        release.close
+
+        expect(first.join(5)&.value).to be_an(IOError)
+        expect(second.join(5)&.value).to equal(fake_session)
+        expect(registry.fetch(slug)).to equal(fake_session)
+      ensure
+        release&.close
+        first&.join(5)
+        second&.join(5)
+      end
+
       it "configures the LangfuseExtension with the correct credentials, release and flush interval" do
         allow(NitroIntelligence.configuration).to receive(:current_revision).and_return("rev-1")
         config_double = double("LangfuseConfig")
@@ -74,6 +134,30 @@ RSpec.describe NitroIntelligence::Observability::ProjectClientRegistry do
   end
 
   describe "#shutdown_all" do
+    it "includes a client whose construction is already in progress" do
+      building = Queue.new
+      release = Queue.new
+      client = double("ProjectClient", shutdown: nil)
+      allow(registry).to receive(:build_project_client) do
+        building << true
+        release.pop
+        client
+      end
+      fetching = Thread.new { registry.fetch(slug) }
+      expect(building.pop(timeout: 5)).to be(true)
+      stopping = Thread.new { registry.shutdown_all }
+      expect(stopping.join(0.05)).to be_nil
+      release.close
+
+      expect(fetching.join(5)&.value).to equal(client)
+      expect(stopping.join(5)).to equal(stopping)
+      expect(client).to have_received(:shutdown).once
+    ensure
+      release&.close
+      fetching&.join(5)
+      stopping&.join(5)
+    end
+
     it "calls shutdown on all cached project sessions" do
       fake_project = double("Project", public_key: "pk", secret_key: "sk")
       allow(NitroIntelligence::Observability::Project).to receive(:find_by_slug).and_return(fake_project)
