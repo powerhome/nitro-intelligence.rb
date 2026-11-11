@@ -96,11 +96,7 @@ module NitroIntelligence
               model: chat_completion.model,
               input:,
               output:,
-              usage_details: {
-                prompt_tokens: chat_completion.usage.prompt_tokens,
-                completion_tokens: chat_completion.usage.completion_tokens,
-                total_tokens: chat_completion.usage.total_tokens,
-              },
+              usage_details: @base_handler.chat_usage_details(chat_completion.usage),
               cost_details: @base_handler.cost_details(chat_completion),
             }
 

@@ -65,7 +65,49 @@ module NitroIntelligence
           }.compact
         end
 
+        # The breakdowns of a chat completion's usage recorded in Cerebro, each under the name
+        # Cerebro is sent and the names the gateway may report it under, first match winning.
+        # Cerebro takes every breakdown it is sent out of the input or output count and records
+        # it alongside, so only breakdowns that are part of that count and do not overlap one
+        # another are sent. The gateway reports others that are not: it mirrors a cache write
+        # as both `cache_write_tokens` and `cache_creation_tokens`, splits tokens by modality
+        # (`text_tokens`, `image_tokens` and the like) across the cached and reasoning ones,
+        # and adds counts such as `initial_prompt_tokens` that are not part of the input at all.
+        PROMPT_TOKEN_DETAILS = {
+          cached_tokens: %i[cached_tokens],
+          cache_write_tokens: %i[cache_write_tokens cache_creation_tokens],
+        }.freeze
+        COMPLETION_TOKEN_DETAILS = {
+          reasoning_tokens: %i[reasoning_tokens],
+        }.freeze
+
+        # A chat completion's token usage, in the shape the gateway reports it, breakdowns
+        # included. Cerebro reads this shape itself: it records each breakdown under a key of
+        # its own (reasoning as `output_reasoning_tokens`, cached input as
+        # `input_cached_tokens`) and takes it out of the output or input count it belongs to,
+        # so the total stays the one the gateway reported. Flattening a breakdown into a key of
+        # our own would instead be counted on top of the output it is part of.
+        def chat_usage_details(usage)
+          {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+            prompt_tokens_details: token_counts(usage.prompt_tokens_details, PROMPT_TOKEN_DETAILS),
+            completion_tokens_details: token_counts(usage.completion_tokens_details, COMPLETION_TOKEN_DETAILS),
+          }.compact
+        end
+
       private
+
+        # The breakdowns `names` lists that `details` reports a count for. Cerebro rejects the
+        # whole usage if any breakdown value is not a count, so a value that is not one is left
+        # out rather than costing the generation its token counts.
+        def token_counts(details, names)
+          reported = details.to_h
+          names.to_h do |name, aliases|
+            [name, aliases.map { |key| reported[key] }.find { |value| value.is_a?(Integer) && value >= 0 }]
+          end.compact.presence
+        end
 
         # `last_response` carries the HTTP metadata of the response a model was built
         # from. The client leaves it unset on nested and locally constructed models,
