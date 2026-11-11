@@ -1,0 +1,59 @@
+# Runs the client against the real inference gateway and Cerebro, with nothing stubbed (`rake e2e`,
+# specs in spec/e2e). The unit suite stubs every request, so it cannot see a change on either
+# service's side breaking the contract this gem relies on; this can. The weekday run catches such a
+# change when no PR is open here.
+#
+# The calls are billable, against the gateway key in the NIP_E2E_INFERENCE_API_KEY secret, which
+# is a key of its own with a budget, so the suite's spend is capped and attributable. Traces go to
+# the "Ruby SDK End-to-End Tests" Cerebro project. powerhome/software provisions the project and
+# writes all of these secrets and the project ID variable; none is set by hand.
+
+name: e2e
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gateway:
+    name: Inference gateway
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      # Tells a runner that cannot reach the gateway apart from a failing spec. The gateway is served
+      # only to Power's network; from anywhere else its ingress answers every path, the health check
+      # included, with a plain-text 404.
+      - name: Check the gateway is reachable
+        run: |
+          if ! curl --fail --silent --show-error --max-time 15 https://inference.powerhome.ai/health/liveliness; then
+            echo "::error::The inference gateway is not reachable from this runner. It is served only to Power's network."
+            exit 1
+          fi
+
+      - name: Run the end-to-end specs
+        env:
+          NIP_E2E_INFERENCE_API_KEY: ${{ secrets.NIP_E2E_INFERENCE_API_KEY }}
+          NIP_E2E_OBSERVABILITY_PROJECT_ID: ${{ vars.NIP_E2E_OBSERVABILITY_PROJECT_ID }}
+          NIP_E2E_OBSERVABILITY_PUBLIC_KEY: ${{ secrets.NIP_E2E_OBSERVABILITY_PUBLIC_KEY }}
+          NIP_E2E_OBSERVABILITY_SECRET_KEY: ${{ secrets.NIP_E2E_OBSERVABILITY_SECRET_KEY }}
+        run: bundle exec rake e2e

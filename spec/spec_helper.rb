@@ -8,3 +8,9 @@ require "nitro_intelligence"
 NitroIntelligence.deprecator.behavior = :silence
 
 Dir[File.join(__dir__, "support/**/*.rb")].each { |file| require file }
+
+# The end-to-end specs in spec/e2e make billable calls to a real gateway. `rake e2e` runs them with
+# `--tag e2e`, which lifts this exclusion.
+RSpec.configure do |config|
+  config.filter_run_excluding :e2e
+end
