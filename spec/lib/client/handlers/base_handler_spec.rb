@@ -212,4 +212,44 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
       expect(handler.cost_details(double("Response", last_response: nil))).to be_nil
     end
   end
+
+  describe "#chat_usage_details" do
+    # Built the way the client builds a response, so the specs see the real model's fields.
+    def usage_with(fields)
+      OpenAI::Internal::Type::Converter.coerce(OpenAI::Models::CompletionUsage, fields)
+    end
+
+    it "carries the reasoning and cached-input breakdowns in the shape the gateway reports them" do
+      usage = usage_with(
+        prompt_tokens: 2434, completion_tokens: 3809, total_tokens: 6243,
+        prompt_tokens_details: { cached_tokens: 1024 },
+        completion_tokens_details: { reasoning_tokens: 3206 }
+      )
+
+      expect(handler.chat_usage_details(usage)).to eq(
+        prompt_tokens: 2434, completion_tokens: 3809, total_tokens: 6243,
+        prompt_tokens_details: { cached_tokens: 1024 },
+        completion_tokens_details: { reasoning_tokens: 3206 }
+      )
+    end
+
+    it "records just the totals when the response has no breakdown" do
+      usage = usage_with(prompt_tokens: 10, completion_tokens: 20, total_tokens: 30, prompt_tokens_details: nil)
+
+      expect(handler.chat_usage_details(usage)).to eq(prompt_tokens: 10, completion_tokens: 20, total_tokens: 30)
+    end
+
+    it "keeps only the counts in a breakdown" do
+      usage = usage_with(
+        prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
+        prompt_tokens_details: { cached_tokens: nil, audio_tokens: nil },
+        completion_tokens_details: { reasoning_tokens: 12, audio_tokens: nil, unexpected: "x" }
+      )
+
+      expect(handler.chat_usage_details(usage)).to eq(
+        prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
+        completion_tokens_details: { reasoning_tokens: 12 }
+      )
+    end
+  end
 end
