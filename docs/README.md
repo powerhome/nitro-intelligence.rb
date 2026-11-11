@@ -708,6 +708,8 @@ trace_url = "#{NitroIntelligence.config.observability_base_url}/project/#{projec
 request["Authorization"] = "Basic #{project.auth_token}"
 ```
 
+`project.prompt(name, label:, version:)` fetches one of the project's prompts, as [`client.prompt`](#reading-a-prompt) does.
+
 `NitroIntelligence.project_client_registry.fetch(slug)` builds each project's client once per process, and raises `NitroIntelligence::Observability::Project::NotFoundError` for a slug `observability_projects` does not configure. `NitroIntelligence::Observability::Project.find_by_slug(slug:)` reads the same configuration without building a client, and returns `nil` instead. The gem never raises `NitroIntelligence::Observability::ProjectClient::NotFoundError`; it is public only because applications raise it themselves, and is to be retired ([#182](https://github.com/powerhome/nitro-intelligence.rb/issues/182)). Rescue `Project::NotFoundError` for a project that is not configured.
 
 Traces and scores are sent to Cerebro in the background. Fetch each project in an initializer to build its client at boot, and shut them all down as the process exits so that the last ones are sent:
@@ -847,6 +849,25 @@ client.chat(
   }
 )
 ```
+
+#### Reading a Prompt
+
+To read a prompt without making a model call, for its config or to compile its text for a request of your own, fetch it from an observed client:
+
+```ruby
+client = NitroIntelligence::Client.new(observability_project_slug: "page-finder")
+prompt = client.prompt("Page Finder Search")      # the production label
+prompt = client.prompt("Page Finder Search", label: "staging")
+prompt = client.prompt("Page Finder Search", version: 4)
+
+prompt.name    # => "Page Finder Search"
+prompt.version # => 4
+prompt.type    # => "text", or "chat"
+prompt.config  # => { min_relevance: 0.1, candidates: 50 }, keys symbolized
+prompt.compile(product: "Nitro") # the text, or the messages, with its variables filled in
+```
+
+Code that holds a project rather than a client can call `project.prompt` with the same arguments (see [Reaching Cerebro Directly](#reaching-cerebro-directly)). Either uses the same cache as a request naming the prompt: five minutes for a label, indefinitely for a version, and the last prompt fetched for a label when Cerebro cannot be reached. To use one prompt's settings across several steps, fetch it once and keep the result, or pass its `version` to later lookups, so that a label moved in between cannot mix two versions. A missing prompt raises `ObservabilityPromptNotFoundError` and a failed lookup `ObservabilityPromptError`, as below. A client without observability has no project to fetch from, and raises `NitroIntelligence::Observability::Project::NotFoundError`.
 
 #### Prompt Errors
 

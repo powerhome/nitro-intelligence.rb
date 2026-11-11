@@ -5,6 +5,7 @@ require "nitro_intelligence/client/handlers/embedding_handler"
 require "nitro_intelligence/client/handlers/image_handler"
 require "nitro_intelligence/client/handlers/rerank_handler"
 require "nitro_intelligence/client/handlers/text_to_speech_handler"
+require "nitro_intelligence/observability/project"
 
 module NitroIntelligence
   module Client
@@ -111,6 +112,30 @@ module NitroIntelligence
       #                 parameters: { top_n: 5 }).results.map(&:index)
       def rerank(query:, documents:, parameters: {})
         rerank_handler.create(query:, documents:, parameters: parameters.dup)
+      end
+
+      # Fetches a prompt from the client's Cerebro project without making a model call, as
+      # {Observability::Project#prompt} does.
+      #
+      # @param name [String] the prompt's name in Cerebro
+      # @param label [String, nil] the label to fetch, `"production"` when neither it nor `version`
+      #   is given
+      # @param version [Integer, nil] the version to fetch, taking precedence over `label`
+      # @return [Observability::Prompt]
+      # @raise [Observability::Project::NotFoundError] when the client has no Cerebro project: it was
+      #   built without an `observability_project_slug`, or with one `observability_projects` does
+      #   not configure
+      # @raise [Observability::PromptStore::ObservabilityPromptNotFoundError] when the prompt, at that
+      #   label or version, does not exist
+      # @raise [Observability::PromptStore::ObservabilityPromptError] when Cerebro fails to return
+      #   the prompt
+      # @example
+      #   client = NitroIntelligence::Client.new(observability_project_slug: "page-finder")
+      #   client.prompt("Page Finder Search").config[:min_relevance] # => 0.1
+      def prompt(name, label: nil, version: nil) # rubocop:disable Lint/UnusedMethodArgument
+        raise Observability::Project::NotFoundError,
+              "This client has no Cerebro project to fetch #{name.inspect} from: build it with an " \
+              "observability_project_slug that observability_projects configures"
       end
 
       # Generates an image, or edits `target_image`.

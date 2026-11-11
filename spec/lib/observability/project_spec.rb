@@ -33,6 +33,35 @@ RSpec.describe NitroIntelligence::Observability::Project do
     end
   end
 
+  describe "#prompt" do
+    let(:project) { described_class.new(slug: "s", id: "i", public_key: "pk", secret_key: "sk") }
+    let(:prompt) { NitroIntelligence::Observability::Prompt.new(name: "Search", type: "text", prompt: "Find", version: 2) }
+
+    it "fetches the production label by default" do
+      allow(fake_prompt_store).to receive(:get_prompt).and_return(prompt)
+
+      expect(project.prompt("Search")).to be(prompt)
+      expect(fake_prompt_store).to have_received(:get_prompt)
+        .with(prompt_name: "Search", prompt_label: nil, prompt_version: nil)
+    end
+
+    it "fetches the label or version asked for" do
+      allow(fake_prompt_store).to receive(:get_prompt).and_return(prompt)
+
+      project.prompt("Search", label: "staging", version: 2)
+
+      expect(fake_prompt_store).to have_received(:get_prompt)
+        .with(prompt_name: "Search", prompt_label: "staging", prompt_version: 2)
+    end
+
+    it "raises rather than returning nothing" do
+      allow(fake_prompt_store).to receive(:get_prompt).and_return(nil)
+
+      expect { project.prompt("Search") }
+        .to raise_error(NitroIntelligence::Observability::PromptStore::ObservabilityPromptNotFoundError)
+    end
+  end
+
   describe "content masking" do
     def build(**options)
       described_class.new(slug: "s", id: "i", public_key: "pk", secret_key: "sk", **options)

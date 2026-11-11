@@ -18,6 +18,11 @@ module NitroIntelligence
         @observer = observer
       end
 
+      # @api private
+      def prompt(name, label: nil, version: nil)
+        @observer.project_client.project.prompt(name, label:, version:)
+      end
+
     private
 
       def chat_handler
