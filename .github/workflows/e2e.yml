@@ -46,14 +46,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # mini_magick, which reads generated images, shells out to ImageMagick. GitHub's images ship it;
-      # the PAC runner's does not.
-      - name: Install ImageMagick
+      # GitHub's images ship these; the PAC runner's does not. Gems with native extensions
+      # (bigdecimal, psych) need a compiler and libyaml to install, and mini_magick, which reads
+      # generated images, shells out to ImageMagick.
+      - name: Install build tools and ImageMagick
         run: |
-          if ! command -v magick >/dev/null && ! command -v convert >/dev/null; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq --no-install-recommends imagemagick
-          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends build-essential libyaml-dev imagemagick
 
       - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
         with:
