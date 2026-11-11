@@ -65,7 +65,46 @@ module NitroIntelligence
           }.compact
         end
 
+        # A chat completion's message as Cerebro should record it, with its reasoning moved to
+        # where Cerebro's formatted view shows it.
+        #
+        # The gateway returns reasoning as the message's `reasoning_content`, and LiteLLM repeats
+        # it as `provider_specific_fields.reasoning`. Cerebro's formatted view reads neither: it
+        # shows a message's reasoning only from its `thinking` list, so the text is otherwise
+        # visible in the JSON view alone, and recorded twice. Here it is recorded once, as
+        # `thinking`. Any other provider field is kept as the gateway returned it.
+        #
+        # A copy, because openai-ruby's `to_h` is the message's own hash: changing it, or letting
+        # the observer truncate it, would change the response the caller gets back.
+        def recorded_message(message)
+          recorded = message.to_h.deep_dup
+          reasoning = recorded.delete(:reasoning_content)
+          reasoning = take_provider_reasoning(recorded, reasoning) || reasoning
+
+          if reasoning.is_a?(String) && reasoning.present?
+            recorded[:thinking] = [{ type: "thinking", content: reasoning }]
+          end
+          recorded
+        end
+
       private
+
+        # Removes LiteLLM's copy of the reasoning from the provider fields, and returns it, when it
+        # repeats the message's own or the message has none. Reasoning that says something else is
+        # left where it is.
+        def take_provider_reasoning(recorded, reasoning)
+          provider_fields = recorded[:provider_specific_fields]
+          return nil unless provider_fields.is_a?(Hash) && provider_fields.key?(:reasoning)
+          return nil unless reasoning.nil? || provider_fields[:reasoning] == reasoning
+
+          remaining = provider_fields.except(:reasoning)
+          if remaining.empty?
+            recorded.delete(:provider_specific_fields)
+          else
+            recorded[:provider_specific_fields] = remaining
+          end
+          provider_fields[:reasoning]
+        end
 
         # `last_response` carries the HTTP metadata of the response a model was built
         # from. The client leaves it unset on nested and locally constructed models,
