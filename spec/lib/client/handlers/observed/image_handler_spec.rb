@@ -54,7 +54,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
       double("CompletionResponse",
              model: "dall-e-3",
              choices: [double(message: double(to_h: { "content" => "base64_image_data_here" }))],
-             usage: double(prompt_tokens: 15, completion_tokens: 30, total_tokens: 45))
+             usage: double(prompt_tokens: 15, completion_tokens: 30, total_tokens: 45,
+                           prompt_tokens_details: nil, completion_tokens_details: nil))
     end
 
     let(:fake_generation) { instance_double(Langfuse::Generation, trace_id: "trace-999", id: "f8ccff00e8b9e5bd") }
@@ -162,7 +163,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
         "CompletionResponse",
         model: "dall-e-3",
         choices: [double(message: double(to_h: { "content" => "base64_image_data_here" }))],
-        usage: double(prompt_tokens: 15, completion_tokens: 30, total_tokens: 45),
+        usage: double(prompt_tokens: 15, completion_tokens: 30, total_tokens: 45,
+                      prompt_tokens_details: nil, completion_tokens_details: nil),
         last_response: double("LastResponse", headers: {
                                 "x-litellm-response-cost" => "5.85e-06",
                                 "x-litellm-response-cost-input" => "1.1e-06",
