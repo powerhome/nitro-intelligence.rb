@@ -34,12 +34,26 @@ jobs:
       github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository &&
       github.actor != 'dependabot[bot]')
-    runs-on: ubuntu-latest
+    # The gateway is served only to Power's network, which GitHub-hosted runners are outside, so
+    # this runs on the repository's own PAC runner (powerhome/pac,
+    # addons/releases/other-runners/tier/beta/nitro-intelligence-rb-runner.yaml). The repository is
+    # public and a fork PR runs its own copy of this file, so the condition above does not protect
+    # that runner: requiring approval before any outside contributor's fork PR runs workflows does.
+    runs-on: [self-hosted, pac-v2]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # mini_magick, which reads generated images, shells out to ImageMagick. GitHub's images ship it;
+      # the PAC runner's does not.
+      - name: Install ImageMagick
+        run: |
+          if ! command -v magick >/dev/null && ! command -v convert >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq --no-install-recommends imagemagick
+          fi
 
       - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
         with:
