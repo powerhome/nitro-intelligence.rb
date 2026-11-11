@@ -65,6 +65,28 @@ module NitroIntelligence
           }.compact
         end
 
+        # A chat completion's message as Cerebro should record it, with its reasoning moved to
+        # where Cerebro's formatted view shows it.
+        #
+        # The gateway returns reasoning as the message's `reasoning_content`, and LiteLLM repeats
+        # it as `provider_specific_fields.reasoning`. Cerebro's formatted view reads neither: it
+        # shows a message's reasoning only from its `thinking` list, so the text is otherwise
+        # visible in the JSON view alone, and recorded twice. Here it is recorded once, as
+        # `thinking`. Only reasoning that is text is moved: anything else a provider sends there,
+        # and every other provider field, is kept as the gateway returned it.
+        #
+        # A copy, because openai-ruby's `to_h` is the message's own hash: changing it, or letting
+        # the observer truncate it, would change the response the caller gets back.
+        def recorded_message(message)
+          recorded = message.to_h.deep_dup
+          reasoning = reasoning_text(recorded[:reasoning_content])
+          recorded.delete(:reasoning_content) if reasoning
+          reasoning = take_provider_reasoning(recorded, reasoning) || reasoning
+
+          recorded[:thinking] = [{ type: "thinking", content: reasoning }] if reasoning
+          recorded
+        end
+
         # The breakdowns of a chat completion's usage recorded in Cerebro, each under the name
         # Cerebro is sent and the names the gateway may report it under, first match winning.
         # Cerebro takes every breakdown it is sent out of the input or output count and records
@@ -98,6 +120,29 @@ module NitroIntelligence
         end
 
       private
+
+        def reasoning_text(value)
+          value if value.is_a?(String) && value.present?
+        end
+
+        # Removes LiteLLM's copy of the reasoning from the provider fields, and returns it, when it
+        # is text that repeats the message's own or the message has none. Reasoning that says
+        # something else, or is not text, is left where it is.
+        def take_provider_reasoning(recorded, reasoning)
+          provider_fields = recorded[:provider_specific_fields]
+          return nil unless provider_fields.is_a?(Hash)
+
+          provider_reasoning = reasoning_text(provider_fields[:reasoning])
+          return nil unless provider_reasoning && (reasoning.nil? || provider_reasoning == reasoning)
+
+          remaining = provider_fields.except(:reasoning)
+          if remaining.empty?
+            recorded.delete(:provider_specific_fields)
+          else
+            recorded[:provider_specific_fields] = remaining
+          end
+          provider_fields[:reasoning]
+        end
 
         # The breakdowns `names` lists that `details` reports a count for. Cerebro rejects the
         # whole usage if any breakdown value is not a count, so a value that is not one is left
