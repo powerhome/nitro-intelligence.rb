@@ -274,11 +274,24 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
     it "records a message without reasoning as it came back" do
       message = message_with(reasoning_content: nil)
 
-      expect(handler.recorded_message(message)).to eq(role: :assistant, content: "answer", refusal: nil)
+      expect(handler.recorded_message(message)).to eq(
+        role: :assistant, content: "answer", refusal: nil, reasoning_content: nil
+      )
     end
 
     it "does not record empty reasoning as thinking" do
       expect(handler.recorded_message(message_with(reasoning_content: ""))).not_to have_key(:thinking)
+    end
+
+    it "leaves reasoning that is not text where the provider put it" do
+      structured = [{ type: "reasoning", text: "thinking it over" }]
+      message = message_with(reasoning_content: structured, provider_specific_fields: { reasoning: structured })
+
+      recorded = handler.recorded_message(message)
+
+      expect(recorded[:reasoning_content]).to eq(structured)
+      expect(recorded[:provider_specific_fields]).to eq(reasoning: structured)
+      expect(recorded).not_to have_key(:thinking)
     end
   end
 end

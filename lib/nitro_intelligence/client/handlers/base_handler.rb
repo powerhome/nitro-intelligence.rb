@@ -72,30 +72,36 @@ module NitroIntelligence
         # it as `provider_specific_fields.reasoning`. Cerebro's formatted view reads neither: it
         # shows a message's reasoning only from its `thinking` list, so the text is otherwise
         # visible in the JSON view alone, and recorded twice. Here it is recorded once, as
-        # `thinking`. Any other provider field is kept as the gateway returned it.
+        # `thinking`. Only reasoning that is text is moved: anything else a provider sends there,
+        # and every other provider field, is kept as the gateway returned it.
         #
         # A copy, because openai-ruby's `to_h` is the message's own hash: changing it, or letting
         # the observer truncate it, would change the response the caller gets back.
         def recorded_message(message)
           recorded = message.to_h.deep_dup
-          reasoning = recorded.delete(:reasoning_content)
+          reasoning = reasoning_text(recorded[:reasoning_content])
+          recorded.delete(:reasoning_content) if reasoning
           reasoning = take_provider_reasoning(recorded, reasoning) || reasoning
 
-          if reasoning.is_a?(String) && reasoning.present?
-            recorded[:thinking] = [{ type: "thinking", content: reasoning }]
-          end
+          recorded[:thinking] = [{ type: "thinking", content: reasoning }] if reasoning
           recorded
         end
 
       private
 
+        def reasoning_text(value)
+          value if value.is_a?(String) && value.present?
+        end
+
         # Removes LiteLLM's copy of the reasoning from the provider fields, and returns it, when it
-        # repeats the message's own or the message has none. Reasoning that says something else is
-        # left where it is.
+        # is text that repeats the message's own or the message has none. Reasoning that says
+        # something else, or is not text, is left where it is.
         def take_provider_reasoning(recorded, reasoning)
           provider_fields = recorded[:provider_specific_fields]
-          return nil unless provider_fields.is_a?(Hash) && provider_fields.key?(:reasoning)
-          return nil unless reasoning.nil? || provider_fields[:reasoning] == reasoning
+          return nil unless provider_fields.is_a?(Hash)
+
+          provider_reasoning = reasoning_text(provider_fields[:reasoning])
+          return nil unless provider_reasoning && (reasoning.nil? || provider_reasoning == reasoning)
 
           remaining = provider_fields.except(:reasoning)
           if remaining.empty?
