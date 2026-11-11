@@ -251,5 +251,42 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
         completion_tokens_details: { reasoning_tokens: 12 }
       )
     end
+
+    it "records an Anthropic cache write once, though the gateway reports it under two names" do
+      # How the gateway reports 10 uncached input tokens and a 100-token cache write: it
+      # mirrors the write into both fields, and Cerebro would count each of them.
+      usage = usage_with(
+        prompt_tokens: 110, completion_tokens: 20, total_tokens: 130,
+        prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 100, cache_creation_tokens: 100 }
+      )
+
+      expect(handler.chat_usage_details(usage)).to eq(
+        prompt_tokens: 110, completion_tokens: 20, total_tokens: 130,
+        prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 100 }
+      )
+    end
+
+    it "records a cache write the gateway reports only under its Anthropic name" do
+      usage = usage_with(
+        prompt_tokens: 110, completion_tokens: 20, total_tokens: 130,
+        prompt_tokens_details: { cache_creation_tokens: 100 }
+      )
+
+      expect(handler.chat_usage_details(usage)[:prompt_tokens_details]).to eq(cache_write_tokens: 100)
+    end
+
+    it "leaves out the breakdowns that overlap the others or are not part of the count" do
+      usage = usage_with(
+        prompt_tokens: 1079, completion_tokens: 811, total_tokens: 1890,
+        prompt_tokens_details: { cached_tokens: 512, text_tokens: 1079, image_tokens: 0, initial_prompt_tokens: 900 },
+        completion_tokens_details: { reasoning_tokens: 792, text_tokens: 19, audio_tokens: 0 }
+      )
+
+      expect(handler.chat_usage_details(usage)).to eq(
+        prompt_tokens: 1079, completion_tokens: 811, total_tokens: 1890,
+        prompt_tokens_details: { cached_tokens: 512 },
+        completion_tokens_details: { reasoning_tokens: 792 }
+      )
+    end
   end
 end
