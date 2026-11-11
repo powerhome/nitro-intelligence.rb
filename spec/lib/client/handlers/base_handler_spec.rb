@@ -213,6 +213,88 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
     end
   end
 
+  describe "#recorded_message" do
+    # Built the way the client builds a response, so the specs see the real model's fields.
+    def message_with(fields)
+      OpenAI::Internal::Type::Converter.coerce(
+        OpenAI::Models::Chat::ChatCompletionMessage, { role: "assistant", content: "answer", refusal: nil, **fields }
+      )
+    end
+
+    it "records the reasoning once, as the thinking Cerebro shows" do
+      message = message_with(reasoning_content: "thinking it over",
+                             provider_specific_fields: { reasoning: "thinking it over" })
+
+      expect(handler.recorded_message(message)).to eq(
+        role: :assistant, content: "answer", refusal: nil,
+        thinking: [{ type: "thinking", content: "thinking it over" }]
+      )
+    end
+
+    it "keeps the provider fields other than the repeated reasoning" do
+      message = message_with(reasoning_content: "thinking it over",
+                             provider_specific_fields: { reasoning: "thinking it over", thought_signatures: ["sig"] })
+
+      recorded = handler.recorded_message(message)
+
+      expect(recorded[:provider_specific_fields]).to eq(thought_signatures: ["sig"])
+      expect(recorded[:thinking]).to eq([{ type: "thinking", content: "thinking it over" }])
+    end
+
+    it "takes the reasoning from the provider fields when the message has none of its own" do
+      message = message_with(provider_specific_fields: { reasoning: "thinking it over" })
+
+      recorded = handler.recorded_message(message)
+
+      expect(recorded).not_to have_key(:provider_specific_fields)
+      expect(recorded[:thinking]).to eq([{ type: "thinking", content: "thinking it over" }])
+    end
+
+    it "leaves provider reasoning that differs from the message's own where it was" do
+      message = message_with(reasoning_content: "thinking it over", provider_specific_fields: { reasoning: "a summary" })
+
+      recorded = handler.recorded_message(message)
+
+      expect(recorded[:provider_specific_fields]).to eq(reasoning: "a summary")
+      expect(recorded[:thinking]).to eq([{ type: "thinking", content: "thinking it over" }])
+    end
+
+    it "leaves the caller's message as the gateway returned it" do
+      message = message_with(reasoning_content: "thinking it over",
+                             provider_specific_fields: { reasoning: "thinking it over" })
+
+      handler.recorded_message(message)[:provider_specific_fields] = "changed"
+
+      expect(message.to_h).to eq(
+        role: :assistant, content: "answer", refusal: nil, reasoning_content: "thinking it over",
+        provider_specific_fields: { reasoning: "thinking it over" }
+      )
+    end
+
+    it "records a message without reasoning as it came back" do
+      message = message_with(reasoning_content: nil)
+
+      expect(handler.recorded_message(message)).to eq(
+        role: :assistant, content: "answer", refusal: nil, reasoning_content: nil
+      )
+    end
+
+    it "does not record empty reasoning as thinking" do
+      expect(handler.recorded_message(message_with(reasoning_content: ""))).not_to have_key(:thinking)
+    end
+
+    it "leaves reasoning that is not text where the provider put it" do
+      structured = [{ type: "reasoning", text: "thinking it over" }]
+      message = message_with(reasoning_content: structured, provider_specific_fields: { reasoning: structured })
+
+      recorded = handler.recorded_message(message)
+
+      expect(recorded[:reasoning_content]).to eq(structured)
+      expect(recorded[:provider_specific_fields]).to eq(reasoning: structured)
+      expect(recorded).not_to have_key(:thinking)
+    end
+  end
+
   describe "#chat_usage_details" do
     # Built the way the client builds a response, so the specs see the real model's fields.
     def usage_with(fields)
