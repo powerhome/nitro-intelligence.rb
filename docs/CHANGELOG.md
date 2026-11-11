@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0](https://github.com/powerhome/nitro-intelligence.rb/compare/v4.2.0...v4.3.0) (2026-11-11)
+
+
+### Added
+
+* embed queries and documents with tracing and cost ([#199](https://github.com/powerhome/nitro-intelligence.rb/issues/199)) ([8136c50](https://github.com/powerhome/nitro-intelligence.rb/commit/8136c5076c0f39698bb2d93dd535aad6efbd343e))
+* Expose Cerebro prompts ([#201](https://github.com/powerhome/nitro-intelligence.rb/issues/201)) ([b56cea8](https://github.com/powerhome/nitro-intelligence.rb/commit/b56cea839c7b32aeb6c490ff0c3316f5e7117b21))
+* rerank documents against a query with tracing and cost ([#202](https://github.com/powerhome/nitro-intelligence.rb/issues/202)) ([4f59f4d](https://github.com/powerhome/nitro-intelligence.rb/commit/4f59f4d3458694e3ff45338a2decb973c6015e60))
+
 ## [4.2.0](https://github.com/powerhome/nitro-intelligence.rb/compare/v4.1.1...v4.2.0) (2026-11-10)
 
 
