@@ -98,16 +98,12 @@ module NitroIntelligence
             chat_completion = @base_handler.perform_request(
               parameters:, correlation_trace_id: generation.trace_id, mask_content: project.mask_content?
             )
-            output = chat_completion.choices.first.message.to_h
+            output = @base_handler.recorded_message(chat_completion.choices.first.message)
 
             trace_attributes = {
               model: chat_completion.model,
               output:,
-              usage_details: {
-                prompt_tokens: chat_completion.usage.prompt_tokens,
-                completion_tokens: chat_completion.usage.completion_tokens,
-                total_tokens: chat_completion.usage.total_tokens,
-              },
+              usage_details: @base_handler.chat_usage_details(chat_completion.usage),
               cost_details: @base_handler.cost_details(chat_completion),
             }
 

@@ -89,18 +89,14 @@ module NitroIntelligence
             # A copy, because recording replaces its image URLs and the caller may send the same
             # messages again.
             input = parameters[:messages].deep_dup
-            output = chat_completion.choices.first.message.to_h
+            output = @base_handler.recorded_message(chat_completion.choices.first.message)
             handle_image_generation_uploads(input, output, image_generation)
 
             trace_attributes = {
               model: chat_completion.model,
               input:,
               output:,
-              usage_details: {
-                prompt_tokens: chat_completion.usage.prompt_tokens,
-                completion_tokens: chat_completion.usage.completion_tokens,
-                total_tokens: chat_completion.usage.total_tokens,
-              },
+              usage_details: @base_handler.chat_usage_details(chat_completion.usage),
               cost_details: @base_handler.cost_details(chat_completion),
             }
 
