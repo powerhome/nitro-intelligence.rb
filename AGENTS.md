@@ -43,6 +43,11 @@ User-facing documentation is `docs/README.md` (configuration and usage) and `doc
 
 This repository is one part of the Nitro Intelligence Platform (NIP). The parent repository is [`powerhome/nitro-intelligence`](https://github.com/powerhome/nitro-intelligence). The full set of NIP repositories and the upstream projects they build on, and where each kind of change lands, is in [`docs/operations/repositories.md`](https://github.com/powerhome/nitro-intelligence/blob/main/docs/operations/repositories.md) there. When planning or executing work, consider that whole set: check whether a change here depends on, or requires, a change in a sibling repository, and whether the behaviour in question is actually decided upstream (for this repo, chiefly `openai/openai-ruby` and `simplepractice/langfuse-rb` at the pinned version, and the LiteLLM, Langfuse and Aegra/LangGraph APIs of the services it calls). Name cross-repository follow-ups explicitly in the plan or PR.
 
+## SOPS secrets
+
+- Before committing a change to a SOPS-encrypted file, verify it is still encrypted: `sops filestatus <file>` must report `{"encrypted":true}`, and the diff must show only `ENC[...]` values and `sops` metadata, with no plaintext.
+- Never push a commit that touches a SOPS-encrypted file until the human driving the agent has verified it manually. After committing, show them the diff and push only once they confirm, even when the task implies pushing. A plaintext secret pushed to GitHub is leaked for good, even if it is reverted later.
+
 ## Pull requests
 
 - Title every PR as a [Conventional Commit](https://www.conventionalcommits.org/en/v1.0.0/), `type(scope)!: description`, as NIP's [decision record](https://github.com/powerhome/nitro-intelligence/blob/main/docs/operations/decisions/0002-conventional-commits-drive-nip-releases.md) sets out: `feat` or `fix` for changes this repository's consumers see, other types for the rest, and `!` with a `BREAKING CHANGE:` paragraph in the description for a breaking change. A Runway key, if there is one, goes in square brackets at the end. The title becomes the squash commit on `main`, and the `PR title` check enforces the format.
