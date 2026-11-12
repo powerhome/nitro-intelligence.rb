@@ -1,9 +1,11 @@
 # End-to-end specs: the real client against a real inference gateway, with nothing stubbed. They
-# make billable model calls, so they run only through `rake e2e` (see the Rakefile), never in the
-# default suite, and need a gateway key in NIP_E2E_INFERENCE_API_KEY.
+# make billable model calls, so they run through `rake e2e` or by naming their files, never in the
+# default suite (see spec_helper.rb), and need a gateway key in NIP_E2E_INFERENCE_API_KEY.
 #
 # Assertions check what any working model must get right, not exact wording, so that a model
 # upgrade behind the gateway does not fail them while a broken request or response contract does.
+require "active_support/core_ext/object/blank"
+
 module E2eHelpers
   API_KEY_VARIABLE = "NIP_E2E_INFERENCE_API_KEY".freeze
   BASE_URL_VARIABLE = "NIP_E2E_INFERENCE_BASE_URL".freeze
@@ -108,13 +110,23 @@ end
 RSpec.configure do |config|
   config.include E2eHelpers, :e2e
 
+  # Other specs loaded in the same process load webmock/rspec, which blocks real requests. The e2e
+  # groups lift that and put back whatever was in force before, allowances included.
+  webmock_states = []
+
   config.before(:context, :e2e) do
     E2eHelpers.configure!
-    # Other specs loaded in the same process load webmock/rspec, which blocks real requests.
-    WebMock.allow_net_connect! if defined?(WebMock)
+    next unless defined?(WebMock)
+
+    webmock = WebMock::Config.instance
+    webmock_states.push([webmock.allow_net_connect, webmock.allow_localhost, webmock.allow])
+    WebMock.allow_net_connect!
   end
 
   config.after(:context, :e2e) do
-    WebMock.disable_net_connect! if defined?(WebMock)
+    next unless defined?(WebMock) && webmock_states.any?
+
+    webmock = WebMock::Config.instance
+    webmock.allow_net_connect, webmock.allow_localhost, webmock.allow = webmock_states.pop
   end
 end

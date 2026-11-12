@@ -18,8 +18,10 @@ on:
     - cron: "17 6 * * 1-5"
   workflow_dispatch:
 
+# A newer push supersedes an older one on the same ref, but a push to main must not cancel the
+# scheduled or manual run on main, which would then report nothing at all.
 concurrency:
-  group: e2e-${{ github.ref }}
+  group: e2e-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
