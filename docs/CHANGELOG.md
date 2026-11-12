@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.1](https://github.com/powerhome/nitro-intelligence.rb/compare/v4.3.0...v4.3.1) (2026-11-11)
+
+
+### Fixed
+
+* record the cached-input and cache-write tokens a chat generation reports in Cerebro ([#211](https://github.com/powerhome/nitro-intelligence.rb/issues/211)) ([460a10f](https://github.com/powerhome/nitro-intelligence.rb/commit/460a10f2fb3b2a04ad28369eeec71ebadc3318a4))
+* record the reasoning tokens a chat generation spent ([#211](https://github.com/powerhome/nitro-intelligence.rb/issues/211)) ([460a10f](https://github.com/powerhome/nitro-intelligence.rb/commit/460a10f2fb3b2a04ad28369eeec71ebadc3318a4))
+* show a chat generation's reasoning in Cerebro's formatted view ([#212](https://github.com/powerhome/nitro-intelligence.rb/issues/212)) ([d7ffc8d](https://github.com/powerhome/nitro-intelligence.rb/commit/d7ffc8dc42d666af09d4f2ccade997b0345959d1))
+
 ## [4.3.0](https://github.com/powerhome/nitro-intelligence.rb/compare/v4.2.0...v4.3.0) (2026-11-11)
 
 

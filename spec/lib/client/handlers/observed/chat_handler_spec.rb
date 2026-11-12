@@ -27,7 +27,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
       double("CompletionResponse",
              model: "gpt-4",
              choices: [double(message: double(to_h: { "content" => "response" }))],
-             usage: double(prompt_tokens: 10, completion_tokens: 20, total_tokens: 30))
+             usage: double(prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
+                           prompt_tokens_details: nil, completion_tokens_details: nil))
     end
 
     it "observes the request and builds trace attributes" do
@@ -50,12 +51,34 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
       expect(trace_attributes[:output]).to eq({ "content" => "response" })
     end
 
+    it "records the reasoning tokens the gateway reported" do
+      reasoning_response = double(
+        "CompletionResponse",
+        model: "Qwen/Qwen3.6-35B-A3B",
+        choices: [double(message: double(to_h: { "content" => "response", "reasoning_content" => "thinking" }))],
+        usage: double(prompt_tokens: 2434, completion_tokens: 3809, total_tokens: 6243,
+                      prompt_tokens_details: nil, completion_tokens_details: { reasoning_tokens: 3206 })
+      )
+
+      allow(fake_observer).to receive(:observe).and_yield(fake_generation)
+      expect(fake_completions).to receive(:create).and_return(reasoning_response)
+
+      _, trace_attributes = handler.create(message: "hello")
+
+      expect(trace_attributes[:usage_details]).to eq(
+        prompt_tokens: 2434, completion_tokens: 3809, total_tokens: 6243,
+        completion_tokens_details: { reasoning_tokens: 3206 }
+      )
+      expect(trace_attributes[:output]).to include("reasoning_content" => "thinking")
+    end
+
     it "carries the cost the gateway reported into the trace attributes" do
       priced_response = double(
         "CompletionResponse",
         model: "gpt-4",
         choices: [double(message: double(to_h: { "content" => "response" }))],
-        usage: double(prompt_tokens: 10, completion_tokens: 20, total_tokens: 30),
+        usage: double(prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
+                      prompt_tokens_details: nil, completion_tokens_details: nil),
         last_response: double("LastResponse", headers: {
                                 "x-litellm-response-cost" => "5.85e-06",
                                 "x-litellm-response-cost-input" => "1.1e-06",

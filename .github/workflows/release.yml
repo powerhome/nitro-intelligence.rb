@@ -6,7 +6,8 @@
 #
 # It runs as the release GitHub App, not GITHUB_TOKEN: a PR or tag GITHUB_TOKEN creates starts no
 # workflows, so the release PR would never get its required checks and the tag would never publish
-# the gem. The App also signs the release commit, which main's ruleset requires.
+# the gem. The App also signs the release commit, which main's ruleset requires. Its key is in the
+# release environment, which only main can deploy to, so no run from a branch or tag can read it.
 
 name: Release
 
@@ -27,6 +28,7 @@ jobs:
     # branch would run that branch's version of them with the App's write token.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - name: Mint release App token
         id: app-token

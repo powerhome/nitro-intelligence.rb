@@ -65,7 +65,94 @@ module NitroIntelligence
           }.compact
         end
 
+        # A chat completion's message as Cerebro should record it, with its reasoning moved to
+        # where Cerebro's formatted view shows it.
+        #
+        # The gateway returns reasoning as the message's `reasoning_content`, and LiteLLM repeats
+        # it as `provider_specific_fields.reasoning`. Cerebro's formatted view reads neither: it
+        # shows a message's reasoning only from its `thinking` list, so the text is otherwise
+        # visible in the JSON view alone, and recorded twice. Here it is recorded once, as
+        # `thinking`. Only reasoning that is text is moved: anything else a provider sends there,
+        # and every other provider field, is kept as the gateway returned it.
+        #
+        # A copy, because openai-ruby's `to_h` is the message's own hash: changing it, or letting
+        # the observer truncate it, would change the response the caller gets back.
+        def recorded_message(message)
+          recorded = message.to_h.deep_dup
+          reasoning = reasoning_text(recorded[:reasoning_content])
+          recorded.delete(:reasoning_content) if reasoning
+          reasoning = take_provider_reasoning(recorded, reasoning) || reasoning
+
+          recorded[:thinking] = [{ type: "thinking", content: reasoning }] if reasoning
+          recorded
+        end
+
+        # The breakdowns of a chat completion's usage recorded in Cerebro, each under the name
+        # Cerebro is sent and the names the gateway may report it under, first match winning.
+        # Cerebro takes every breakdown it is sent out of the input or output count and records
+        # it alongside, so only breakdowns that are part of that count and do not overlap one
+        # another are sent. The gateway reports others that are not: it mirrors a cache write
+        # as both `cache_write_tokens` and `cache_creation_tokens`, splits tokens by modality
+        # (`text_tokens`, `image_tokens` and the like) across the cached and reasoning ones,
+        # and adds counts such as `initial_prompt_tokens` that are not part of the input at all.
+        PROMPT_TOKEN_DETAILS = {
+          cached_tokens: %i[cached_tokens],
+          cache_write_tokens: %i[cache_write_tokens cache_creation_tokens],
+        }.freeze
+        COMPLETION_TOKEN_DETAILS = {
+          reasoning_tokens: %i[reasoning_tokens],
+        }.freeze
+
+        # A chat completion's token usage, in the shape the gateway reports it, breakdowns
+        # included. Cerebro reads this shape itself: it records each breakdown under a key of
+        # its own (reasoning as `output_reasoning_tokens`, cached input as
+        # `input_cached_tokens`) and takes it out of the output or input count it belongs to,
+        # so the total stays the one the gateway reported. Flattening a breakdown into a key of
+        # our own would instead be counted on top of the output it is part of.
+        def chat_usage_details(usage)
+          {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+            prompt_tokens_details: token_counts(usage.prompt_tokens_details, PROMPT_TOKEN_DETAILS),
+            completion_tokens_details: token_counts(usage.completion_tokens_details, COMPLETION_TOKEN_DETAILS),
+          }.compact
+        end
+
       private
+
+        def reasoning_text(value)
+          value if value.is_a?(String) && value.present?
+        end
+
+        # Removes LiteLLM's copy of the reasoning from the provider fields, and returns it, when it
+        # is text that repeats the message's own or the message has none. Reasoning that says
+        # something else, or is not text, is left where it is.
+        def take_provider_reasoning(recorded, reasoning)
+          provider_fields = recorded[:provider_specific_fields]
+          return nil unless provider_fields.is_a?(Hash)
+
+          provider_reasoning = reasoning_text(provider_fields[:reasoning])
+          return nil unless provider_reasoning && (reasoning.nil? || provider_reasoning == reasoning)
+
+          remaining = provider_fields.except(:reasoning)
+          if remaining.empty?
+            recorded.delete(:provider_specific_fields)
+          else
+            recorded[:provider_specific_fields] = remaining
+          end
+          provider_fields[:reasoning]
+        end
+
+        # The breakdowns `names` lists that `details` reports a count for. Cerebro rejects the
+        # whole usage if any breakdown value is not a count, so a value that is not one is left
+        # out rather than costing the generation its token counts.
+        def token_counts(details, names)
+          reported = details.to_h
+          names.to_h do |name, aliases|
+            [name, aliases.map { |key| reported[key] }.find { |value| value.is_a?(Integer) && value >= 0 }]
+          end.compact.presence
+        end
 
         # `last_response` carries the HTTP metadata of the response a model was built
         # from. The client leaves it unset on nested and locally constructed models,

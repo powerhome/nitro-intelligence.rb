@@ -212,4 +212,163 @@ RSpec.describe NitroIntelligence::Client::Handlers::BaseHandler do
       expect(handler.cost_details(double("Response", last_response: nil))).to be_nil
     end
   end
+
+  describe "#recorded_message" do
+    # Built the way the client builds a response, so the specs see the real model's fields.
+    def message_with(fields)
+      OpenAI::Internal::Type::Converter.coerce(
+        OpenAI::Models::Chat::ChatCompletionMessage, { role: "assistant", content: "answer", refusal: nil, **fields }
+      )
+    end
+
+    it "records the reasoning once, as the thinking Cerebro shows" do
+      message = message_with(reasoning_content: "thinking it over",
+                             provider_specific_fields: { reasoning: "thinking it over" })
+
+      expect(handler.recorded_message(message)).to eq(
+        role: :assistant, content: "answer", refusal: nil,
+        thinking: [{ type: "thinking", content: "thinking it over" }]
+      )
+    end
+
+    it "keeps the provider fields other than the repeated reasoning" do
+      message = message_with(reasoning_content: "thinking it over",
+                             provider_specific_fields: { reasoning: "thinking it over", thought_signatures: ["sig"] })
+
+      recorded = handler.recorded_message(message)
+
+      expect(recorded[:provider_specific_fields]).to eq(thought_signatures: ["sig"])
+      expect(recorded[:thinking]).to eq([{ type: "thinking", content: "thinking it over" }])
+    end
+
+    it "takes the reasoning from the provider fields when the message has none of its own" do
+      message = message_with(provider_specific_fields: { reasoning: "thinking it over" })
+
+      recorded = handler.recorded_message(message)
+
+      expect(recorded).not_to have_key(:provider_specific_fields)
+      expect(recorded[:thinking]).to eq([{ type: "thinking", content: "thinking it over" }])
+    end
+
+    it "leaves provider reasoning that differs from the message's own where it was" do
+      message = message_with(reasoning_content: "thinking it over", provider_specific_fields: { reasoning: "a summary" })
+
+      recorded = handler.recorded_message(message)
+
+      expect(recorded[:provider_specific_fields]).to eq(reasoning: "a summary")
+      expect(recorded[:thinking]).to eq([{ type: "thinking", content: "thinking it over" }])
+    end
+
+    it "leaves the caller's message as the gateway returned it" do
+      message = message_with(reasoning_content: "thinking it over",
+                             provider_specific_fields: { reasoning: "thinking it over" })
+
+      handler.recorded_message(message)[:provider_specific_fields] = "changed"
+
+      expect(message.to_h).to eq(
+        role: :assistant, content: "answer", refusal: nil, reasoning_content: "thinking it over",
+        provider_specific_fields: { reasoning: "thinking it over" }
+      )
+    end
+
+    it "records a message without reasoning as it came back" do
+      message = message_with(reasoning_content: nil)
+
+      expect(handler.recorded_message(message)).to eq(
+        role: :assistant, content: "answer", refusal: nil, reasoning_content: nil
+      )
+    end
+
+    it "does not record empty reasoning as thinking" do
+      expect(handler.recorded_message(message_with(reasoning_content: ""))).not_to have_key(:thinking)
+    end
+
+    it "leaves reasoning that is not text where the provider put it" do
+      structured = [{ type: "reasoning", text: "thinking it over" }]
+      message = message_with(reasoning_content: structured, provider_specific_fields: { reasoning: structured })
+
+      recorded = handler.recorded_message(message)
+
+      expect(recorded[:reasoning_content]).to eq(structured)
+      expect(recorded[:provider_specific_fields]).to eq(reasoning: structured)
+      expect(recorded).not_to have_key(:thinking)
+    end
+  end
+
+  describe "#chat_usage_details" do
+    # Built the way the client builds a response, so the specs see the real model's fields.
+    def usage_with(fields)
+      OpenAI::Internal::Type::Converter.coerce(OpenAI::Models::CompletionUsage, fields)
+    end
+
+    it "carries the reasoning and cached-input breakdowns in the shape the gateway reports them" do
+      usage = usage_with(
+        prompt_tokens: 2434, completion_tokens: 3809, total_tokens: 6243,
+        prompt_tokens_details: { cached_tokens: 1024 },
+        completion_tokens_details: { reasoning_tokens: 3206 }
+      )
+
+      expect(handler.chat_usage_details(usage)).to eq(
+        prompt_tokens: 2434, completion_tokens: 3809, total_tokens: 6243,
+        prompt_tokens_details: { cached_tokens: 1024 },
+        completion_tokens_details: { reasoning_tokens: 3206 }
+      )
+    end
+
+    it "records just the totals when the response has no breakdown" do
+      usage = usage_with(prompt_tokens: 10, completion_tokens: 20, total_tokens: 30, prompt_tokens_details: nil)
+
+      expect(handler.chat_usage_details(usage)).to eq(prompt_tokens: 10, completion_tokens: 20, total_tokens: 30)
+    end
+
+    it "keeps only the counts in a breakdown" do
+      usage = usage_with(
+        prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
+        prompt_tokens_details: { cached_tokens: nil, audio_tokens: nil },
+        completion_tokens_details: { reasoning_tokens: 12, audio_tokens: nil, unexpected: "x" }
+      )
+
+      expect(handler.chat_usage_details(usage)).to eq(
+        prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
+        completion_tokens_details: { reasoning_tokens: 12 }
+      )
+    end
+
+    it "records an Anthropic cache write once, though the gateway reports it under two names" do
+      # How the gateway reports 10 uncached input tokens and a 100-token cache write: it
+      # mirrors the write into both fields, and Cerebro would count each of them.
+      usage = usage_with(
+        prompt_tokens: 110, completion_tokens: 20, total_tokens: 130,
+        prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 100, cache_creation_tokens: 100 }
+      )
+
+      expect(handler.chat_usage_details(usage)).to eq(
+        prompt_tokens: 110, completion_tokens: 20, total_tokens: 130,
+        prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 100 }
+      )
+    end
+
+    it "records a cache write the gateway reports only under its Anthropic name" do
+      usage = usage_with(
+        prompt_tokens: 110, completion_tokens: 20, total_tokens: 130,
+        prompt_tokens_details: { cache_creation_tokens: 100 }
+      )
+
+      expect(handler.chat_usage_details(usage)[:prompt_tokens_details]).to eq(cache_write_tokens: 100)
+    end
+
+    it "leaves out the breakdowns that overlap the others or are not part of the count" do
+      usage = usage_with(
+        prompt_tokens: 1079, completion_tokens: 811, total_tokens: 1890,
+        prompt_tokens_details: { cached_tokens: 512, text_tokens: 1079, image_tokens: 0, initial_prompt_tokens: 900 },
+        completion_tokens_details: { reasoning_tokens: 792, text_tokens: 19, audio_tokens: 0 }
+      )
+
+      expect(handler.chat_usage_details(usage)).to eq(
+        prompt_tokens: 1079, completion_tokens: 811, total_tokens: 1890,
+        prompt_tokens_details: { cached_tokens: 512 },
+        completion_tokens_details: { reasoning_tokens: 792 }
+      )
+    end
+  end
 end
