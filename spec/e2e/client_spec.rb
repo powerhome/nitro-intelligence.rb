@@ -142,10 +142,14 @@ RSpec.describe NitroIntelligence::Client, :e2e do
     end
 
     context "when the gateway refuses the request" do
-      it "raises, and records the failure with the gateway's call ID" do
+      it "raises, and records the failure" do
+        error = nil
         expect do
           client.chat(message: "Reply with the single word pong.",
                       parameters: { model: E2eHelpers::UNKNOWN_MODEL, **trace_parameters })
+        rescue OpenAI::Errors::APIStatusError => e
+          error = e
+          raise
         end.to raise_error(OpenAI::Errors::APIStatusError)
 
         generation = observation_named(recorded_trace("chat-completion"), "chat-completion")
@@ -154,7 +158,9 @@ RSpec.describe NitroIntelligence::Client, :e2e do
         expect(CerebroReader.parse(generation["input"])).to eq(
           [{ "role" => "user", "content" => "Reply with the single word pong." }]
         )
-        expect(generation.fetch("metadata")["litellm_call_id"]).to be_present
+        # The gateway sends its call ID on the errors it raises once it has taken the request on, and the
+        # failure records whichever it sent.
+        expect(generation.fetch("metadata")["litellm_call_id"]).to eq(error.headers["x-litellm-call-id"])
       end
     end
   end
@@ -270,7 +276,8 @@ RSpec.describe NitroIntelligence::Client, :e2e do
       expect_request(recognition, name: "audio-transcription")
       expect(recognition["model"]).to eq(E2eHelpers::AUDIO_TRANSCRIPTION_MODEL)
       expect(CerebroReader.parse(recognition["output"])).to eq(transcription.text)
-      expect_usage(recognition, total: transcription.usage.total_tokens)
+      # The model reports how long the audio was rather than how many tokens it took.
+      expect(recognition["usageDetails"]).to include("input_audio_seconds" => transcription.usage.seconds.ceil)
       expect_cost(recognition, gateway_cost(transcription))
     end
   end

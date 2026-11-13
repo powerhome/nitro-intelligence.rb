@@ -27,7 +27,7 @@ RSpec.describe NitroIntelligence::Tracer, :e2e do
       # The request's own trace name and user are the trace's, so these are not recorded.
       response = client.chat(
         message: "Using only this passage, answer in one sentence: #{question}\n\n#{found.join("\n")}",
-        parameters: { max_tokens: 1000, trace_name: "ignored", user_id: "ignored" }
+        parameters: { max_tokens: 4000, trace_name: "ignored", user_id: "ignored" }
       )
       root.output = { answer: response.choices.first.message.content }
       [root, response]
@@ -65,10 +65,12 @@ RSpec.describe NitroIntelligence::Tracer, :e2e do
     expect_cost(generation, gateway_cost(response))
 
     scores = cerebro.scores(trace_id) { _1.size == 2 }
-    expect(scores).to contain_exactly(
-      include("name" => "e2e-answered", "value" => 1, "dataType" => "NUMERIC", "observationId" => nil,
-              "comment" => "nitro-intelligence.rb e2e"),
-      include("name" => "e2e-grounded", "value" => 1, "dataType" => "BOOLEAN", "observationId" => root.id)
+    expect(scores.find { _1["name"] == "e2e-answered" }).to include(
+      "traceId" => trace_id, "observationId" => nil, "dataType" => "NUMERIC", "value" => 1,
+      "comment" => "nitro-intelligence.rb e2e", "environment" => NitroIntelligence.environment
+    )
+    expect(scores.find { _1["name"] == "e2e-grounded" }).to include(
+      "traceId" => trace_id, "observationId" => root.id, "dataType" => "BOOLEAN", "value" => 1
     )
   end
 end
