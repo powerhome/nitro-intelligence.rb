@@ -38,6 +38,10 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
+          # GitHub won't let an App without `workflows` tag a commit whose workflow files differ
+          # from main's, which the release commit's do once main has moved past it with a workflow
+          # change.
+          permission-workflows: write
 
       - name: Release, and propose the next release
         id: release-please
