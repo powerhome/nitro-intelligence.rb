@@ -1,10 +1,14 @@
-# End-to-end specs: the real client against a real inference gateway, with nothing stubbed. They
-# make billable model calls, so they run through `rake e2e` or by naming their files, never in the
-# default suite (see spec_helper.rb), and need a gateway key in NIP_E2E_INFERENCE_API_KEY.
+# End-to-end specs: the real client against the real inference gateway and Cerebro, with nothing
+# stubbed. Each feature is exercised as an application uses it, with observability on, and checked
+# end to end: what it returned, how Cerebro recorded it, and what the gateway charged for it. They make
+# billable model calls, so they run through `rake e2e` or by naming their files, never in the default
+# suite (see spec_helper.rb), and need a gateway key and the Cerebro project's credentials.
 #
 # Assertions check what any working model must get right, not exact wording, so that a model
 # upgrade behind the gateway does not fail them while a broken request or response contract does.
 require "active_support/core_ext/object/blank"
+require "securerandom"
+require_relative "cerebro_reader"
 
 module E2eHelpers
   API_KEY_VARIABLE = "NIP_E2E_INFERENCE_API_KEY".freeze
@@ -55,41 +59,62 @@ module E2eHelpers
     ],
   }.freeze
 
-  def self.configure!
-    api_key = ENV.fetch(API_KEY_VARIABLE, "")
-    if api_key.empty?
-      raise "#{API_KEY_VARIABLE} is not set. The end-to-end specs call the real inference gateway " \
-            "and need a key for it."
-    end
-
-    NitroIntelligence.configure do |config|
-      config.logger = Logger.new(nil)
-      config.inference_api_key = api_key
-      config.inference_base_url = ENV[BASE_URL_VARIABLE] if ENV[BASE_URL_VARIABLE].present?
-      config.model_config = MODEL_CONFIG
-    end
-  end
-
   OBSERVABILITY_PROJECT_SLUG = "ruby-sdk-e2e".freeze
+  # The same Cerebro project, configured to mask content, as an application handling sensitive data
+  # configures its own.
+  MASKED_OBSERVABILITY_PROJECT_SLUG = "ruby-sdk-e2e-masked".freeze
   OBSERVABILITY_VARIABLES = {
     "id" => "NIP_E2E_OBSERVABILITY_PROJECT_ID",
     "public_key" => "NIP_E2E_OBSERVABILITY_PUBLIC_KEY",
     "secret_key" => "NIP_E2E_OBSERVABILITY_SECRET_KEY",
   }.freeze
 
-  # The "Ruby SDK End-to-End Tests" Cerebro project, which powerhome/software provisions along
-  # with these credentials. Only the tracing specs need it, so only they call this.
-  def self.configure_observability!
-    credentials = OBSERVABILITY_VARIABLES.transform_values { ENV.fetch(_1, "") }
-    missing = OBSERVABILITY_VARIABLES.values_at(*credentials.select { |_, value| value.empty? }.keys)
-    if missing.any?
-      raise "#{missing.join(', ')} not set. The tracing specs record to a real Cerebro project " \
-            "and need its credentials."
-    end
-
+  def self.configure!
     NitroIntelligence.configure do |config|
-      config.observability_projects = [credentials.merge("slug" => OBSERVABILITY_PROJECT_SLUG)]
+      config.logger = Logger.new(nil)
+      config.inference_api_key = required_variables(API_KEY_VARIABLE).fetch(API_KEY_VARIABLE)
+      config.inference_base_url = ENV[BASE_URL_VARIABLE] if ENV[BASE_URL_VARIABLE].present?
+      config.model_config = MODEL_CONFIG
+      config.observability_projects = observability_projects
     end
+  end
+
+  # The "Ruby SDK End-to-End Tests" Cerebro project, which powerhome/software provisions along with
+  # these credentials.
+  def self.observability_projects
+    variables = required_variables(*OBSERVABILITY_VARIABLES.values)
+    credentials = OBSERVABILITY_VARIABLES.transform_values { variables.fetch(_1) }
+
+    [
+      credentials.merge("slug" => OBSERVABILITY_PROJECT_SLUG),
+      credentials.merge("slug" => MASKED_OBSERVABILITY_PROJECT_SLUG, "mask_content" => true),
+    ]
+  end
+
+  def self.required_variables(*names)
+    values = names.index_with { ENV.fetch(_1, "") }
+    missing = values.select { |_, value| value.empty? }.keys
+    return values if missing.empty?
+
+    raise "#{missing.join(', ')} not set. The end-to-end specs call the real inference gateway and " \
+          "record to a real Cerebro project, and need credentials for both."
+  end
+
+  def cerebro
+    @cerebro ||= CerebroReader.new(
+      NitroIntelligence.project_client_registry.fetch(OBSERVABILITY_PROJECT_SLUG).project
+    )
+  end
+
+  # Exports what the client has recorded so far, so Cerebro can ingest it.
+  def flush_observations
+    NitroIntelligence.project_client_registry.fetch(OBSERVABILITY_PROJECT_SLUG).flush(timeout: 30)
+    NitroIntelligence.project_client_registry.fetch(MASKED_OBSERVABILITY_PROJECT_SLUG).flush(timeout: 30)
+  end
+
+  # A trace of the spec's own, so whatever is read back can only be this run's.
+  def new_trace_seed
+    "nitro-intelligence.rb-e2e-#{SecureRandom.uuid}"
   end
 
   # Spend logs on the gateway carry this, so the suite's cost can be told apart from real usage.
@@ -107,8 +132,37 @@ module E2eHelpers
   end
 end
 
+# What a recorded request must show in Cerebro, whatever the feature.
+module E2eExpectations
+  # The cost of a request, as the gateway charged it.
+  def gateway_cost(response)
+    Float(response.last_response.headers.fetch("x-litellm-response-cost"))
+  end
+
+  def observation_named(observations, name)
+    matches = observations.select { _1["name"] == name }
+    expect(matches.size).to eq(1), "expected one #{name.inspect} observation, got #{observations.pluck('name')}"
+    matches.first
+  end
+
+  # Cerebro records a breakdown of the input or output, such as cached or reasoning tokens, apart
+  # from the rest of it, so the parts add up to the total the gateway reported.
+  def expect_usage(observation, total:)
+    usage = observation.fetch("usageDetails")
+    expect(usage["total"]).to eq(total)
+    expect(usage.except("total").values.sum).to eq(total)
+  end
+
+  def expect_cost(observation, cost)
+    expect(cost).to be_positive
+    expect(observation.dig("costDetails", "total")).to be_within(1e-9).of(cost)
+    expect(observation["totalCost"]).to be_within(1e-9).of(cost)
+  end
+end
+
 RSpec.configure do |config|
   config.include E2eHelpers, :e2e
+  config.include E2eExpectations, :e2e
 
   # Other specs loaded in the same process load webmock/rspec, which blocks real requests. The e2e
   # groups lift that and put back whatever was in force before, allowances included.
