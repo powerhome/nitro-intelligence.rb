@@ -44,16 +44,16 @@ RSpec.describe NitroIntelligence::Tracer, :e2e do
     flush_observations
 
     observations = cerebro.observations(trace_id) do |recorded|
-      recorded.size == 3 && recorded.all? { _1["endTime"] } && recorded.any? { _1["totalCost"].to_f.positive? }
+      recorded.size == 3 && recorded.all? { _1["endTime"] } && recorded.any? { _1.dig("costDetails", "total") }
     end
-    expect(observations).to all(include("traceId" => trace_id, "traceName" => trace_name, "userId" => user_id,
+    expect(observations).to all(include("traceId" => trace_id, "userId" => user_id, "tags" => ["e2e"],
                                         "environment" => NitroIntelligence.environment))
 
     span = observation_named(observations, trace_name)
-    expect(span).to include("id" => root.id, "type" => "SPAN", "parentObservationId" => nil)
+    expect(span).to include("id" => root.id, "type" => "SPAN", "parentObservationId" => nil, "traceName" => trace_name)
     expect(CerebroReader.parse(span["input"])).to eq("question" => question)
     expect(CerebroReader.parse(span["output"])).to eq("answer" => response.choices.first.message.content)
-    expect(span["metadata"]).to include(e2e_metadata.stringify_keys)
+    expect_metadata(span, e2e_metadata)
 
     retrieval = observation_named(observations, "search handbook")
     expect(retrieval).to include("type" => "RETRIEVER", "parentObservationId" => root.id)

@@ -21,6 +21,9 @@ module E2eHelpers
   DECISION_MODEL = "typesafe/jev-1.14".freeze
   EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B".freeze
   RERANK_MODEL = "Qwen/Qwen3-Reranker-0.6B".freeze
+  # Configured here but served by no deployment, for a request the gateway refuses without reaching
+  # a model.
+  UNKNOWN_MODEL = "nitro-intelligence.rb/e2e-no-such-model".freeze
 
   MODEL_CONFIG = {
     "default_text_model" => TEXT_MODEL,
@@ -56,6 +59,7 @@ module E2eHelpers
                           "query\nQuery:",
       },
       { "name" => RERANK_MODEL, "type" => "rerank" },
+      { "name" => UNKNOWN_MODEL, "type" => "text" },
     ],
   }.freeze
 
@@ -153,16 +157,27 @@ module E2eExpectations
     expect(usage.except("total").values.sum).to eq(total)
   end
 
+  # The gateway's charge, recorded exactly. Some models are free, so it may be zero, but it is never
+  # missing.
   def expect_cost(observation, cost)
-    expect(cost).to be_positive
     expect(observation.dig("costDetails", "total")).to be_within(1e-9).of(cost)
     expect(observation["totalCost"]).to be_within(1e-9).of(cost)
+  end
+
+  # Cerebro stores metadata values that read as JSON, such as a run ID's digits, as what they parse
+  # to, though the client sends them as strings.
+  def expect_metadata(observation, expected)
+    expected = expected.stringify_keys
+    recorded = observation.fetch("metadata").slice(*expected.keys).transform_values(&:to_s)
+    expect(recorded).to eq(expected.transform_values(&:to_s))
   end
 end
 
 RSpec.configure do |config|
   config.include E2eHelpers, :e2e
   config.include E2eExpectations, :e2e
+  # Each example checks a whole feature, so a failure reports every part that is wrong, not just the first.
+  config.define_derived_metadata(:e2e) { |metadata| metadata[:aggregate_failures] = true }
 
   # Other specs loaded in the same process load webmock/rspec, which blocks real requests. The e2e
   # groups lift that and put back whatever was in force before, allowances included.

@@ -25,7 +25,8 @@ RSpec.describe NitroIntelligence::Client, :e2e do
     cerebro.observations(trace_id) do |observations|
       names.all? do |name|
         observation = observations.find { _1["name"] == name }
-        observation && observation["endTime"] && (observation["totalCost"].to_f.positive? || observation["level"] == "ERROR")
+        observation && observation["endTime"] &&
+          (observation.dig("costDetails", "total") || observation["level"] == "ERROR")
       end
     end
   end
@@ -44,7 +45,7 @@ RSpec.describe NitroIntelligence::Client, :e2e do
       "sessionId" => session_id
     )
     expect(observation["tags"]).to match_array(tags)
-    expect(observation["metadata"]).to include(e2e_metadata.stringify_keys)
+    expect_metadata(observation, e2e_metadata)
   end
 
   describe "#chat" do
@@ -111,7 +112,7 @@ RSpec.describe NitroIntelligence::Client, :e2e do
             { "role" => "user", "content" => "Reply with the single word pong and nothing else." },
           ]
         )
-        expect(generation["metadata"]).to include("prompt_name" => prompt_name, "prompt_version" => version.to_s)
+        expect_metadata(generation, prompt_name:, prompt_version: version)
         expect_usage(generation, total: response.usage.total_tokens)
         expect_cost(generation, gateway_cost(response))
       end
@@ -143,13 +144,17 @@ RSpec.describe NitroIntelligence::Client, :e2e do
     context "when the gateway refuses the request" do
       it "raises, and records the failure with the gateway's call ID" do
         expect do
-          client.chat(message: "Reply with the single word pong.", parameters: { max_tokens: 0, **trace_parameters })
-        end.to raise_error(OpenAI::Errors::BadRequestError)
+          client.chat(message: "Reply with the single word pong.",
+                      parameters: { model: E2eHelpers::UNKNOWN_MODEL, **trace_parameters })
+        end.to raise_error(OpenAI::Errors::APIStatusError)
 
         generation = observation_named(recorded_trace("chat-completion"), "chat-completion")
-        expect(generation).to include("name" => "chat-completion", "traceName" => trace_name, "level" => "ERROR",
-                                      "statusMessage" => a_string_starting_with("OpenAI::Errors::BadRequestError"))
-        expect(generation["metadata"]).to include("litellm_call_id" => be_present)
+        expect(generation).to include("traceName" => trace_name, "model" => E2eHelpers::UNKNOWN_MODEL,
+                                      "level" => "ERROR", "statusMessage" => a_string_starting_with("OpenAI::Errors::"))
+        expect(CerebroReader.parse(generation["input"])).to eq(
+          [{ "role" => "user", "content" => "Reply with the single word pong." }]
+        )
+        expect(generation.fetch("metadata")["litellm_call_id"]).to be_present
       end
     end
   end
@@ -258,6 +263,7 @@ RSpec.describe NitroIntelligence::Client, :e2e do
       expect(CerebroReader.parse(speech["input"])).to eq(sentence)
       # The audio is uploaded to Cerebro, and the output refers to it.
       expect(CerebroReader.parse(speech["output"])).to match(%r{\A@@@langfuseMedia:type=audio/[^|]+\|id=[^|]+\|source=bytes@@@\z})
+      # The audio response carries no headers the caller can read, so the cost is checked for presence.
       expect(speech.dig("costDetails", "total")).to be_positive
 
       recognition = observation_named(observations, "audio-transcription")
@@ -284,11 +290,12 @@ RSpec.describe NitroIntelligence::Client, :e2e do
       generation = observation_named(recorded_trace("image-generation"), "image-generation")
       expect_request(generation, name: "image-generation")
       expect(generation["id"]).to eq(result.observation_id)
-      expect(generation["model"]).to be_present
+      expect(generation["model"]).to eq(E2eHelpers::IMAGE_MODEL)
       # The image is uploaded to Cerebro, and the output refers to it in place of its base64.
       expect(generation["output"]).to match(%r{@@@langfuseMedia:type=image/[^|]+\|id=[^|]+\|source=bytes@@@})
       expect(generation["output"]).not_to include("base64,")
       expect(generation.dig("usageDetails", "total")).to be_positive
+      # The completion behind the image is not returned to the caller, so the cost is checked for presence.
       expect(generation.dig("costDetails", "total")).to be_positive
     end
   end
