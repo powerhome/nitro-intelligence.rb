@@ -1,0 +1,80 @@
+# Runs the client against the real inference gateway and Cerebro, with nothing stubbed (`rake e2e`,
+# specs in spec/e2e). The unit suite stubs every request, so it cannot see a change on either
+# service's side breaking the contract this gem relies on; this can. The weekday run catches such a
+# change when no PR is open here.
+#
+# The calls are billable, against the gateway key in the NIP_E2E_INFERENCE_API_KEY secret, which
+# is a key of its own with a budget, so the suite's spend is capped and attributable. Traces go to
+# the "Ruby SDK End-to-End Tests" Cerebro project. powerhome/software provisions the project and
+# writes all of these secrets and the project ID variable; none is set by hand.
+
+name: e2e
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1-5"
+  workflow_dispatch:
+
+# A newer push supersedes an older one on the same ref, but a push to main must not cancel the
+# scheduled or manual run on main, which would then report nothing at all.
+concurrency:
+  group: e2e-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gateway:
+    name: Inference gateway
+    # Actions withholds the secrets from PRs opened from forks and by Dependabot, so the suite could
+    # only fail there for want of credentials, saying nothing about the change. Those PRs skip it.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]')
+    # The gateway is served only to Power's network, which GitHub-hosted runners are outside, so
+    # this runs on the repository's own PAC runner (powerhome/pac,
+    # addons/releases/other-runners/tier/beta/nitro-intelligence-rb-runner.yaml). The repository is
+    # public and a fork PR runs its own copy of this file, so the condition above does not protect
+    # that runner: requiring approval before any outside contributor's fork PR runs workflows does.
+    runs-on: [self-hosted, pac-v2]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # GitHub's images ship these; the PAC runner's does not. Gems with native extensions
+      # (bigdecimal, psych) need a compiler and libyaml to install, and mini_magick, which reads
+      # generated images, shells out to ImageMagick.
+      - name: Install build tools and ImageMagick
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends build-essential libyaml-dev imagemagick
+
+      - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      # Tells a runner that cannot reach the gateway apart from a failing spec. The gateway is served
+      # only to Power's network; from anywhere else its ingress answers every path, the health check
+      # included, with a plain-text 404.
+      - name: Check the gateway is reachable
+        run: |
+          if ! curl --fail --silent --show-error --max-time 15 https://inference.powerhome.ai/health/liveliness; then
+            echo "::error::The inference gateway is not reachable from this runner. It is served only to Power's network."
+            exit 1
+          fi
+
+      - name: Run the end-to-end specs
+        env:
+          NIP_E2E_INFERENCE_API_KEY: ${{ secrets.NIP_E2E_INFERENCE_API_KEY }}
+          NIP_E2E_OBSERVABILITY_PROJECT_ID: ${{ vars.NIP_E2E_OBSERVABILITY_PROJECT_ID }}
+          NIP_E2E_OBSERVABILITY_PUBLIC_KEY: ${{ secrets.NIP_E2E_OBSERVABILITY_PUBLIC_KEY }}
+          NIP_E2E_OBSERVABILITY_SECRET_KEY: ${{ secrets.NIP_E2E_OBSERVABILITY_SECRET_KEY }}
+        run: bundle exec rake e2e
