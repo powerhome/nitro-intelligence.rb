@@ -66,11 +66,11 @@ RSpec.describe NitroIntelligence::Tracer, :e2e do
 
     scores = cerebro.scores(trace_id) { _1.size == 2 }
     expect(scores.find { _1["name"] == "e2e-answered" }).to include(
-      "traceId" => trace_id, "observationId" => nil, "dataType" => "NUMERIC", "value" => 1,
+      "subject" => { "kind" => "trace", "id" => trace_id }, "dataType" => "NUMERIC", "value" => 1,
       "comment" => "nitro-intelligence.rb e2e", "environment" => NitroIntelligence.environment
     )
     expect(scores.find { _1["name"] == "e2e-grounded" }).to include(
-      "traceId" => trace_id, "observationId" => root.id, "dataType" => "BOOLEAN", "value" => 1
+      "subject" => include("kind" => "observation", "id" => root.id), "dataType" => "BOOLEAN", "value" => true
     )
   end
 end
