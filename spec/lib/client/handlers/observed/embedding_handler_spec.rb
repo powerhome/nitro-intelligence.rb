@@ -85,7 +85,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
       expect(trace_attributes).to match(
         model: "Qwen/Qwen3-Embedding-0.6B",
         output: { count: 3, dimensions: 3 },
-        usage_details: { prompt_tokens: 12, total_tokens: 12 },
+        usage_details: { input: 12, total: 12 },
         cost_details: { total: be_within(1e-12).of(2.0e-07) }
       )
       expect(trace_attributes.to_s).not_to include("0.25")
@@ -116,7 +116,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
         expect { handler.create(input_type: :document, input: %w[a b c], parameters: { batch_size: 2 }) }
           .to raise_error(OpenAI::Errors::RateLimitError)
         expect(fake_embedding).to have_received(:update)
-          .with(usage_details: { prompt_tokens: 8, total_tokens: 8 }, cost_details: { total: 1.0e-07 })
+          .with(usage_details: { input: 8, total: 8 }, cost_details: { total: 1.0e-07 })
       end
 
       it "records nothing more when the first batch fails" do
