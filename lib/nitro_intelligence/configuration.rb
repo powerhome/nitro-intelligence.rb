@@ -51,8 +51,9 @@ module NitroIntelligence
     # @!attribute [rw] model_config
     #   @return [Hash] the default model for each modality (`default_text_model`,
     #     `default_audio_transcription_model`, `default_image_model`,
-    #     `default_text_to_speech_model`) and the per-model settings under `models`. See the README's
-    #     "Configuration".
+    #     `default_text_to_speech_model`) and, under `models`, settings for any model that should not
+    #     take its settings from the gateway. A model `models` does not list is looked up in the
+    #     gateway's model list. See the README's "Configuration".
     config_accessor :model_config, default: {}
     # @!attribute [rw] observability_base_url
     #   @return [String] Cerebro's base URL. Defaults to the shared deployment.
