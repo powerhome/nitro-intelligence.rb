@@ -15,7 +15,7 @@ User-facing documentation is `docs/README.md` (configuration and usage) and `doc
 - `lib/nitro_intelligence/observability/`: Cerebro projects, per-project Langfuse clients, prompt resolution and fallbacks, media upload.
 - `lib/nitro_intelligence/langfuse_extension.rb`, `langfuse_tracer_provider.rb`, `trace.rb`: extensions to langfuse-rb that allow several Langfuse clients (one per Cerebro project) in one process. Candidates for upstreaming to langfuse-rb.
 - `lib/nitro_intelligence/assistants.rb`, `assistant.rb`, `assistant_registry.rb`, `run_result.rb`, `pending_review.rb`, `review_decision.rb`, `tool_call_review_interrupt.rb`, `tool_call_review_validator.rb`: the NIP Assistants client, run results (including the reply's delivery status) and the review protocol for tool calls and replies (`__reply__`).
-- `lib/nitro_intelligence/models/`: the model catalog built from `model_config` and the per-modality default models.
+- `lib/nitro_intelligence/models/`: the model catalog, built from `model_config` and, for any model it does not list, the gateway's `GET /model/info` (`gateway_models.rb`: type from `mode`, settings from `model_info.nitro_intelligence`, which the parent repository's LiteLLM values publish), and the per-modality default models.
 - `lib/nitro_intelligence/media/`: image and audio inputs and image generation results.
 - `spec/`: RSpec suite, mirroring `lib/` under `spec/lib/`. HTTP is stubbed with WebMock.
 - `nitro_intelligence.gemspec`: runtime dependencies. `langfuse-rb` is pinned exactly and `openai` has a floor that the gemspec comment justifies; check upstream behaviour at the pinned version before relying on it.

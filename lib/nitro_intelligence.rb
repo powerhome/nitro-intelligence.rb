@@ -76,7 +76,7 @@ module NitroIntelligence
 
     # @api private
     def model_catalog
-      @model_catalog ||= ModelCatalog.new(configuration.model_config)
+      @model_catalog ||= ModelCatalog.new(configuration.model_config, GatewayModels.from_config(configuration))
     end
 
     # Each Cerebro project's client, through a registry shared by all threads.
