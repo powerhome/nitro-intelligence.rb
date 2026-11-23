@@ -16,7 +16,7 @@ permissions: {}
 
 jobs:
   project:
-    uses: powerhome/github-actions-workflows/.github/workflows/project-status.yml@6b1da8fa29815465ebc91e95e34b98dd2f730d69 # main
+    uses: powerhome/github-actions-workflows/.github/workflows/project-status.yml@edb52bbb6220216a0a1e0c74a4ebf2fbbce947ec # main
     with:
       project-owner: powerhome
       project-number: 18
