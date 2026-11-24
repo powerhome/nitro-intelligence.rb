@@ -139,27 +139,18 @@ RSpec.describe NitroIntelligence::Assistant do
       assistant.review_tool_calls(thread_id: "t1", tool_calls: [], context: { a: 1 })
     end
 
-    it "supplies the assistant id to a hand-back" do
+    it "forwards a hand-back to its client" do
       expect(client).to receive(:hand_back_escalation)
-        .with(thread_id: "t1", assistant_id: "id-cc", escalation_id: "esc-1", reviewer_id: "jane", reply: false)
+        .with(thread_id: "t1", escalation_id: "esc-1", reviewer_id: "jane", note: "Moved it.")
 
-      assistant.hand_back_escalation(thread_id: "t1", escalation_id: "esc-1", reviewer_id: "jane", reply: false)
+      assistant.hand_back_escalation(thread_id: "t1", escalation_id: "esc-1", reviewer_id: "jane", note: "Moved it.")
     end
 
-    it "supplies the assistant id to a close" do
+    it "forwards a close to its client" do
       expect(client).to receive(:close_escalation)
-        .with(thread_id: "t1", assistant_id: "id-cc", escalation_id: "esc-1", reviewer_id: "jane")
+        .with(thread_id: "t1", escalation_id: "esc-1", reviewer_id: "jane")
 
       assistant.close_escalation(thread_id: "t1", escalation_id: "esc-1", reviewer_id: "jane")
-    end
-
-    it "refuses an assistant id from the caller on a resolution" do
-      expect(client).not_to receive(:close_escalation)
-
-      expect do
-        assistant.close_escalation(thread_id: "t1", escalation_id: "esc-1", reviewer_id: "jane",
-                                   assistant_id: "somebody-else")
-      end.to raise_error(ArgumentError, /"candidate-concierge" supplies its own assistant_id/)
     end
 
     it "passes thread-scoped calls straight through" do

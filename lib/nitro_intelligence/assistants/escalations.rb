@@ -1,6 +1,5 @@
 require "json"
 require "nitro_intelligence/escalation"
-require "nitro_intelligence/run_result"
 
 module NitroIntelligence
   # Escalations: reading the refusal of a run on an escalated thread, and resolving an
@@ -61,61 +60,40 @@ module NitroIntelligence
     ESCALATION_NOT_OPEN = "escalation_not_open".freeze
 
     # @api private
-    # The key a resolution's answer says which it is under: `replied` or `resolved`.
-    RESOLUTION = "resolution".freeze
-
-    # @api private
-    # A resolution answered with the reply run's output.
-    REPLIED = "replied".freeze
-
-    # @api private
-    # A resolution answered with the stamp's summary, having started no reply run.
-    RESOLVED = "resolved".freeze
-
-    # @api private
     # The error of a run admitted before its thread was stamped, which fails instead of running.
     THREAD_ESCALATED_FAILURE = /thread_escalated: escalation (\S+) is (\w+)/
 
-    # Hands an escalated conversation back to the assistant, from the person who had it. By
-    # default the assistant answers at once, and this returns that run's RunResult, as {#run}
-    # does; the reply goes through the judge, review and delivery as usual. With `reply: false`, it
-    # returns the resolved Escalation, and the customer's next message starts an ordinary run.
+    # Hands an escalated conversation back to the assistant, from the person who had it. No run
+    # starts: the person answered the customer while they had the conversation, and the customer's
+    # next message starts an ordinary run.
     #
-    # The next run writes `note`, as a person's note, and then `messages` into the conversation,
-    # straight after the escalation. The same hand-back sent again by the same `reviewer_id` is
-    # accepted as a retry; one sent after its reply run started starts no second one, and returns
-    # the Escalation instead.
+    # That run writes `note`, as a person's note, and then `messages` into the conversation, straight
+    # after the escalation, so the assistant answers knowing what the person did and said. The same
+    # hand-back sent again by the same `reviewer_id` is accepted as a retry.
     #
     # @param thread_id [String]
-    # @param assistant_id [String] the assistant whose thread it is, which answers
     # @param escalation_id [String] the open escalation's id ({Escalation#id})
     # @param reviewer_id [String] who resolved it, as the host identifies them
-    # @param note [String, nil] up to 2,000 characters, for the model
+    # @param note [String, nil] up to 2,000 characters: what the person did, for the model
     # @param messages [Array<Hash>] what was said meanwhile, oldest first, each
     #   `{ "type" => "human" | "ai", "content" => "...", "name" => "..." }`, `name` optional
-    # @param reply [Boolean] whether the assistant answers now
-    # @param context [Hash] the reply run's context, as for {#run}: send what you send when you
-    #   start a run on the thread
     # @param reviewed_at [Time, String, nil] when they resolved it. Defaults to now.
-    # @return [RunResult, Escalation] the reply run; the Escalation without one
+    # @return [Escalation] the handed-back escalation
     # @raise [ArgumentError] without an `escalation_id` or `reviewer_id`
     # @raise [EscalationNotOpenError] when the thread has no open escalation `escalation_id`
     # @raise [EscalationResolutionError] when Assistants refuses the hand-back
-    # @raise [RunError] when the reply run fails
     # @example
-    #   assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: escalation.id,
+    #   assistants.hand_back_escalation(thread_id:, escalation_id: escalation.id,
     #                                   reviewer_id: "jane@example.com",
     #                                   note: "Moved the visit to Friday at 9 by phone.")
-    def hand_back_escalation(thread_id:, assistant_id:, escalation_id:, reviewer_id:, note: nil, messages: [], # rubocop:disable Metrics/ParameterLists
-                             reply: true, context: {}, reviewed_at: nil)
-      decision = { type: "hand_back", note:, messages: Array(messages), reply:, context: }.compact
-      resolve_escalation(thread_id:, assistant_id:, escalation_id:, reviewer_id:, reviewed_at:, decision:)
+    def hand_back_escalation(thread_id:, escalation_id:, reviewer_id:, note: nil, messages: [], reviewed_at: nil)
+      decision = { type: "hand_back", note:, messages: Array(messages) }.compact
+      resolve_escalation(thread_id:, escalation_id:, reviewer_id:, reviewed_at:, decision:)
     end
 
     # Closes an escalated conversation for good: the thread refuses every run after it.
     #
     # @param thread_id [String]
-    # @param assistant_id [String] the assistant whose thread it is
     # @param escalation_id [String] the open escalation's id ({Escalation#id})
     # @param reviewer_id [String] who closed it, as the host identifies them
     # @param reviewed_at [Time, String, nil] when they closed it. Defaults to now.
@@ -123,24 +101,20 @@ module NitroIntelligence
     # @raise [ArgumentError] without an `escalation_id` or `reviewer_id`
     # @raise [EscalationNotOpenError] when the thread has no open escalation `escalation_id`
     # @raise [EscalationResolutionError] when Assistants refuses the close
-    def close_escalation(thread_id:, assistant_id:, escalation_id:, reviewer_id:, reviewed_at: nil)
-      resolve_escalation(thread_id:, assistant_id:, escalation_id:, reviewer_id:, reviewed_at:,
-                         decision: { type: "close" })
+    def close_escalation(thread_id:, escalation_id:, reviewer_id:, reviewed_at: nil)
+      resolve_escalation(thread_id:, escalation_id:, reviewer_id:, reviewed_at:, decision: { type: "close" })
     end
 
   private
 
-    def resolve_escalation(thread_id:, assistant_id:, escalation_id:, reviewer_id:, reviewed_at:, decision:)
+    def resolve_escalation(thread_id:, escalation_id:, reviewer_id:, reviewed_at:, decision:)
       raise ArgumentError, "escalation_id is required" if escalation_id.blank?
       raise ArgumentError, "reviewer_id is required" if reviewer_id.blank?
 
-      body = { assistant_id:, escalation_id:, decision:, **reviewer_stamp(reviewer_id, reviewed_at) }
+      body = { escalation_id:, decision:, **reviewer_stamp(reviewer_id, reviewed_at) }
       response = post(path: "/threads/#{thread_id}/escalation", body:)
       refused!(response, EscalationNotOpenError, ESCALATION_NOT_OPEN)
-      resolution = parse!(response, EscalationResolutionError)
-      raise_run_error!(resolution, RunError)
-
-      resolution_result(resolution)
+      Escalation.from(parse!(response, EscalationResolutionError)["escalation"])
     end
 
     # Raises `error`, carrying the escalation the refusal names, when `response` is a `409` for
@@ -173,21 +147,6 @@ module NitroIntelligence
       escalation = Escalation.from(details["escalation"]) if details.is_a?(Hash)
       escalation ||= Escalation.new("id" => named[1], "status" => named[2]) if named
       { escalation: }
-    end
-
-    # A resolution answers with the reply run's output, as `/runs/wait` does, under
-    # `"resolution": "replied"`, or with the stamp's summary under `"resolution": "resolved"` when
-    # this request started no reply run. A server from before `resolution` answered with only
-    # `{"escalation": {...}}` for the latter.
-    def resolution_result(resolution)
-      case resolution[RESOLUTION]
-      when RESOLVED then Escalation.from(resolution["escalation"])
-      when REPLIED then RunResult.new(resolution)
-      else
-        return Escalation.from(resolution["escalation"]) if resolution.keys == ["escalation"]
-
-        RunResult.new(resolution)
-      end
     end
   end
 end

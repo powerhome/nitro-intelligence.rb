@@ -558,42 +558,36 @@ A run admitted before its thread was stamped, such as one that waited behind the
 
 ### `#hand_back_escalation`
 
-Hands the conversation back to the assistant, from the person who had it. By default the assistant answers at once and the call returns that run's `RunResult`, as [`#run`](#run) does: the reply goes through the judge, review and delivery as usual, and can pause for review or escalate again. With `reply: false` it returns the resolved `Escalation`, and the customer's next message starts an ordinary run.
+Hands the conversation back to the assistant, from the person who had it, and returns the handed-back `Escalation`. No run starts: the person answered the customer while they had the conversation. The customer's next message starts an ordinary run with [`#run`](#run), and the assistant answers it knowing what the person did and said.
 
 | Argument | What it is |
 | --- | --- |
-| `thread_id`, `assistant_id` | The thread, and the assistant that answers. An `Assistant` supplies `assistant_id` |
+| `thread_id` | The thread |
 | `escalation_id` | The open escalation's `id` |
 | `reviewer_id` | Who resolved it, as the host identifies them |
 | `note` | Optional, up to 2,000 characters: what the person did, for the model |
 | `messages` | Optional: what was said meanwhile, oldest first, each `{ "type" => "human" \| "ai", "content" => "...", "name" => "..." }`, `name` optional |
-| `reply` | Optional, default `true`: whether the assistant answers now |
-| `context` | The reply run's context. Send what you send to [`#run`](#run) on the thread: the prompt's variables are checked as for any run |
 | `reviewed_at` | Optional, default now |
 
-The next run on the thread, the reply or the next customer message's, writes the note, as a person's note, and then the messages into the conversation, straight after the escalation.
+The next run on the thread writes the note, as a person's note, and then the messages into the conversation, straight after the escalation and before the customer's new message.
 
-Of two people resolving at once, the first wins, and the other gets `EscalationNotOpenError`. The same decision sent again by the same `reviewer_id` is accepted as a retry; if the first already started the reply run, the retry returns the `Escalation` rather than starting a second one.
+Of two people resolving at once, the first wins, and the other gets `EscalationNotOpenError`. The same decision sent again by the same `reviewer_id` is accepted as a retry.
 
 ```ruby
-result = assistant.hand_back_escalation(
+assistant.hand_back_escalation(
   thread_id:,
   escalation_id: escalation.id,
   reviewer_id: "jane@sunbeam.example",
-  note: "Moved the visit to Friday at 9 by phone.",
+  note: "Called Ana and moved the visit to Friday at 9. She wants a text reminder the day before.",
   messages: [
     { "type" => "human", "content" => "Fine, Friday morning then." },
     { "type" => "ai", "name" => "agent:jane", "content" => "Booked you for Friday at 9." },
-    { "type" => "human", "content" => "Will I get a reminder?" },
-  ],
-  context: { "prompt_variables" => { "customer_name" => "Ana" } }
+  ]
 )
-result.reply  # => "Yes, we'll text you the day before."
-
-# Without a reply: the customer's next message starts an ordinary run.
-assistant.hand_back_escalation(thread_id:, escalation_id: escalation.id, reviewer_id: "jane@sunbeam.example",
-                               reply: false)
 # => #<NitroIntelligence::Escalation status="handed_back" ...>
+
+# Ana's next text runs as usual, with the note and messages in the conversation.
+result = assistant.run(thread_id:, messages: [{ role: "user", content: "Can it be 10 instead?" }], context:)
 ```
 
 ### `#close_escalation`

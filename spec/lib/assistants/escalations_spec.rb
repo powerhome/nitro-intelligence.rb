@@ -115,32 +115,29 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
   end
 
   describe "#hand_back_escalation" do
-    let(:reply_run) do
-      { "messages" => [{ "type" => "ai", "content" => "Yes, we'll text you the day before." }], "escalation" => nil }
-    end
     let(:person_messages) do
       [{ "type" => "human", "content" => "Fine, Friday morning then." },
        { "type" => "ai", "name" => "agent:jane", "content" => "Booked you for Friday at 9." }]
     end
 
-    it "hands back, and returns the reply run" do
-      stub_json(:post, escalation_url, { "resolution" => "replied", **reply_run })
+    it "hands back, and returns the escalation" do
+      stub_json(:post, escalation_url,
+                { "escalation" => summary.merge("status" => "handed_back", "resolved_by" => "jane@sunbeam.example") })
 
       result = assistants.hand_back_escalation(
-        thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane@sunbeam.example",
+        thread_id:, escalation_id: "esc-1", reviewer_id: "jane@sunbeam.example",
         note: "Moved the visit to Friday at 9 by phone.", messages: person_messages,
-        context: { "prompt_variables" => { "customer_name" => "Ana" } }, reviewed_at: "2026-11-12T15:10:00Z"
+        reviewed_at: "2026-11-12T15:10:00Z"
       )
 
-      expect(result).to be_a(NitroIntelligence::RunResult)
-      expect(result.reply).to eq("Yes, we'll text you the day before.")
+      expect(result).to be_a(NitroIntelligence::Escalation)
+      expect(result).to be_handed_back
+      expect(result.resolved_by).to eq("jane@sunbeam.example")
       expect(WebMock).to have_requested(:post, escalation_url).with(body: {
-                                                                      "assistant_id" => assistant_id,
                                                                       "escalation_id" => "esc-1",
                                                                       "decision" => {
                                                                         "type" => "hand_back", "note" => "Moved the visit to Friday at 9 by phone.",
-                                                                        "messages" => person_messages, "reply" => true,
-                                                                        "context" => { "prompt_variables" => { "customer_name" => "Ana" } }
+                                                                        "messages" => person_messages
                                                                       },
                                                                       "reviewer_id" => "jane@sunbeam.example",
                                                                       "reviewed_at" => "2026-11-12T15:10:00Z",
@@ -148,66 +145,15 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
     end
 
     it "sends only what is given, and stamps now" do
-      stub_json(:post, escalation_url, reply_run)
+      stub_json(:post, escalation_url, { "escalation" => summary.merge("status" => "handed_back") })
 
-      assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
+      assistants.hand_back_escalation(thread_id:, escalation_id: "esc-1", reviewer_id: "jane")
 
       expect(WebMock).to(have_requested(:post, escalation_url).with do |request|
         body = JSON.parse(request.body)
-        body["decision"] == { "type" => "hand_back", "messages" => [], "reply" => true, "context" => {} } &&
+        body["decision"] == { "type" => "hand_back", "messages" => [] } &&
           Time.iso8601(body["reviewed_at"]).between?(Time.now - 60, Time.now + 1)
       end)
-    end
-
-    it "returns the escalation when the assistant does not reply" do
-      stub_json(:post, escalation_url,
-                { "resolution" => "resolved",
-                  "escalation" => summary.merge("status" => "handed_back", "resolved_by" => "jane") })
-
-      result = assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1",
-                                               reviewer_id: "jane", reply: false)
-
-      expect(result).to be_a(NitroIntelligence::Escalation)
-      expect(result).to be_handed_back
-      expect(result.resolved_by).to eq("jane")
-      expect(WebMock).to have_requested(:post, escalation_url)
-        .with(body: hash_including("decision" => hash_including("reply" => false)))
-    end
-
-    it "returns the escalation when a retry finds the reply already started" do
-      stub_json(:post, escalation_url, { "resolution" => "resolved", "escalation" => summary.merge("status" => "handed_back") })
-
-      result = assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
-
-      expect(result).to be_a(NitroIntelligence::Escalation)
-      expect(result).to be_handed_back
-    end
-
-    it "tells a reply run that escalated again from a resolution" do
-      stub_json(:post, escalation_url, { "resolution" => "replied", "messages" => [], "escalation" => summary })
-
-      result = assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
-
-      expect(result).to be_a(NitroIntelligence::RunResult)
-      expect(result).to be_escalated
-    end
-
-    context "with a server from before the resolution key" do
-      it "returns the run when it answers with one" do
-        stub_json(:post, escalation_url, reply_run)
-
-        result = assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
-
-        expect(result).to be_a(NitroIntelligence::RunResult)
-      end
-
-      it "returns the escalation when it answers with only the summary" do
-        stub_json(:post, escalation_url, { "escalation" => summary.merge("status" => "handed_back") })
-
-        result = assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
-
-        expect(result).to be_a(NitroIntelligence::Escalation)
-      end
     end
 
     it "raises EscalationNotOpenError when another person resolved it first" do
@@ -216,7 +162,7 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
                 status: 409)
 
       expect do
-        assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
+        assistants.hand_back_escalation(thread_id:, escalation_id: "esc-1", reviewer_id: "jane")
       end.to raise_error(described_class::EscalationNotOpenError) { |error|
         expect(error.escalation).to be_closed
         expect(error).to be_a(described_class::EscalationResolutionError)
@@ -227,7 +173,7 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
       stub_json(:post, escalation_url, conflict("escalation_not_open", "escalation" => nil), status: 409)
 
       expect do
-        assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
+        assistants.hand_back_escalation(thread_id:, escalation_id: "esc-1", reviewer_id: "jane")
       end.to raise_error(described_class::EscalationNotOpenError) { |error| expect(error.escalation).to be_nil }
     end
 
@@ -235,26 +181,16 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
       stub_request(:post, escalation_url).to_return(status: 422, body: '{"error":"validation"}')
 
       expect do
-        assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane",
-                                        note: "x" * 2001)
+        assistants.hand_back_escalation(thread_id:, escalation_id: "esc-1", reviewer_id: "jane", note: "x" * 2001)
       end.to raise_error(described_class::EscalationResolutionError, '{"error":"validation"}')
-    end
-
-    it "raises RunError when the reply run fails" do
-      stub_json(:post, escalation_url,
-                { "resolution" => "replied", "__error__" => { "error" => "KeyError", "message" => "missing variables" } })
-
-      expect do
-        assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
-      end.to raise_error(described_class::RunError, "KeyError: missing variables")
     end
 
     it "requires an escalation and a reviewer" do
       expect do
-        assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "", reviewer_id: "jane")
+        assistants.hand_back_escalation(thread_id:, escalation_id: "", reviewer_id: "jane")
       end.to raise_error(ArgumentError, "escalation_id is required")
       expect do
-        assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: nil)
+        assistants.hand_back_escalation(thread_id:, escalation_id: "esc-1", reviewer_id: nil)
       end.to raise_error(ArgumentError, "reviewer_id is required")
       expect(WebMock).not_to have_requested(:post, escalation_url)
     end
@@ -262,14 +198,14 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
 
   describe "#close_escalation" do
     it "closes it, and returns the escalation" do
-      stub_json(:post, escalation_url, { "resolution" => "resolved", "escalation" => summary.merge("status" => "closed") })
+      stub_json(:post, escalation_url, { "escalation" => summary.merge("status" => "closed") })
 
-      result = assistants.close_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane",
+      result = assistants.close_escalation(thread_id:, escalation_id: "esc-1", reviewer_id: "jane",
                                            reviewed_at: Time.utc(2026, 11, 12, 15, 10))
 
       expect(result).to be_closed
       expect(WebMock).to have_requested(:post, escalation_url).with(body: {
-                                                                      "assistant_id" => assistant_id, "escalation_id" => "esc-1", "decision" => { "type" => "close" },
+                                                                      "escalation_id" => "esc-1", "decision" => { "type" => "close" },
                                                                       "reviewer_id" => "jane", "reviewed_at" => "2026-11-12T15:10:00Z"
                                                                     })
     end
