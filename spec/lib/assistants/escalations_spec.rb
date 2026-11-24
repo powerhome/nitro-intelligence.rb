@@ -45,7 +45,36 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
       end
     end
 
-    context "when a run admitted before the stamp fails instead" do
+    context "when a run admitted before the stamp fails with the refusal's details" do
+      let(:message) { "thread_escalated: escalation esc-7f3a91c2d4e5 is open; resolve it before starting a run" }
+
+      def stub_failure(escalation)
+        failure = { "error" => "Error", "message" => message,
+                    "details" => { "code" => "thread_escalated", "escalation" => escalation } }
+        stub_json(:post, run_url, { "__error__" => failure })
+      end
+
+      it "raises ThreadEscalatedError carrying the stamp's summary" do
+        stub_failure(summary)
+
+        expect { assistants.run(thread_id:, assistant_id:, messages:) }
+          .to raise_error(described_class::ThreadEscalatedError, /thread_escalated: escalation esc-7f3a91c2d4e5/) { |error|
+            expect(error.escalation).to have_attributes(id: "esc-7f3a91c2d4e5", reason: "asked_for_person")
+            expect(error.escalation.delivery).to be_delivered
+          }
+      end
+
+      it "falls back on the message when the stamp could not be read" do
+        stub_failure(nil)
+
+        expect { assistants.run(thread_id:, assistant_id:, messages:) }
+          .to raise_error(described_class::ThreadEscalatedError) { |error|
+            expect(error.escalation).to have_attributes(id: "esc-7f3a91c2d4e5", status: "open", reason: nil)
+          }
+      end
+    end
+
+    context "when a run admitted before the stamp fails, from a server that sends no details" do
       before do
         failure = { "error" => "ThreadEscalated",
                     "message" => "thread_escalated: escalation esc-1 is open; resolve it before starting a run" }
@@ -95,7 +124,7 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
     end
 
     it "hands back, and returns the reply run" do
-      stub_json(:post, escalation_url, reply_run)
+      stub_json(:post, escalation_url, { "resolution" => "replied", **reply_run })
 
       result = assistants.hand_back_escalation(
         thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane@sunbeam.example",
@@ -132,7 +161,8 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
 
     it "returns the escalation when the assistant does not reply" do
       stub_json(:post, escalation_url,
-                { "escalation" => summary.merge("status" => "handed_back", "resolved_by" => "jane") })
+                { "resolution" => "resolved",
+                  "escalation" => summary.merge("status" => "handed_back", "resolved_by" => "jane") })
 
       result = assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1",
                                                reviewer_id: "jane", reply: false)
@@ -142,6 +172,42 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
       expect(result.resolved_by).to eq("jane")
       expect(WebMock).to have_requested(:post, escalation_url)
         .with(body: hash_including("decision" => hash_including("reply" => false)))
+    end
+
+    it "returns the escalation when a retry finds the reply already started" do
+      stub_json(:post, escalation_url, { "resolution" => "resolved", "escalation" => summary.merge("status" => "handed_back") })
+
+      result = assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
+
+      expect(result).to be_a(NitroIntelligence::Escalation)
+      expect(result).to be_handed_back
+    end
+
+    it "tells a reply run that escalated again from a resolution" do
+      stub_json(:post, escalation_url, { "resolution" => "replied", "messages" => [], "escalation" => summary })
+
+      result = assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
+
+      expect(result).to be_a(NitroIntelligence::RunResult)
+      expect(result).to be_escalated
+    end
+
+    context "with a server from before the resolution key" do
+      it "returns the run when it answers with one" do
+        stub_json(:post, escalation_url, reply_run)
+
+        result = assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
+
+        expect(result).to be_a(NitroIntelligence::RunResult)
+      end
+
+      it "returns the escalation when it answers with only the summary" do
+        stub_json(:post, escalation_url, { "escalation" => summary.merge("status" => "handed_back") })
+
+        result = assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
+
+        expect(result).to be_a(NitroIntelligence::Escalation)
+      end
     end
 
     it "raises EscalationNotOpenError when another person resolved it first" do
@@ -175,7 +241,8 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
     end
 
     it "raises RunError when the reply run fails" do
-      stub_json(:post, escalation_url, { "__error__" => { "error" => "KeyError", "message" => "missing variables" } })
+      stub_json(:post, escalation_url,
+                { "resolution" => "replied", "__error__" => { "error" => "KeyError", "message" => "missing variables" } })
 
       expect do
         assistants.hand_back_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane")
@@ -195,7 +262,7 @@ RSpec.describe NitroIntelligence::Assistants, "escalations" do
 
   describe "#close_escalation" do
     it "closes it, and returns the escalation" do
-      stub_json(:post, escalation_url, { "escalation" => summary.merge("status" => "closed") })
+      stub_json(:post, escalation_url, { "resolution" => "resolved", "escalation" => summary.merge("status" => "closed") })
 
       result = assistants.close_escalation(thread_id:, assistant_id:, escalation_id: "esc-1", reviewer_id: "jane",
                                            reviewed_at: Time.utc(2026, 11, 12, 15, 10))

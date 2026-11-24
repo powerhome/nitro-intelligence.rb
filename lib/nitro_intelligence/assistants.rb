@@ -447,8 +447,8 @@ module NitroIntelligence
       return if failure.blank?
 
       detail = failure.is_a?(Hash) ? [failure["error"], failure["message"]].compact.join(": ") : failure.to_s
-      escalation = error <= RunError && failure_escalation(detail)
-      raise ThreadEscalatedError.new(detail, escalation:) if escalation
+      escalated = error <= RunError && escalated_failure(failure, detail)
+      raise ThreadEscalatedError.new(detail, escalation: escalated[:escalation]) if escalated
 
       raise error, detail
     end

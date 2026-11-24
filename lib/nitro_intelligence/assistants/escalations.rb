@@ -10,8 +10,9 @@ module NitroIntelligence
     # while the escalation is open, and after it is closed. A RunError, so that callers rescuing
     # RunError still catch it. Pass the customer's message to whoever has the conversation.
     class ThreadEscalatedError < RunError
-      # The escalation refusing the run: the stamp's summary from the `409`, or only its `id` and
-      # `status` when a run admitted before the thread was stamped failed instead. Its
+      # The escalation refusing the run: the stamp's summary, from the `409` or from the failure of a
+      # run admitted before the thread was stamped; only its `id` and `status` when the failure
+      # carries no summary. Its
       # `delivery&.status` says whether the application received the escalation.
       #
       # @return [Escalation, nil]
@@ -58,6 +59,18 @@ module NitroIntelligence
     # @api private
     # The `details.code` of a resolution of no open escalation.
     ESCALATION_NOT_OPEN = "escalation_not_open".freeze
+
+    # @api private
+    # The key a resolution's answer says which it is under: `replied` or `resolved`.
+    RESOLUTION = "resolution".freeze
+
+    # @api private
+    # A resolution answered with the reply run's output.
+    REPLIED = "replied".freeze
+
+    # @api private
+    # A resolution answered with the stamp's summary, having started no reply run.
+    RESOLVED = "resolved".freeze
 
     # @api private
     # The error of a run admitted before its thread was stamped, which fails instead of running.
@@ -148,19 +161,33 @@ module NitroIntelligence
       nil
     end
 
-    # The escalation a run's failure names, with only its `id` and `status`, or nil when the run
-    # failed for another reason.
-    def failure_escalation(detail)
-      match = detail.to_s.match(THREAD_ESCALATED_FAILURE)
-      match && Escalation.new("id" => match[1], "status" => match[2])
+    # Whether a run's failure is a refusal on an escalated thread: a run admitted before the thread
+    # was stamped. Returns `{ escalation: }` when it is, with the summary its `details` carry, or,
+    # from a server that sends none or could not read the stamp, the `id` and `status` its message
+    # names; nil when the run failed for another reason.
+    def escalated_failure(failure, detail)
+      details = failure.is_a?(Hash) ? failure["details"] : nil
+      named = detail.to_s.match(THREAD_ESCALATED_FAILURE)
+      return nil unless (details.is_a?(Hash) && details["code"] == THREAD_ESCALATED) || named
+
+      escalation = Escalation.from(details["escalation"]) if details.is_a?(Hash)
+      escalation ||= Escalation.new("id" => named[1], "status" => named[2]) if named
+      { escalation: }
     end
 
-    # A resolution answers with the reply run's output, as `/runs/wait` does, or with only the
-    # stamp's summary when no reply run started.
+    # A resolution answers with the reply run's output, as `/runs/wait` does, under
+    # `"resolution": "replied"`, or with the stamp's summary under `"resolution": "resolved"` when
+    # this request started no reply run. A server from before `resolution` answered with only
+    # `{"escalation": {...}}` for the latter.
     def resolution_result(resolution)
-      return Escalation.from(resolution["escalation"]) if resolution.keys == ["escalation"]
+      case resolution[RESOLUTION]
+      when RESOLVED then Escalation.from(resolution["escalation"])
+      when REPLIED then RunResult.new(resolution)
+      else
+        return Escalation.from(resolution["escalation"]) if resolution.keys == ["escalation"]
 
-      RunResult.new(resolution)
+        RunResult.new(resolution)
+      end
     end
   end
 end
