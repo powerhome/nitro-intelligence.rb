@@ -1,3 +1,4 @@
+require "nitro_intelligence/escalation"
 require "nitro_intelligence/pending_review"
 
 module NitroIntelligence
@@ -33,6 +34,21 @@ module NitroIntelligence
     #   @return [String, nil] when delivery gave up, as an ISO 8601 timestamp
     Delivery = Struct.new(:status, :tool, :attempts, :error, :result, :delivered_at, :failed_at,
                           keyword_init: true) do
+      # @api private
+      # @param stamp [Object] a delivery stamp
+      # @return [Delivery, nil] nil unless `stamp` is a Hash
+      def self.from_stamp(stamp)
+        return nil unless stamp.is_a?(Hash)
+
+        string = ->(key) { stamp[key].is_a?(String) ? stamp[key] : nil }
+        new(
+          status: string["status"], tool: string["tool"],
+          attempts: stamp["attempts"].is_a?(Integer) ? stamp["attempts"] : nil,
+          error: string["error"], result: stamp["result"],
+          delivered_at: string["delivered_at"], failed_at: string["failed_at"]
+        )
+      end
+
       # @return [Boolean] whether the platform delivered the reply
       def delivered?
         status == "delivered"
@@ -101,8 +117,23 @@ module NitroIntelligence
     def delivery
       return @delivery if defined?(@delivery)
 
-      stamp = reply_message&.dig("response_metadata", "delivery")
-      @delivery = stamp.is_a?(Hash) ? build_delivery(stamp) : nil
+      @delivery = Delivery.from_stamp(reply_message&.dig("response_metadata", "delivery"))
+    end
+
+    # The escalation the run ended on, or nil when it did not escalate. A run that escalates ends
+    # with no reply and no pause: the thread refuses runs until a person resolves the escalation
+    # with {Assistants#hand_back_escalation} or {Assistants#close_escalation}.
+    #
+    # @return [Escalation, nil]
+    def escalation
+      return @escalation if defined?(@escalation)
+
+      @escalation = Escalation.from(raw["escalation"])
+    end
+
+    # @return [Boolean] whether the run handed the conversation to a person
+    def escalated?
+      !escalation.nil?
     end
 
   private
@@ -139,22 +170,6 @@ module NitroIntelligence
 
         block["text"] if block.is_a?(Hash) && block["type"] == "text" && block["text"].is_a?(String)
       end.join
-    end
-
-    def build_delivery(stamp)
-      Delivery.new(
-        status: string_or_nil(stamp["status"]),
-        tool: string_or_nil(stamp["tool"]),
-        attempts: stamp["attempts"].is_a?(Integer) ? stamp["attempts"] : nil,
-        error: string_or_nil(stamp["error"]),
-        result: stamp["result"],
-        delivered_at: string_or_nil(stamp["delivered_at"]),
-        failed_at: string_or_nil(stamp["failed_at"])
-      )
-    end
-
-    def string_or_nil(value)
-      value.is_a?(String) ? value : nil
     end
   end
 end

@@ -2,6 +2,7 @@ require "json"
 require "net/http"
 require "uri"
 require "nitro_intelligence/deprecator"
+require "nitro_intelligence/escalation"
 require "nitro_intelligence/pending_review"
 require "nitro_intelligence/run_result"
 
@@ -79,6 +80,7 @@ module NitroIntelligence
     #   before it seed a new thread
     # @param context [Hash] the run's context, such as the variables its prompt needs
     # @return [RunResult]
+    # @raise [ThreadEscalatedError] when the thread is escalated to a person
     # @raise [RunError] when `messages` is empty, Assistants rejects the run, or the run fails
     # @raise [ThreadInitializationError] when a new thread cannot be created or seeded
     def run(thread_id:, assistant_id:, messages:, context: {})
@@ -433,6 +435,7 @@ module NitroIntelligence
     # `Content-Location` (`/threads/{thread_id}/runs/{run_id}`); nil without one.
     def wait_for_run(thread_id:, body:, error:)
       response = post(path: "/threads/#{thread_id}/runs/wait", body:)
+      refused!(response, ThreadEscalatedError, THREAD_ESCALATED) if error <= RunError
       run = parse!(response, error)
       raise_run_error!(run, error)
 
@@ -444,6 +447,9 @@ module NitroIntelligence
       return if failure.blank?
 
       detail = failure.is_a?(Hash) ? [failure["error"], failure["message"]].compact.join(": ") : failure.to_s
+      escalation = error <= RunError && failure_escalation(detail)
+      raise ThreadEscalatedError.new(detail, escalation:) if escalation
+
       raise error, detail
     end
 
@@ -563,3 +569,5 @@ module NitroIntelligence
     end
   end
 end
+
+require "nitro_intelligence/assistants/escalations"

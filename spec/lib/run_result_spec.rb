@@ -212,3 +212,43 @@ RSpec.describe NitroIntelligence::RunResult do
     expect(described_class.new("messages" => []).raw).to eq("messages" => [])
   end
 end
+
+RSpec.describe NitroIntelligence::RunResult, "#escalation" do
+  subject(:result) { described_class.new(run) }
+
+  let(:human) { { "type" => "human", "id" => "human-1", "content" => "I want to talk to a person." } }
+
+  context "when the run escalated" do
+    let(:run) do
+      {
+        "messages" => [human],
+        "escalation" => { "outcome" => "escalated", "id" => "esc-1", "status" => "open", "source" => "model" },
+      }
+    end
+
+    it "reads the escalation, and has no reply" do
+      expect(result).to be_escalated
+      expect(result.escalation).to have_attributes(id: "esc-1", source: "model")
+      expect(result.escalation).to be_open
+      expect(result.reply).to be_nil
+      expect(result).not_to be_interrupted
+    end
+  end
+
+  context "when the run did not escalate" do
+    let(:run) { { "messages" => [human], "escalation" => nil } }
+
+    it "has no escalation" do
+      expect(result).not_to be_escalated
+      expect(result.escalation).to be_nil
+    end
+  end
+
+  context "when the assistant does not report escalations" do
+    let(:run) { { "messages" => [human] } }
+
+    it "has no escalation" do
+      expect(result.escalation).to be_nil
+    end
+  end
+end

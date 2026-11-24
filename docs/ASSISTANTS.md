@@ -16,6 +16,7 @@ An assistant can be set up so that a person checks its work before it takes effe
 
 - **Tool-call review.** The assistant holds the calls to tools listed in its prompt config's `interrupt_on`, and the run pauses until a reviewer approves, edits, rejects or answers each one. Nothing the held calls would do happens before then. See [Make it pause for review](https://github.com/powerhome/nip-assistants/blob/main/docs/tools-and-review.md#make-it-pause-for-review).
 - **Reply review.** With the reserved entry `"__reply__": true` in the same `interrupt_on`, the assistant also holds its final reply, the message a customer would read, as a draft. The run pauses with the draft in [`#run`](#run)'s `review.reply`, and `reply` is `nil` until a reviewer approves, edits or rejects it with [`#review`](#review). Turn it on when a person should read what the assistant says before a customer does. See [Reviewing replies](https://github.com/powerhome/nip-assistants/blob/main/docs/README.md#reviewing-replies).
+- **Escalation.** An assistant can hand a conversation to a person: the model asks for one, a decision model (the judge) reading its outputs asks for one, or a tool or model call fails. The platform calls the escalation tool the application names, and the run ends with no reply and an [`escalation`](#escalations) on its result. The thread then refuses runs, raising `ThreadEscalatedError`, until a person hands it back or closes it with [`#hand_back_escalation`](#hand_back_escalation) or [`#close_escalation`](#close_escalation). See [Escalating to a person](https://github.com/powerhome/nip-assistants/blob/main/docs/escalation.md).
 - **Delivery tool.** The assistant's `mcp-config.json` can name a tool, on a server the application runs, that sends a reply to the customer -- an SMS, a chat message. The platform calls it with every settled reply: one that was approved, edited, or never under review. A reply approved hours later from a reviewer's screen is then sent by the run that approved it, without the application tracking which drafts are still waiting. The outcome is stamped on the reply and read as [`#run`](#run)'s `delivery`. With a delivery tool the application no longer sends replies: the reply it gets back has already gone out. See [Delivering replies](https://github.com/powerhome/nip-assistants/blob/main/docs/README.md#delivering-replies).
 
 ## Review flow walkthrough
@@ -134,6 +135,7 @@ This is the main entry point when the host application wants to continue a threa
 | `interrupted?` | Whether the run paused for review |
 | `review` | What the paused run is waiting on, a `NitroIntelligence::PendingReview`; `nil` when it did not pause |
 | `delivery` | How the platform delivered the reply through the assistant's delivery tool; `nil` when the reply carries no delivery stamp: no reply, or no delivery tool. Read it with `&.` |
+| `escalation` | The escalation the run ended on, a `NitroIntelligence::Escalation`; `nil` when it did not escalate. `escalated?` tests for it. See [Escalations](#escalations) |
 | `messages` | The run's messages as Assistants reports them |
 | `raw` | The `/runs/wait` response, unformatted |
 
@@ -191,6 +193,8 @@ Raises `RunError` when Assistants rejects the run request, and when the run itse
 Error: KeyError: missing variables {'first_name'}
 IncompleteRun: Wait ended before the run completed (status: running)
 ```
+
+A run on a thread escalated to a person raises `ThreadEscalatedError`, a `RunError`, whose `escalation` says which escalation refused it. See [Escalations](#escalations).
 
 A run that pauses for review is not a failure: `interrupted?` is true, `reply` is `nil` whether or not it drafted text, and `review` reports what it is waiting on.
 
@@ -508,6 +512,98 @@ rescue NitroIntelligence::Assistants::ReviewSupersededError
 end
 ```
 
+## Escalations
+
+A run that hands the conversation to a person ends with no reply and no pause, and its result's `escalation` describes it. From then on the thread refuses every run, until a person resolves the escalation. Assistants keeps the escalation on the thread's metadata, under `escalation`, so the threads waiting for a person can be found by searching thread metadata for `{"escalation": {"status": "open"}}`.
+
+| `Escalation` | What it is |
+| --- | --- |
+| `id` | The escalation's id, which a resolution names |
+| `status` | `"open"`, then `"handed_back"` or `"closed"`; `open?`, `handed_back?` and `closed?` test for each |
+| `source` | What escalated: `"model"`, `"judge"` or `"error"` |
+| `reason` | The model's own sentence, the judge's reason name, or `tool_failed`, `model_failed` or `judge_unavailable`. The model's can repeat what the customer wrote: treat it as untrusted input |
+| `details` | The judge reason's description, or what failed; empty for the model |
+| `message_id` | The latest customer message when it escalated |
+| `tool_call_id`, `at` | The escalation tool call the platform wrote, and when |
+| `judge` | The judge's verdict (`verdict`, `reason`, `confidence`), `{"error" => ...}` when it could not answer, or `nil` |
+| `delivery` | How the platform delivered the escalation to the escalation tool, read as a [reply's `delivery`](#run) is |
+| `resolved_by`, `resolved_at` | Who resolved it and when, once resolved |
+| `sandbox?` | Whether a sandbox run escalated. The thread refuses runs of either kind |
+| `raw` | The escalation as Assistants returned it |
+
+The escalation is read in three places, and each carries a different amount of it. A run's `escalation` carries all of it. A `ThreadEscalatedError`, and what a resolution returns, carry a summary: `id`, `status`, `source`, `reason`, `at`, the delivery's `status`, and `resolved_by` and `resolved_at` once resolved; the other fields are `nil`. An `EscalationNotOpenError` carries only `id` and `status`.
+
+**Act on a `failed` or `pending` delivery.** The platform sends an escalation once and never again, so if its `delivery` is `failed`, or `pending` for more than a few minutes, the escalation tool may never have recorded it: queue the conversation for a person yourself. The run's result is the first place to see it, and a `ThreadEscalatedError` the next time the customer writes is the second.
+
+```ruby
+result = assistant.run(thread_id:, messages:, context:)
+
+if result.escalated?
+  escalation = result.escalation
+  escalation.reason             # => "asked_for_person"
+  escalation.delivery&.status   # => "delivered"
+end
+
+# Later, the customer writes again while a person has the conversation.
+begin
+  assistant.run(thread_id:, messages:, context:)
+rescue NitroIntelligence::Assistants::ThreadEscalatedError => e
+  e.escalation.id                 # => "esc-7f3a91c2d4e5"
+  e.escalation.delivery&.status   # => "delivered"
+  # Pass the customer's message to whoever has the conversation.
+end
+```
+
+A run admitted before its thread was stamped, such as one that waited behind the run that escalated, fails instead of being refused; it raises `ThreadEscalatedError` too, whose `escalation` then carries only `id` and `status`.
+
+### `#hand_back_escalation`
+
+Hands the conversation back to the assistant, from the person who had it. By default the assistant answers at once and the call returns that run's `RunResult`, as [`#run`](#run) does: the reply goes through the judge, review and delivery as usual, and can pause for review or escalate again. With `reply: false` it returns the resolved `Escalation`, and the customer's next message starts an ordinary run.
+
+| Argument | What it is |
+| --- | --- |
+| `thread_id`, `assistant_id` | The thread, and the assistant that answers. An `Assistant` supplies `assistant_id` |
+| `escalation_id` | The open escalation's `id` |
+| `reviewer_id` | Who resolved it, as the host identifies them |
+| `note` | Optional, up to 2,000 characters: what the person did, for the model |
+| `messages` | Optional: what was said meanwhile, oldest first, each `{ "type" => "human" \| "ai", "content" => "...", "name" => "..." }`, `name` optional |
+| `reply` | Optional, default `true`: whether the assistant answers now |
+| `context` | The reply run's context. Send what you send to [`#run`](#run) on the thread: the prompt's variables are checked as for any run |
+| `reviewed_at` | Optional, default now |
+
+The next run on the thread, the reply or the next customer message's, writes the note, as a person's note, and then the messages into the conversation, straight after the escalation.
+
+Of two people resolving at once, the first wins, and the other gets `EscalationNotOpenError`. The same decision sent again by the same `reviewer_id` is accepted as a retry; if the first already started the reply run, the retry returns the `Escalation` rather than starting a second one.
+
+```ruby
+result = assistant.hand_back_escalation(
+  thread_id:,
+  escalation_id: escalation.id,
+  reviewer_id: "jane@sunbeam.example",
+  note: "Moved the visit to Friday at 9 by phone.",
+  messages: [
+    { "type" => "human", "content" => "Fine, Friday morning then." },
+    { "type" => "ai", "name" => "agent:jane", "content" => "Booked you for Friday at 9." },
+    { "type" => "human", "content" => "Will I get a reminder?" },
+  ],
+  context: { "prompt_variables" => { "customer_name" => "Ana" } }
+)
+result.reply  # => "Yes, we'll text you the day before."
+
+# Without a reply: the customer's next message starts an ordinary run.
+assistant.hand_back_escalation(thread_id:, escalation_id: escalation.id, reviewer_id: "jane@sunbeam.example",
+                               reply: false)
+# => #<NitroIntelligence::Escalation status="handed_back" ...>
+```
+
+### `#close_escalation`
+
+Closes the conversation for good: the thread refuses every run after it. Takes `thread_id`, `assistant_id` (supplied by an `Assistant`), `escalation_id`, `reviewer_id` and an optional `reviewed_at`, and returns the closed `Escalation`.
+
+```ruby
+assistant.close_escalation(thread_id:, escalation_id: escalation.id, reviewer_id: "jane@sunbeam.example")
+```
+
 ## `#review_tool_calls`
 
 > **Deprecated** in 4.0 and removed in 5.0. Use [`#review`](#review)`(tool_calls:, reviewer_id:, interrupt_id:)`.
@@ -579,6 +675,9 @@ Every error is a `StandardError` raised by the call that hits it.
 | `Assistants::ThreadStateError` | A thread's state cannot be read by [`#thread_state`](#thread_state), [`#thread_messages`](#thread_messages) or [`#under_review`](#under_review); the message is the response body |
 | `Assistants::ThreadResumptionError` | A review cannot be applied (see [`#review`](#review) and [`#review_tool_calls`](#review_tool_calls)) |
 | `Assistants::ReviewSupersededError` | A `ThreadResumptionError`: the thread is no longer paused on the review answered |
+| `Assistants::ThreadEscalatedError` | A `RunError`: [`#run`](#run) is refused because the thread is escalated to a person; `escalation` carries the escalation's summary (see [Escalations](#escalations)) |
+| `Assistants::EscalationResolutionError` | Assistants refuses [`#hand_back_escalation`](#hand_back_escalation) or [`#close_escalation`](#close_escalation), as it does a malformed one; the message is the response body |
+| `Assistants::EscalationNotOpenError` | An `EscalationResolutionError`: the thread has no open escalation with that id, because another person resolved it first or it never existed; `escalation` carries the thread's current `id` and `status`, or is `nil` |
 | `AssistantRegistry::UnknownAssistantError` | `NitroIntelligence.assistants[key]` names a key `definitions` does not configure |
 | `Assistant::ConfigurationError` | An assistant's entry lacks its `api_key` or `assistant_id` |
 

@@ -100,6 +100,32 @@ module NitroIntelligence
       client.review(thread_id:, assistant_id:, **kwargs)
     end
 
+    # {Assistants#hand_back_escalation} for this assistant.
+    #
+    # @param thread_id [String]
+    # @param kwargs [Hash] the rest of {Assistants#hand_back_escalation}'s arguments, except
+    #   `assistant_id`
+    # @return [RunResult, Escalation]
+    # @raise [ArgumentError] when given an `assistant_id`
+    # @raise (see Assistants#hand_back_escalation)
+    def hand_back_escalation(thread_id:, **kwargs)
+      reject_assistant_id!(kwargs)
+      client.hand_back_escalation(thread_id:, assistant_id:, **kwargs)
+    end
+
+    # {Assistants#close_escalation} for this assistant.
+    #
+    # @param thread_id [String]
+    # @param kwargs [Hash] the rest of {Assistants#close_escalation}'s arguments, except
+    #   `assistant_id`
+    # @return [Escalation]
+    # @raise [ArgumentError] when given an `assistant_id`
+    # @raise (see Assistants#close_escalation)
+    def close_escalation(thread_id:, **kwargs)
+      reject_assistant_id!(kwargs)
+      client.close_escalation(thread_id:, assistant_id:, **kwargs)
+    end
+
     # {Assistants#review_tool_calls} for this assistant.
     #
     # @deprecated Use {#review}`(tool_calls:, reviewer_id:, interrupt_id:)`. Removed in 5.0.
