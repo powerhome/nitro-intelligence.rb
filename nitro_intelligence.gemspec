@@ -20,9 +20,10 @@ Gem::Specification.new do |s|
   s.add_dependency "activesupport", "~> 7.1"
   s.add_dependency "langfuse-rb", "0.7.0"
   s.add_dependency "mini_magick", "~> 4.10"
-  # 0.86 is the earliest version exposing `last_response` - the HTTP metadata the
-  # gateway reports cost in - on every response, the binary ones text-to-speech
-  # returns included. On anything older the cost is silently never recorded.
+  # The gem is built and tested against the 1.x API only. Cost recording relies on
+  # `last_response` - the HTTP metadata the gateway reports cost in - being on every
+  # response, the binary ones text-to-speech returns included; without it the cost is
+  # silently never recorded.
   s.add_dependency "openai", "~> 1.0"
   # BatchSpanProcessor overrides private SDK internals verified on 1.10.0-1.13.1.
   # Recheck those internals and the flush specs before raising this ceiling.
