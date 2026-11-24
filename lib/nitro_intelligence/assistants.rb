@@ -34,8 +34,9 @@ module NitroIntelligence
     NOT_INTERRUPTED_REFUSAL = "thread is not in interrupted state".freeze
 
     # @api private
-    # Assistants answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
-    THREAD_CONFLICT_CODE = 409
+    # What Assistants answers with when `ifExists: "raise"` is sent for a thread that already exists, and
+    # when it refuses a run or an escalation's resolution, its `details.code` saying why.
+    CONFLICT_CODE = 409
 
     # @api private
     # Where a `/runs/wait` response says which run it waited on.
@@ -421,7 +422,7 @@ module NitroIntelligence
     end
 
     def thread_already_exists?(response)
-      response.code.to_i == THREAD_CONFLICT_CODE
+      response.code.to_i == CONFLICT_CODE
     end
 
     def trigger_run(thread_id:, assistant_id:, last_message:, context: {})
@@ -447,8 +448,7 @@ module NitroIntelligence
       return if failure.blank?
 
       detail = failure.is_a?(Hash) ? [failure["error"], failure["message"]].compact.join(": ") : failure.to_s
-      escalated = error <= RunError && escalated_failure(failure, detail)
-      raise ThreadEscalatedError.new(detail, escalation: escalated[:escalation]) if escalated
+      escalated_failure!(failure, detail) if error <= RunError
 
       raise error, detail
     end

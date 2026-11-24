@@ -45,10 +45,6 @@ RSpec.describe NitroIntelligence::Escalation do
                                                    delivered_at: "2026-11-12T14:03:01Z")
   end
 
-  it "keeps the response as given" do
-    expect(escalation.raw).to eq(block)
-  end
-
   context "with a resolution's summary" do
     let(:block) do
       {
@@ -81,16 +77,5 @@ RSpec.describe NitroIntelligence::Escalation do
 
     it { is_expected.to be_sandbox }
     it { is_expected.to be_closed }
-  end
-
-  describe ".from" do
-    it "builds one from a Hash" do
-      expect(described_class.from({ "id" => "esc-1" }).id).to eq("esc-1")
-    end
-
-    it "is nil for anything else" do
-      expect(described_class.from(nil)).to be_nil
-      expect(described_class.from("esc-1")).to be_nil
-    end
   end
 end

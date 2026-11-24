@@ -531,7 +531,7 @@ A run that hands the conversation to a person ends with no reply and no pause, a
 | `sandbox?` | Whether a sandbox run escalated. The thread refuses runs of either kind |
 | `raw` | The escalation as Assistants returned it |
 
-The escalation is read in three places, and each carries a different amount of it. A run's `escalation` carries all of it. A `ThreadEscalatedError`, and what a resolution returns, carry a summary (a `ThreadEscalatedError` from an older server, or when the platform could not read the stamp, carries only `id` and `status`): `id`, `status`, `source`, `reason`, `at`, the delivery's `status`, and `resolved_by` and `resolved_at` once resolved; the other fields are `nil`. An `EscalationNotOpenError` carries only `id` and `status`.
+The escalation is read in three places, and each carries a different amount of it. A run's `escalation` carries all of it. A `ThreadEscalatedError`, and what a resolution returns, carry a summary (a `ThreadEscalatedError` raised when the platform could not read the stamp carries only `id` and `status`): `id`, `status`, `source`, `reason`, `at`, the delivery's `status`, and `resolved_by` and `resolved_at` once resolved; the other fields are `nil`. An `EscalationNotOpenError` carries only `id` and `status`.
 
 **Act on a `failed` or `pending` delivery.** The platform sends an escalation once and never again, so if its `delivery` is `failed`, or `pending` for more than a few minutes, the escalation tool may never have recorded it: queue the conversation for a person yourself. The run's result is the first place to see it, and a `ThreadEscalatedError` the next time the customer writes is the second.
 

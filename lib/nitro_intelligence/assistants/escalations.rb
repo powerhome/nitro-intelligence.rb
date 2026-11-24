@@ -48,10 +48,6 @@ module NitroIntelligence
     end
 
     # @api private
-    # What Assistants answers a refused run or resolution with, its `details.code` saying why.
-    CONFLICT_CODE = 409
-
-    # @api private
     # The `details.code` of a run refused because its thread is escalated.
     THREAD_ESCALATED = "thread_escalated".freeze
 
@@ -114,14 +110,14 @@ module NitroIntelligence
       body = { escalation_id:, decision:, **reviewer_stamp(reviewer_id, reviewed_at) }
       response = post(path: "/threads/#{thread_id}/escalation", body:)
       refused!(response, EscalationNotOpenError, ESCALATION_NOT_OPEN)
-      Escalation.from(parse!(response, EscalationResolutionError)["escalation"])
+      Escalation.wrap(parse!(response, EscalationResolutionError)["escalation"])
     end
 
     # Raises `error`, carrying the escalation the refusal names, when `response` is a `409` for
     # `code`.
     def refused!(response, error, code)
       details = refusal(response, code)
-      raise error.new(response.body, escalation: Escalation.from(details["escalation"])) if details
+      raise error.new(response.body, escalation: Escalation.wrap(details["escalation"])) if details
     end
 
     # The `details` of a `409` whose `details.code` is `code`, in Assistants' error shape
@@ -135,18 +131,17 @@ module NitroIntelligence
       nil
     end
 
-    # Whether a run's failure is a refusal on an escalated thread: a run admitted before the thread
-    # was stamped. Returns `{ escalation: }` when it is, with the summary its `details` carry, or,
-    # from a server that sends none or could not read the stamp, the `id` and `status` its message
-    # names; nil when the run failed for another reason.
-    def escalated_failure(failure, detail)
+    # Raises ThreadEscalatedError when a run's failure is a refusal on an escalated thread: a run
+    # admitted before the thread was stamped. Its `details` carry the stamp's summary, or null when
+    # the platform could not read the stamp, and then the `id` and `status` come from the message.
+    def escalated_failure!(failure, detail)
       details = failure.is_a?(Hash) ? failure["details"] : nil
-      named = detail.to_s.match(THREAD_ESCALATED_FAILURE)
-      return nil unless (details.is_a?(Hash) && details["code"] == THREAD_ESCALATED) || named
+      return unless details.is_a?(Hash) && details["code"] == THREAD_ESCALATED
 
-      escalation = Escalation.from(details["escalation"]) if details.is_a?(Hash)
+      named = detail.match(THREAD_ESCALATED_FAILURE)
+      escalation = Escalation.wrap(details["escalation"])
       escalation ||= Escalation.new("id" => named[1], "status" => named[2]) if named
-      { escalation: }
+      raise ThreadEscalatedError.new(detail, escalation:)
     end
   end
 end

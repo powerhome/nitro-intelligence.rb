@@ -30,7 +30,7 @@ module NitroIntelligence
     # @api private
     # @param value [Object] an `escalation` block from a response
     # @return [Escalation, nil] nil unless `value` is a Hash
-    def self.from(value)
+    def self.wrap(value)
       value.is_a?(Hash) ? new(value) : nil
     end
 

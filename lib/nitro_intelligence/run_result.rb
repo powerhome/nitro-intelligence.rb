@@ -128,7 +128,7 @@ module NitroIntelligence
     def escalation
       return @escalation if defined?(@escalation)
 
-      @escalation = Escalation.from(raw["escalation"])
+      @escalation = Escalation.wrap(raw["escalation"])
     end
 
     # @return [Boolean] whether the run handed the conversation to a person
