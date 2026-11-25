@@ -1293,7 +1293,7 @@ RSpec.describe NitroIntelligence::Assistants do
     end
 
     context "when some tool calls already have matching tool messages" do
-      let(:messages) do # rubocop:disable Metrics/BlockLength
+      let(:messages) do
         [
           {
             "type" => "human",
