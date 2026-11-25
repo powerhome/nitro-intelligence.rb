@@ -1,0 +1,21 @@
+name: Request nitro-web compatibility
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+permissions: {}
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Exercise the verifier with public fixtures
+        run: |
+          docker build -t compat-tests --build-arg RUBY_VERSION=3.4.10 --build-arg BUNDLER_VERSION=2.7.2 \
+            - < .github/nitro-web-compat/Dockerfile
+          docker run --rm --network none --cap-drop ALL --security-opt=no-new-privileges \
+            -v "$GITHUB_WORKSPACE/.github/nitro-web-compat:/verifier:ro" compat-tests python3 -B /verifier/test_compat.py
