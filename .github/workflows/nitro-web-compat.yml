@@ -35,8 +35,8 @@ jobs:
         id: reporter
         uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
-          client-id: ${{ vars.COMPAT_REPORTER_CLIENT_ID }}
-          private-key: ${{ secrets.COMPAT_REPORTER_PRIVATE_KEY }}
+          client-id: ${{ vars.NITRO_WEB_COMPAT_REPORTER_CLIENT_ID }}
+          private-key: ${{ secrets.NITRO_WEB_COMPAT_REPORTER_PRIVATE_KEY }}
           permission-statuses: write
       - if: steps.pr.outputs.sha
         env:
@@ -104,8 +104,8 @@ jobs:
       - id: reader
         uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
-          client-id: ${{ vars.NITRO_WEB_READER_CLIENT_ID }}
-          private-key: ${{ secrets.NITRO_WEB_READER_PRIVATE_KEY }}
+          client-id: ${{ vars.NITRO_WEB_COMPAT_READER_CLIENT_ID }}
+          private-key: ${{ secrets.NITRO_WEB_COMPAT_READER_PRIVATE_KEY }}
           owner: powerhome
           repositories: nitro-web
           permission-contents: read
@@ -145,8 +145,8 @@ jobs:
       - id: reporter
         uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
-          client-id: ${{ vars.COMPAT_REPORTER_CLIENT_ID }}
-          private-key: ${{ secrets.COMPAT_REPORTER_PRIVATE_KEY }}
+          client-id: ${{ vars.NITRO_WEB_COMPAT_REPORTER_CLIENT_ID }}
+          private-key: ${{ secrets.NITRO_WEB_COMPAT_REPORTER_PRIVATE_KEY }}
           permission-statuses: write
       - name: Set the PR commit status
         env:

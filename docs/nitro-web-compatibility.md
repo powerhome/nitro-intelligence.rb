@@ -33,8 +33,8 @@ The verifier fetches public RubyGems compact-index records using only the public
 
 | App | Environment variable | Environment secret |
 | --- | --- | --- |
-| nitro-web reader | `NITRO_WEB_READER_CLIENT_ID` | `NITRO_WEB_READER_PRIVATE_KEY` |
-| gem repo reporter | `COMPAT_REPORTER_CLIENT_ID` | `COMPAT_REPORTER_PRIVATE_KEY` |
+| `nitro-web-compat-reader` | `NITRO_WEB_COMPAT_READER_CLIENT_ID` | `NITRO_WEB_COMPAT_READER_PRIVATE_KEY` |
+| `nitro-web-compat-reporter` | `NITRO_WEB_COMPAT_REPORTER_CLIENT_ID` | `NITRO_WEB_COMPAT_REPORTER_PRIVATE_KEY` |
 
 GitHub matches environment deployment branches against the job ref. Restricting the environment to the literal branch lets the verifier execute on `main` while a PR or a branch push cannot deploy to it. The reporter App installation needs no access to nitro-web. [Environment deployment rules](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
 
