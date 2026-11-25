@@ -32,6 +32,9 @@ module LocalRegistry
         records = contents.split("---\n", 2).last.to_s.lines.map { |line| line.split.first }
         next if records.empty?
 
+        # The compact-index v2 wire format specifies MD5 for this cache validator.
+        # Both ends run in the same offline container. No authentication depends on it.
+        # bearer:disable ruby_lang_weak_hash_md
         versions.puts "#{File.basename(file)} #{records.join(',')} #{Digest::MD5.hexdigest(contents)}"
       end
     end

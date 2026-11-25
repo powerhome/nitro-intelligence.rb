@@ -16,32 +16,21 @@ jobs:
       github.event.workflow_run.path == '.github/workflows/nitro-web-request.yml'
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: read
     environment: nitro-web-compat
     outputs:
       sha: ${{ steps.pr.outputs.sha }}
       number: ${{ steps.pr.outputs.number }}
     steps:
-      # workflow_run.pull_requests can be empty for forks. Match the live PR in
-      # the base repository by repository ID, ref and SHA from the triggering run.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - id: pr
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
-          BRANCH: ${{ github.event.workflow_run.head_branch }}
-          OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
-          REPO_ID: ${{ github.event.workflow_run.head_repository.id }}
-        run: |
-          set -euo pipefail
-          [[ $SHA =~ ^[0-9a-f]{40}$ ]]
-          number=$(gh api "repos/$GITHUB_REPOSITORY/pulls" --method GET -f state=open -f base=main -f "head=$OWNER:$BRANCH" |
-            jq -r --arg sha "$SHA" --arg branch "$BRANCH" --argjson id "$REPO_ID" '
-              [.[] | select(.head.sha == $sha and .head.ref == $branch and .head.repo.id == $id)] |
-              if length == 1 then .[0].number else empty end')
-          if [[ $number =~ ^[1-9][0-9]*$ ]]; then
-            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-            echo "number=$number" >> "$GITHUB_OUTPUT"
-          fi
+        run: python3 .github/nitro-web-compat/target.py >> "$GITHUB_OUTPUT"
       - if: steps.pr.outputs.sha
         id: reporter
         uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
