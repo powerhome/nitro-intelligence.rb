@@ -12,21 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 2
           persist-credentials: false
-      - name: Check for verifier changes
-        id: changes
-        run: |
-          # The first parent of GitHub's PR merge commit is the base of this PR.
-          changed=$(git diff --name-only --no-renames HEAD^1 HEAD -- \
-            .github/nitro-web-compat/ \
-            .github/workflows/nitro-web-request.yml \
-            .github/workflows/nitro-web-compat.yml)
-          if [[ -n "$changed" ]]; then
-            echo 'verifier=true' >> "$GITHUB_OUTPUT"
-          fi
       - name: Exercise the verifier with public fixtures
-        if: steps.changes.outputs.verifier == 'true'
         run: |
           docker build -t compat-tests --build-arg RUBY_VERSION=3.4.10 --build-arg BUNDLER_VERSION=2.7.2 \
             - < .github/nitro-web-compat/Dockerfile

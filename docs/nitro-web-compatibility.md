@@ -16,7 +16,7 @@ An old status describes the snapshot at the time it ran. After a nitro-web depen
 
 ## How the check works
 
-The `pull_request` workflow requests the compatibility check whenever a PR into `main` opens, reopens, or receives a new commit. It also runs the public regression tests when the PR changes a file under `.github/nitro-web-compat/` or either compatibility workflow.
+The `pull_request` workflow runs the public regression tests whenever a PR into `main` opens, reopens, or receives a new commit. Its completion triggers the compatibility check.
 
 The `workflow_run` verifier checks out its own protected-main revision, looks up the open PR in the base repository, and matches the workflow run's head repository ID, branch and commit. This lookup also handles fork runs with an empty `pull_requests` array. The verifier fetches the base repository's PR head ref anonymously and compares its SHA before reading the two regular Git blobs for the gemspec and version. It accepts the supported literal declarations and rejects other Ruby programs. It runs no candidate Ruby and consumes no PR artifacts.
 
