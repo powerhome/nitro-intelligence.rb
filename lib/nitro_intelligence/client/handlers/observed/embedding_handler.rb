@@ -44,7 +44,7 @@ module NitroIntelligence
             trace_attributes = {
               model: embeddings.model,
               output: { count: embeddings.vectors.size, dimensions: embeddings.vector&.size },
-              usage_details: embeddings.usage.to_h.symbolize_keys.presence,
+              usage_details: usage_details(embeddings.usage),
               cost_details: @base_handler.cost_details(embeddings),
             }
 
@@ -61,10 +61,17 @@ module NitroIntelligence
 
             billed = Embeddings.new(responses)
             attributes = {
-              usage_details: billed.usage.to_h.symbolize_keys.presence,
+              usage_details: usage_details(billed.usage),
               cost_details: @base_handler.cost_details(billed),
             }.compact
             embedding.update(attributes) if attributes.any?
+          end
+
+          # Recorded under Langfuse's own `input` and `total` keys. OpenAI's names are only recognised
+          # alongside `completion_tokens`, which an embedding has none of, so Langfuse would otherwise
+          # keep `prompt_tokens` and `total_tokens` as two counters and total them, doubling the count.
+          def usage_details(usage)
+            { input: usage[:prompt_tokens], total: usage[:total_tokens] }.compact.presence
           end
         end
       end
