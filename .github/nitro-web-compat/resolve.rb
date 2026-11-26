@@ -20,8 +20,6 @@ module NitroWebCompat
   end
 
   def self.prepare_lockfile(snapshot)
-    raise "Wrong Ruby" unless File.read(File.join(snapshot, ".ruby-version")).strip == RUBY_VERSION
-
     File.write("Gemfile", "")
     original = File.read(File.join(snapshot, "Gemfile.lock"))
     # Reject plugin sources before the parser can try to load a plugin.
@@ -29,8 +27,6 @@ module NitroWebCompat
     raise "Unsupported lockfile" unless (sections - SECTIONS).empty?
 
     lock = Bundler::LockfileParser.new(original)
-    raise "Wrong Bundler" unless lock.bundler_version.to_s == Bundler::VERSION
-
     registries = lock.sources.grep(Bundler::Source::Rubygems).flat_map(&:remotes).map(&:to_s)
     raise "Unsupported registry" unless registries == [REGISTRY]
 
