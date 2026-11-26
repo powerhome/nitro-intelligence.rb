@@ -138,6 +138,9 @@ BUNDLED WITH
                     self.assertIn("    example-app (1)", lock)
                     self.assertNotIn("example-windows-only", lock)
                     self.assertNotIn("example.invalid", lock)
+                else:
+                    # A conflict leaves Bundler's starting lockfile in the working directory.
+                    self.assertEqual((work / "Gemfile.lock").read_bytes(), (snapshot / "Gemfile.lock").read_bytes())
             self.assertNotEqual(*shas)
 
             gemspec.rename(repo / "linked.rb")

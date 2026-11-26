@@ -19,7 +19,7 @@ module NitroWebCompat
     end
   end
 
-  def self.read_snapshot(snapshot)
+  def self.prepare_lockfile(snapshot)
     raise "Wrong Ruby" unless File.read(File.join(snapshot, ".ruby-version")).strip == RUBY_VERSION
 
     File.write("Gemfile", "")
@@ -34,6 +34,7 @@ module NitroWebCompat
     registries = lock.sources.grep(Bundler::Source::Rubygems).flat_map(&:remotes).map(&:to_s)
     raise "Unsupported registry" unless registries == [REGISTRY]
 
+    File.binwrite("Gemfile.lock", original)
     lock
   end
 
@@ -50,7 +51,7 @@ module NitroWebCompat
   end
 
   def self.run(snapshot, candidate)
-    lock = read_snapshot(snapshot)
+    lock = prepare_lockfile(snapshot)
     raise "Candidate missing from baseline" unless lock.specs.any? { |spec| spec.name == candidate.name }
 
     # The lock format omits the Ruby requirement of a same-version path gem.
