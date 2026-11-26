@@ -91,8 +91,8 @@ RSpec.describe NitroIntelligence::ModelCatalog do
 
       expect(catalog.default_text_model_name).to eq("nip/default-text")
       expect(logger).to have_received(:warn).with(
-        "model_config's default_text_model, default_image_model are no longer read: a request that names no model " \
-        "uses the gateway's default for its kind, such as nip/default-text"
+        "model_config's default_text_model (now nip/default-text), default_image_model (now nip/default-image) " \
+        "are no longer read: a request that names no model uses the gateway's default for its kind"
       )
     end
 

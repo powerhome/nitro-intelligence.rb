@@ -88,9 +88,10 @@ module NitroIntelligence
       ignored = @model_config.keys & DEFAULT_MODELS.keys
       return if ignored.empty?
 
+      replaced = ignored.map { |key| "#{key} (now #{DEFAULT_MODELS[key]})" }.join(", ")
       NitroIntelligence.logger.warn(
-        "model_config's #{ignored.join(', ')} #{ignored.one? ? 'is' : 'are'} no longer read: a request that " \
-        "names no model uses the gateway's default for its kind, such as #{DEFAULT_MODELS[ignored.first]}"
+        "model_config's #{replaced} #{ignored.one? ? 'is' : 'are'} no longer read: a request that names no " \
+        "model uses the gateway's default for its kind"
       )
     end
 
