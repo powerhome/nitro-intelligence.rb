@@ -3,7 +3,6 @@ require "json"
 require "English"
 gem "bundler", ENV.fetch("BUNDLER_VERSION") if ENV.key?("BUNDLER_VERSION")
 require "bundler"
-require_relative "registry"
 require_relative "bundle"
 
 module NitroWebCompat
@@ -75,26 +74,23 @@ module NitroWebCompat
     unrelated_versions(original.specs, movable) == unrelated_versions(result.specs, movable) ? 0 : 6
   end
 
-  def self.run(snapshot, candidate, catalog)
+  def self.run(snapshot, candidate)
     lock = read_snapshot(snapshot)
     raise "Candidate missing from baseline" unless lock.specs.any? { |spec| spec.name == candidate.name }
 
     # The lock format omits the Ruby requirement of a same-version path gem.
     return 6 unless candidate.required_ruby_version.satisfied_by?(Gem.ruby_version)
 
-    public_specs = lock.specs.select { |spec| spec.source.is_a?(Bundler::Source::Rubygems) }
-    LocalRegistry.serve(catalog, public_specs) do |registry|
-      SyntheticBundle.prepare(lock, candidate, registry)
-      return $CHILD_STATUS.exitstatus || 1 unless system(Gem.ruby, Gem.bin_path("bundler", "bundle", Bundler::VERSION),
-                                                         "lock", "--update", GEM_NAME)
+    SyntheticBundle.prepare(lock, candidate, REGISTRY)
+    return $CHILD_STATUS.exitstatus || 1 unless system(Gem.ruby, Gem.bin_path("bundler", "bundle", Bundler::VERSION),
+                                                       "lock", "--update", GEM_NAME)
 
-      check_result(lock, candidate)
-    end
+    check_result(lock, candidate)
   end
 end
 
 if $PROGRAM_NAME == __FILE__
-  snapshot, metadata, catalog = ARGV
+  snapshot, metadata = ARGV
   candidate = NitroWebCompat.candidate_spec(JSON.parse(File.read(metadata)))
-  exit NitroWebCompat.run(snapshot, candidate, File.expand_path(catalog))
+  exit NitroWebCompat.run(snapshot, candidate)
 end

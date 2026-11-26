@@ -1,4 +1,4 @@
-"""End-to-end tests with a synthetic consumer, two real Git commits and no registry access."""
+"""End-to-end tests with a synthetic consumer, two Git commits and public RubyGems metadata."""
 import io
 import json
 import os
@@ -59,18 +59,14 @@ class CompatibilityTest(unittest.TestCase):
             gemspec = repo / "nitro_intelligence.gemspec"
             gemspec.write_text(GEMSPEC)
             shas = []
-            for requirement in ["~> 1.0", "~> 2.0"]:
-                (repo / "dependencies.rb").write_text(f"REQUIREMENTS = {{'example-parent' => ['{requirement}']}}\n")
+            # rspec-core 3.12 and 3.13 require different minor versions of rspec-support.
+            for requirement in ["= 3.12.3", "= 3.13.0"]:
+                (repo / "dependencies.rb").write_text(f"REQUIREMENTS = {{'rspec-core' => ['{requirement}']}}\n")
                 git("add", ".")
                 git("-c", "user.name=CI", "-c", "user.email=ci@example.org",
                     "-c", "commit.gpgsign=false", "commit", "-qm", "Change the candidate")
                 shas.append(git("rev-parse", "HEAD"))
 
-            catalog = root / "catalog"
-            catalog.mkdir()
-            (catalog / "example-parent").write_text("---\n1.0 example-leaf:= 1|\n2.0 example-leaf:= 2|\n")
-            (catalog / "example-leaf").write_text("---\n1 |\n2 |\n")
-            (catalog / "unrelated").write_text("---\n1 |\n2 |\n")
             snapshot = root / "snapshot"
             snapshot.mkdir()
             ruby, bundler = subprocess.check_output(
@@ -82,8 +78,8 @@ class CompatibilityTest(unittest.TestCase):
   revision: {'a' * 40}
   specs:
     example-component (1)
-      example-leaf (= 1)
       nitro_intelligence (= 1)
+      rspec-support (= 3.12.0)
 
 PATH
   remote: absent
@@ -95,12 +91,12 @@ PATH
 GEM
   remote: https://rubygems.org/
   specs:
-    example-leaf (1)
-    example-parent (1.0)
-      example-leaf (= 1)
     nitro_intelligence (1)
-      example-parent (>= 1)
-    unrelated (1)
+      rspec-core (>= 3.12)
+    rake (13.2.1)
+    rspec-core (3.12.0)
+      rspec-support (~> 3.12.0)
+    rspec-support (3.12.0)
 
 PLATFORMS
   ruby
@@ -110,7 +106,7 @@ DEPENDENCIES
   example-component!
   example-windows-only
   nitro_intelligence (= 1)
-  unrelated
+  rake
 
 BUNDLED WITH
    {bundler}
@@ -123,17 +119,22 @@ BUNDLED WITH
                 subprocess.run(["ruby", HERE / "load_gemspec.rb", raw], cwd=repo, check=True)
                 with raw.open("rb") as stream:
                     metadata = subprocess.check_output([sys.executable, HERE / "candidate.py"], stdin=stream)
-                self.assertEqual(set(json.loads(metadata)["dependencies"]), {"example-parent"})
+                self.assertEqual(set(json.loads(metadata)["dependencies"]), {"rspec-core"})
                 self.assertCountEqual(json.loads(metadata)["ruby"], [">= 3.3", "< 4"])
                 (work / "candidate.json").write_bytes(metadata)
-                run = subprocess.run(["ruby", HERE / "resolve.rb", snapshot, "candidate.json", catalog],
+                run = subprocess.run(["ruby", HERE / "resolve.rb", snapshot, "candidate.json"],
                                      cwd=work, capture_output=True, text=True,
                                      env={**os.environ, "BUNDLER_VERSION": bundler, "BUNDLE_IGNORE_CONFIG": "1"})
                 self.assertEqual(run.returncode, expected, run.stdout + run.stderr)
                 if expected == 0:
                     lock = (work / "Gemfile.lock").read_text()
                     self.assertIn("    nitro_intelligence (2.0.0)", lock)
-                    self.assertIn("    unrelated (1)", lock)
+                    self.assertIn("    rspec-core (3.12.3)", lock)
+                    self.assertIn("    rake (13.2.1)", lock)
+                    self.assertIn("  remote: https://rubygems.org/", lock)
+                    self.assertIn("  remote: stubs", lock)
+                    self.assertIn("    example-component (1)", lock)
+                    self.assertIn("    example-app (1)", lock)
                     self.assertNotIn("example-windows-only", lock)
                     self.assertNotIn("example.invalid", lock)
             self.assertNotEqual(*shas)
