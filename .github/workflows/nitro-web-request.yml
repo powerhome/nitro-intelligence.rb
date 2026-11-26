@@ -13,6 +13,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Exercise the isolated gemspec loader
+        run: python3 -B .github/nitro-web-compat/test_candidate_container.py
       - name: Exercise the verifier with public fixtures
         run: |
           docker build -t compat-tests --build-arg RUBY_VERSION=3.4.10 --build-arg BUNDLER_VERSION=2.7.2 \

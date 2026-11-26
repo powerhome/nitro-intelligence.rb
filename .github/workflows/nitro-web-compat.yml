@@ -53,11 +53,13 @@ jobs:
           HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
         run: |
           set -euo pipefail
-          repo="$RUNNER_TEMP/candidate.git"
-          git init --bare -q "$repo"
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+          repo="$RUNNER_TEMP/candidate"
+          git init --template= -q "$repo"
           git -C "$repo" fetch -q --no-tags --depth=1 "$GITHUB_SERVER_URL/${HEAD_REPOSITORY:?}.git" "$CANDIDATE_SHA"
           [[ $(git -C "$repo" rev-parse FETCH_HEAD) == "$CANDIDATE_SHA" ]]
-          if data=$(python3 .github/nitro-web-compat/candidate.py "$repo" "$CANDIDATE_SHA"); then
+          git -C "$repo" checkout -q --detach "$CANDIDATE_SHA"
+          if data=$(bash .github/nitro-web-compat/candidate.sh "$repo"); then
             echo "metadata=$data" >> "$GITHUB_OUTPUT"
           elif [[ $? == 2 ]]; then
             echo 'unsupported=true' >> "$GITHUB_OUTPUT"
@@ -143,7 +145,7 @@ jobs:
           case "$RESOLVED/$VERDICT/$UNSUPPORTED" in
             success/compatible/) state=success; message='The targeted update resolves for nitro-web.' ;;
             success/conflict/) state=failure; message='Review the candidate requirements or coordinate a nitro-web dependency update.' ;;
-            */*/true) state=failure; message='Use literal gemspec requirements or ask maintainers to extend the trusted reader.' ;;
+            */*/true) state=failure; message='The candidate gemspec could not be loaded or its dependency metadata was unsupported.' ;;
             *) state=error; message='Verification could not finish. Rerun the verifier or contact a maintainer.' ;;
           esac
           gh api "repos/$GITHUB_REPOSITORY/statuses/$CANDIDATE_SHA" --silent -f context='Installs in nitro-web' \
