@@ -3,6 +3,7 @@ set -euo pipefail
 
 source_dir=$(cd "$1" && pwd)
 scripts=$(cd "$(dirname "$0")" && pwd)
+ruby_version=$(cat "$scripts/.ruby-version")
 result=$(mktemp)
 trap 'rm -f "$result"' EXIT
 
@@ -12,7 +13,7 @@ docker run --rm --read-only --network none --cap-drop ALL --security-opt=no-new-
   --user "$(id -u):$(id -g)" --cpus 1 --memory 256m --pids-limit 64 --ulimit fsize=65536:65536 \
   --tmpfs /tmp:size=16m,mode=1777 --log-driver none -e HOME=/tmp -w /candidate \
   -v "$source_dir:/candidate:ro" -v "$scripts/load_gemspec.rb:/loader.rb:ro" -v "$result:/metadata.json:rw" \
-  ruby:3.4.10-bookworm timeout --signal=KILL 30s ruby /loader.rb /metadata.json >/dev/null 2>&1 || status=$?
+  "ruby:${ruby_version}-bookworm" timeout --signal=KILL 30s ruby /loader.rb /metadata.json >/dev/null 2>&1 || status=$?
 case "$status" in
   0) python3 "$scripts/candidate.py" < "$result" ;;
   125|126|127) echo "Could not start the gemspec loader (Docker exit $status)." >&2; exit 1 ;;

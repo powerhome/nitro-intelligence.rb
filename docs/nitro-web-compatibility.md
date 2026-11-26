@@ -9,7 +9,7 @@
 | Pending | Follow the status link to the verifier run. A first-time fork contributor may need a maintainer to approve the initial Actions run. |
 | Success | This revision resolved. A push to the PR starts another check. |
 | Failure, dependency conflict | Review the gemspec and Ruby requirements. Adjust them or coordinate a prerequisite nitro-web update with its maintainers. |
-| Failure, unsupported metadata | Check that RubyGems can load the gemspec offline on Ruby 3.4.10 and that it produces valid version and runtime dependency requirements for the `nitro_intelligence` Ruby-platform gem. |
+| Failure, unsupported metadata | Check that RubyGems can load the gemspec offline with the verifier's Ruby version and that it produces valid version and runtime dependency requirements for the `nitro_intelligence` Ruby-platform gem. |
 | Error | A maintainer can rerun the verifier from the beginning. Repeated errors can indicate an App, toolchain, registry or lockfile-format change. |
 
 An old status describes the snapshot at the time it ran. After a nitro-web dependency change, rerun the request workflow on the current open PR to sample the new snapshot. A PR that disables or skips its request workflow needs a run on its head before it can satisfy the rule.
@@ -20,7 +20,7 @@ The `pull_request` workflow runs the public regression tests whenever a PR into 
 
 The `workflow_run` verifier checks out its own protected-main revision. It fetches the triggering run's exact head SHA anonymously from its head repository, including for fork PRs. If the PR advances or closes while the verifier is queued, the result still belongs to the original commit.
 
-The candidate job mounts the verified revision read-only in a network-disabled Ruby 3.4.10 container and loads the gemspec with `Gem::Specification.load`. The container receives no App credentials, private snapshot or Actions output file. The runner reads a size-limited JSON result, validates the gem name, platform, version, Ruby requirements and runtime dependencies, and publishes the validated metadata. A gemspec that varies by environment contributes the requirements it declares in this container.
+The candidate job and public fixture tests use the Ruby version in the [verifier's .ruby-version file](../.github/nitro-web-compat/.ruby-version). The candidate job mounts the verified revision read-only in a network-disabled container and loads the gemspec with `Gem::Specification.load`. The container receives no App credentials, private snapshot or Actions output file. The runner reads a size-limited JSON result, validates the gem name, platform, version, Ruby requirements and runtime dependencies, and publishes the validated metadata. A gemspec that varies by environment contributes the requirements it declares in this container.
 
 The reader App fetches the top-level `Gemfile.lock` and `.ruby-version` at one default-branch SHA. A disposable container uses that Ruby and the lockfile's `BUNDLED WITH` version. It reconstructs the Gemfile using roots with a spec on at least one locked platform. It substitutes generated gemspecs for path and Git gems, moves their pins and the root pin to the candidate version, and runs `bundle lock --update nitro_intelligence`. It checks that Bundler selected the candidate's dependencies and preserved unrelated locked versions.
 
