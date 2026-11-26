@@ -7,7 +7,6 @@ import tempfile
 import unittest
 
 import candidate
-from target import target
 
 HERE = Path(__file__).resolve().parent
 GEMSPEC = '''require_relative "lib/nitro_intelligence/version"
@@ -23,18 +22,6 @@ VERSION = 'module NitroIntelligence\n  VERSION = "2.0.0".freeze\nend\n'
 
 
 class CompatibilityTest(unittest.TestCase):
-    def test_fork_run_uses_live_head_even_without_associated_pull_requests(self):
-        run = {"head_sha": "a" * 40, "head_branch": "topic", "head_repository": {"id": 42}, "pull_requests": []}
-        pr = {"number": 7, "state": "open", "base": {"ref": "main"},
-              "head": {"repo": {"id": 42}, "ref": "topic", "sha": "a" * 40}}
-        self.assertEqual(target(run, [pr]), 7)
-        self.assertIsNone(target({**run, "head_repository": {"id": 43}}, [pr]))
-        self.assertIsNone(target({**run, "head_branch": "other"}, [pr]))
-        self.assertIsNone(target(run, [{**pr, "state": "closed"}]))
-        pr["head"]["sha"] = "b" * 40
-        self.assertIsNone(target(run, [pr]))
-        self.assertEqual(target({**run, "head_sha": "b" * 40}, [pr]), 7)
-
     def test_candidates_use_only_the_supported_literal_program(self):
         for spec, version in [
             (GEMSPEC + "nil\n", VERSION),

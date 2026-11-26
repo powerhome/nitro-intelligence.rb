@@ -4,52 +4,38 @@ on:
     workflows: [Request nitro-web compatibility]
     types: [completed]
 permissions: {}
+env:
+  CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
 concurrency:
   group: nitro-web-compat-${{ github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
-  identify:
+  pending:
     if: >-
       github.repository == 'powerhome/nitro-intelligence.rb' && github.ref == 'refs/heads/main' &&
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.path == '.github/workflows/nitro-web-request.yml'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
     environment: nitro-web-compat
-    outputs:
-      sha: ${{ steps.pr.outputs.sha }}
-      number: ${{ steps.pr.outputs.number }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - id: pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 .github/nitro-web-compat/target.py >> "$GITHUB_OUTPUT"
-      - if: steps.pr.outputs.sha
-        id: reporter
+      - id: reporter
         uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           client-id: ${{ vars.NITRO_WEB_COMPAT_REPORTER_CLIENT_ID }}
           private-key: ${{ secrets.NITRO_WEB_COMPAT_REPORTER_PRIVATE_KEY }}
           permission-statuses: write
-      - if: steps.pr.outputs.sha
+      - name: Set the pending commit status
         env:
           GH_TOKEN: ${{ steps.reporter.outputs.token }}
-          SHA: ${{ steps.pr.outputs.sha }}
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" --silent -f context='Installs in nitro-web' \
+          [[ $CANDIDATE_SHA =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$CANDIDATE_SHA" --silent -f context='Installs in nitro-web' \
             -f state=pending -f description='Checking this revision against nitro-web.' \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
   candidate:
-    needs: identify
-    if: needs.identify.outputs.sha
+    needs: pending
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -64,15 +50,14 @@ jobs:
           persist-credentials: false
       - id: extract
         env:
-          SHA: ${{ needs.identify.outputs.sha }}
-          PR: ${{ needs.identify.outputs.number }}
+          HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
         run: |
           set -euo pipefail
           repo="$RUNNER_TEMP/candidate.git"
           git init --bare -q "$repo"
-          git -C "$repo" fetch -q --no-tags --depth=1 "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" "refs/pull/$PR/head"
-          [[ $(git -C "$repo" rev-parse FETCH_HEAD) == "$SHA" ]]
-          if data=$(python3 .github/nitro-web-compat/candidate.py "$repo" "$SHA"); then
+          git -C "$repo" fetch -q --no-tags --depth=1 "$GITHUB_SERVER_URL/${HEAD_REPOSITORY:?}.git" "$CANDIDATE_SHA"
+          [[ $(git -C "$repo" rev-parse FETCH_HEAD) == "$CANDIDATE_SHA" ]]
+          if data=$(python3 .github/nitro-web-compat/candidate.py "$repo" "$CANDIDATE_SHA"); then
             echo "metadata=$data" >> "$GITHUB_OUTPUT"
           elif [[ $? == 2 ]]; then
             echo 'unsupported=true' >> "$GITHUB_OUTPUT"
@@ -137,8 +122,8 @@ jobs:
           esac
 
   report:
-    needs: [identify, candidate, resolve]
-    if: always() && needs.identify.result == 'success' && needs.identify.outputs.sha
+    needs: [pending, candidate, resolve]
+    if: always() && needs.pending.result == 'success'
     runs-on: ubuntu-latest
     environment: nitro-web-compat
     steps:
@@ -151,7 +136,6 @@ jobs:
       - name: Set the PR commit status
         env:
           GH_TOKEN: ${{ steps.reporter.outputs.token }}
-          SHA: ${{ needs.identify.outputs.sha }}
           RESOLVED: ${{ needs.resolve.result }}
           VERDICT: ${{ needs.resolve.outputs.verdict }}
           UNSUPPORTED: ${{ needs.candidate.outputs.unsupported }}
@@ -162,6 +146,6 @@ jobs:
             */*/true) state=failure; message='Use literal gemspec requirements or ask maintainers to extend the trusted reader.' ;;
             *) state=error; message='Verification could not finish. Rerun the verifier or contact a maintainer.' ;;
           esac
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" --silent -f context='Installs in nitro-web' \
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$CANDIDATE_SHA" --silent -f context='Installs in nitro-web' \
             -f state="$state" -f description="$message" \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
