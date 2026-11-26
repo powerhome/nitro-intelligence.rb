@@ -59,9 +59,9 @@ class CompatibilityTest(unittest.TestCase):
             gemspec = repo / "nitro_intelligence.gemspec"
             gemspec.write_text(GEMSPEC)
             shas = []
-            # rspec-core 3.12 and 3.13 require different minor versions of rspec-support.
-            for requirement in ["= 3.12.3", "= 3.13.0"]:
-                (repo / "dependencies.rb").write_text(f"REQUIREMENTS = {{'rspec-core' => ['{requirement}']}}\n")
+            # Support 3.13 requires moving the consumer's rspec-core. Support 3.11 conflicts with it.
+            for requirement in ["= 3.13.0", "= 3.11.0"]:
+                (repo / "dependencies.rb").write_text(f"REQUIREMENTS = {{'rspec-support' => ['{requirement}']}}\n")
                 git("add", ".")
                 git("-c", "user.name=CI", "-c", "user.email=ci@example.org",
                     "-c", "commit.gpgsign=false", "commit", "-qm", "Change the candidate")
@@ -79,7 +79,7 @@ class CompatibilityTest(unittest.TestCase):
   specs:
     example-component (1)
       nitro_intelligence (= 1)
-      rspec-support (= 3.12.0)
+      rspec-core (>= 3.12, <= 3.13.0)
 
 PATH
   remote: absent
@@ -92,7 +92,7 @@ GEM
   remote: https://rubygems.org/
   specs:
     nitro_intelligence (1)
-      rspec-core (>= 3.12)
+      rspec-support (~> 3.12.0)
     rake (13.2.1)
     rspec-core (3.12.0)
       rspec-support (~> 3.12.0)
@@ -119,7 +119,7 @@ BUNDLED WITH
                 subprocess.run(["ruby", HERE / "load_gemspec.rb", raw], cwd=repo, check=True)
                 with raw.open("rb") as stream:
                     metadata = subprocess.check_output([sys.executable, HERE / "candidate.py"], stdin=stream)
-                self.assertEqual(set(json.loads(metadata)["dependencies"]), {"rspec-core"})
+                self.assertEqual(set(json.loads(metadata)["dependencies"]), {"rspec-support"})
                 self.assertCountEqual(json.loads(metadata)["ruby"], [">= 3.3", "< 4"])
                 (work / "candidate.json").write_bytes(metadata)
                 run = subprocess.run(["ruby", HERE / "resolve.rb", snapshot, "candidate.json"],
@@ -129,7 +129,8 @@ BUNDLED WITH
                 if expected == 0:
                     lock = (work / "Gemfile.lock").read_text()
                     self.assertIn("    nitro_intelligence (2.0.0)", lock)
-                    self.assertIn("    rspec-core (3.12.3)", lock)
+                    self.assertIn("    rspec-support (3.13.0)", lock)
+                    self.assertIn("    rspec-core (3.13.0)", lock)
                     self.assertIn("    rake (13.2.1)", lock)
                     self.assertIn("  remote: https://rubygems.org/", lock)
                     self.assertIn("  remote: stubs", lock)
