@@ -47,7 +47,9 @@ module SyntheticBundle
       spec.name == name || spec.source.is_a?(Bundler::Source::Path) # includes Git
     end
     write_stubs(local, candidate, pinned)
-    roots = lock.dependencies.merge(name => pinned)
+    # Bundler keeps platform-excluded roots in DEPENDENCIES even when they have no locked spec.
+    roots = lock.dependencies.slice(*lock.specs.map(&:name))
+    roots[name] = pinned
     locked_roots = write_gemfile(roots, local.map(&:name), registry)
     File.write("Gemfile.lock", [
       "PATH\n  remote: stubs\n  specs:\n#{local.map(&:to_lock).join}",

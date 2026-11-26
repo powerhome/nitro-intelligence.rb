@@ -77,6 +77,7 @@ class CompatibilityTest(unittest.TestCase):
             ruby, bundler = subprocess.check_output(
                 ["ruby", "-rbundler", "-e", "puts RUBY_VERSION, Bundler::VERSION"], text=True).splitlines()
             (snapshot / ".ruby-version").write_text(ruby + "\n")
+            # Bundler lists the Windows-only root under DEPENDENCIES without a spec on this platform.
             (snapshot / "Gemfile.lock").write_text(f"""GIT
   remote: https://example.invalid/component.git
   revision: {'a' * 40}
@@ -108,6 +109,7 @@ PLATFORMS
 DEPENDENCIES
   example-app!
   example-component!
+  example-windows-only
   nitro_intelligence (= 1)
   unrelated
 
@@ -127,6 +129,7 @@ BUNDLED WITH
                     lock = (work / "Gemfile.lock").read_text()
                     self.assertIn("    nitro_intelligence (2.0.0)", lock)
                     self.assertIn("    unrelated (1)", lock)
+                    self.assertNotIn("example-windows-only", lock)
                     self.assertNotIn("example.invalid", lock)
             self.assertNotEqual(*shas)
 
