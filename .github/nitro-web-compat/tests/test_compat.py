@@ -8,9 +8,12 @@ import sys
 import tempfile
 import unittest
 
+COMPAT_DIR = Path(__file__).resolve().parents[1]
+CANDIDATE_DIR = COMPAT_DIR / "candidate"
+sys.path.insert(0, str(CANDIDATE_DIR))
+
 import candidate
 
-HERE = Path(__file__).resolve().parent
 GEMSPEC = '''require_relative "lib/nitro_intelligence/version"
 require_relative "dependencies"
 
@@ -116,13 +119,13 @@ BUNDLED WITH
                 work.mkdir()
                 git("checkout", "-q", "--detach", sha)
                 raw = work / "raw.json"
-                subprocess.run(["ruby", HERE / "load_gemspec.rb", raw], cwd=repo, check=True)
+                subprocess.run(["ruby", CANDIDATE_DIR / "load_gemspec.rb", raw], cwd=repo, check=True)
                 with raw.open("rb") as stream:
-                    metadata = subprocess.check_output([sys.executable, HERE / "candidate.py"], stdin=stream)
+                    metadata = subprocess.check_output([sys.executable, CANDIDATE_DIR / "candidate.py"], stdin=stream)
                 self.assertEqual(set(json.loads(metadata)["dependencies"]), {"rspec-support"})
                 self.assertCountEqual(json.loads(metadata)["ruby"], [">= 3.3", "< 4"])
                 (work / "candidate.json").write_bytes(metadata)
-                run = subprocess.run(["ruby", HERE / "resolve.rb", snapshot, "candidate.json"],
+                run = subprocess.run(["ruby", COMPAT_DIR / "resolve" / "resolve.rb", snapshot, "candidate.json"],
                                      cwd=work, capture_output=True, text=True,
                                      env={**os.environ, "BUNDLER_VERSION": bundler, "BUNDLE_IGNORE_CONFIG": "1"})
                 self.assertEqual(run.returncode, expected, run.stdout + run.stderr)
@@ -145,7 +148,7 @@ BUNDLED WITH
 
             gemspec.rename(repo / "linked.rb")
             gemspec.symlink_to("linked.rb")
-            result = subprocess.run(["ruby", HERE / "load_gemspec.rb", root / "linked.json"], cwd=repo)
+            result = subprocess.run(["ruby", CANDIDATE_DIR / "load_gemspec.rb", root / "linked.json"], cwd=repo)
             self.assertEqual(result.returncode, 2)
 
 

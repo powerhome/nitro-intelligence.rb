@@ -14,11 +14,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Exercise the isolated gemspec loader
-        run: python3 -B .github/nitro-web-compat/test_candidate_container.py
+        run: python3 -B .github/nitro-web-compat/tests/test_candidate_container.py
       - name: Exercise the verifier with public fixtures
         run: |
           ruby_version=$(cat .github/nitro-web-compat/.ruby-version)
           docker build -t compat-tests --build-arg RUBY_VERSION="$ruby_version" \
-            - < .github/nitro-web-compat/Dockerfile
+            - < .github/nitro-web-compat/resolve/Dockerfile
           docker run --rm --cap-drop ALL --security-opt=no-new-privileges \
-            -v "$GITHUB_WORKSPACE/.github/nitro-web-compat:/verifier:ro" compat-tests python3 -B /verifier/test_compat.py
+            -v "$GITHUB_WORKSPACE/.github/nitro-web-compat:/verifier:ro" compat-tests python3 -B /verifier/tests/test_compat.py

@@ -3,7 +3,7 @@ set -euo pipefail
 
 source_dir=$(cd "$1" && pwd)
 scripts=$(cd "$(dirname "$0")" && pwd)
-ruby_version=$(cat "$scripts/.ruby-version")
+ruby_version=$(cat "$scripts/../.ruby-version")
 result=$(mktemp)
 trap 'rm -f "$result"' EXIT
 

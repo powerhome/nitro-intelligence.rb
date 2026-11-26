@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import unittest
 
-HERE = Path(__file__).resolve().parent
+CANDIDATE_DIR = Path(__file__).resolve().parents[1] / "candidate"
 
 
 class CandidateContainerTest(unittest.TestCase):
@@ -24,7 +24,7 @@ end
 """)
 
             def extract():
-                return subprocess.run(["bash", HERE / "candidate.sh", source], capture_output=True, text=True,
+                return subprocess.run(["bash", CANDIDATE_DIR / "candidate.sh", source], capture_output=True, text=True,
                                       env={**os.environ, "GITHUB_OUTPUT": str(source / "runner-output")})
 
             result = extract()

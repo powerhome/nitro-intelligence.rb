@@ -59,7 +59,7 @@ jobs:
           git -C "$repo" fetch -q --no-tags --depth=1 "$GITHUB_SERVER_URL/${HEAD_REPOSITORY:?}.git" "$CANDIDATE_SHA"
           [[ $(git -C "$repo" rev-parse FETCH_HEAD) == "$CANDIDATE_SHA" ]]
           git -C "$repo" checkout -q --detach "$CANDIDATE_SHA"
-          if data=$(bash .github/nitro-web-compat/candidate.sh "$repo"); then
+          if data=$(bash .github/nitro-web-compat/candidate/candidate.sh "$repo"); then
             echo "metadata=$data" >> "$GITHUB_OUTPUT"
           elif [[ $? == 2 ]]; then
             echo 'unsupported=true' >> "$GITHUB_OUTPUT"
@@ -112,7 +112,7 @@ jobs:
         run: |
           printf '%s\n' "$CANDIDATE" > "$RUNNER_TEMP/candidate.json"
           status=0
-          bash .github/nitro-web-compat/check.sh "$RUNNER_TEMP/snapshot" "$RUNNER_TEMP/candidate.json" >/dev/null 2>&1 || status=$?
+          bash .github/nitro-web-compat/resolve/check.sh "$RUNNER_TEMP/snapshot" "$RUNNER_TEMP/candidate.json" >/dev/null 2>&1 || status=$?
           case "$status" in
             0) echo 'verdict=compatible' >> "$GITHUB_OUTPUT" ;;
             6|7) echo 'verdict=conflict' >> "$GITHUB_OUTPUT" ;;
