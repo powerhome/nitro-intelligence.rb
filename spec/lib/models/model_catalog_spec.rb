@@ -234,12 +234,46 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       expect(gateway_models).to have_received(:fetch).twice
     end
 
+    it "has a thread with no list yet wait for another's request instead of asking again" do
+      release = Queue.new
+      allow(gateway_models).to receive(:fetch) do
+        release.pop
+        [{ "name" => "Qwen/Qwen3.6-35B-A3B", "type" => "text" }]
+      end
+
+      first = Thread.new { catalog.lookup_by_name("Qwen/Qwen3.6-35B-A3B") }
+      Thread.pass until first.status == "sleep"
+      second = Thread.new { catalog.lookup_by_name("Qwen/Qwen3.6-35B-A3B") }
+      Thread.pass until second.status == "sleep"
+      release << :go
+
+      expect([first.value, second.value].map(&:name)).to all(eq("Qwen/Qwen3.6-35B-A3B"))
+      expect(gateway_models).to have_received(:fetch).once
+    end
+
+    it "keeps answering from the list it has while another thread refreshes it" do
+      catalog.lookup_by_name("Qwen/Qwen3.6-35B-A3B")
+      release = Queue.new
+      allow(gateway_models).to receive(:fetch) do
+        release.pop
+        []
+      end
+      clock[0] = described_class::REFRESH_INTERVAL
+
+      refreshing = Thread.new { catalog.lookup_by_name("new/model") }
+      Thread.pass until refreshing.status == "sleep"
+
+      expect(catalog.lookup_by_name("Qwen/Qwen3.6-35B-A3B").name).to eq("Qwen/Qwen3.6-35B-A3B")
+      release << :go
+      refreshing.join
+    end
+
     it "logs a gateway that cannot list its models, and asks again soon after" do
       allow(gateway_models).to receive(:fetch).and_raise(NitroIntelligence::GatewayModels::Error, "503 listing models")
 
       expect { catalog.fetch("Qwen/Qwen3.6-35B-A3B") }.to raise_error(
         ArgumentError,
-        "Unsupported model: 'Qwen/Qwen3.6-35B-A3B' (could not list the inference gateway's models: " \
+        "Unsupported model: 'Qwen/Qwen3.6-35B-A3B' (the last attempt to list the inference gateway's models failed: " \
         "NitroIntelligence::GatewayModels::Error: 503 listing models)"
       )
       expect(logger).to have_received(:warn).with(/503 listing models/)

@@ -40,7 +40,10 @@ module NitroIntelligence
       @discovered_models = []
       @next_discovery_at = nil
       @discovery_error = nil
+      @listed = false
+      @discovering = false
       @mutex = Mutex.new
+      @discovered = ConditionVariable.new
     end
 
     # Every model, including what the gateway serves, which this may ask it for.
@@ -82,30 +85,52 @@ module NitroIntelligence
       message = "Unsupported model: '#{name}'"
       return message unless @discovery_error
 
-      "#{message} (could not list the inference gateway's models: #{@discovery_error})"
+      "#{message} (the last attempt to list the inference gateway's models failed: #{@discovery_error})"
     end
 
     # The gateway's models, asking it for them the first time, and again when `refresh` is set and
-    # the last answer is old enough.
+    # the last answer is old enough. One thread asks at a time, without holding the lock while it
+    # waits on the gateway. Another thread keeps using the list it has meanwhile; only one with no
+    # list yet waits for the answer, which it needs as much as the thread asking.
     def discovered_models(refresh: false)
       return [] unless @gateway_models
 
-      @mutex.synchronize do
-        discover if @next_discovery_at.nil? || (refresh && now >= @next_discovery_at)
-        @discovered_models
+      ask = @mutex.synchronize do
+        @discovered.wait(@mutex) while @discovering && !@listed
+        next false if @discovering || !discovery_due?(refresh)
+
+        @discovering = true
       end
+      discover if ask
+      @mutex.synchronize { @discovered_models }
+    end
+
+    def discovery_due?(refresh)
+      @next_discovery_at.nil? || (refresh && now >= @next_discovery_at)
     end
 
     def discover
-      @discovered_models = @gateway_models.fetch.filter_map { |model_metadata| build_discovered(model_metadata) }
-      @next_discovery_at = now + REFRESH_INTERVAL
-      @discovery_error = nil
+      models = @gateway_models.fetch.filter_map { |model_metadata| build_discovered(model_metadata) }
+      @mutex.synchronize do
+        @discovered_models = models
+        @listed = true
+        @next_discovery_at = now + REFRESH_INTERVAL
+        @discovery_error = nil
+      end
     rescue => e
       # A gateway that cannot list its models cannot serve them either, so this only decides which
       # error a request sees: "Unsupported model" now, or the gateway's own on the request.
-      @discovery_error = "#{e.class}: #{e.message}"
-      NitroIntelligence.logger.warn("Could not list the inference gateway's models: #{@discovery_error}")
-      @next_discovery_at = now + RETRY_INTERVAL
+      error = "#{e.class}: #{e.message}"
+      NitroIntelligence.logger.warn("Could not list the inference gateway's models: #{error}")
+      @mutex.synchronize do
+        @discovery_error = error
+        @next_discovery_at = now + RETRY_INTERVAL
+      end
+    ensure
+      @mutex.synchronize do
+        @discovering = false
+        @discovered.broadcast
+      end
     end
 
     # A model the gateway does not publish enough about to use is left out, as if the gateway did
