@@ -46,19 +46,22 @@ module NitroIntelligence
           }
 
           parameters.replace(default_parameters.merge(parameters))
-          Client.validate_model(parameters[:model], type: EmbeddingModel)
+          model = Client.validate_model(parameters[:model], type: EmbeddingModel)
           unless INPUT_TYPES.include?(input_type)
             raise ArgumentError, "input_type must be one of #{INPUT_TYPES.inspect}"
           end
 
+          validate_instruction!(parameters[:instruction], model) unless parameters[:instruction].nil?
           validate_input!(input)
           validate_batch_size!(parameters[:batch_size])
         end
 
         # The texts as the model receives them: each after the model's prefix for queries or for
-        # documents, which is empty for a model that embeds both the same way.
+        # documents, which is empty for a model that embeds both the same way, or after a query's
+        # `instruction` in the model's own form for one.
         def texts(input, input_type, parameters)
-          prefix = Client.validate_model(parameters[:model], type: EmbeddingModel).prefix_for(input_type)
+          model = Client.validate_model(parameters[:model], type: EmbeddingModel)
+          prefix = model.prefix_for(input_type, instruction: parameters[:instruction])
           Array(input).map { |text| "#{prefix}#{text}" }
         end
 
@@ -74,6 +77,15 @@ module NitroIntelligence
         end
 
       private
+
+        def validate_instruction!(instruction, model)
+          unless instruction.is_a?(String) && instruction.present?
+            raise ArgumentError, "instruction must be a non-empty string, not #{instruction.inspect}"
+          end
+          return if model.query_instruction_template.present?
+
+          raise ArgumentError, "Model '#{model.name}' takes no query instruction"
+        end
 
         # Checked before any batch is sent, so a bad entry late in a long list cannot fail the call
         # after the batches before it were billed.

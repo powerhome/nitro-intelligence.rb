@@ -116,6 +116,34 @@ RSpec.describe NitroIntelligence::TextToSpeechModel do
   end
 end
 
+RSpec.describe NitroIntelligence::EmbeddingModel do
+  let(:qwen) do
+    described_class.new(
+      name: "Qwen/Qwen3-Embedding-0.6B", query_prefix: "Instruct: Find the page\nQuery:",
+      query_instruction_template: "Instruct: {instruction}\nQuery:"
+    )
+  end
+
+  describe "#prefix_for" do
+    it "gives the plain query prefix for a query without an instruction" do
+      expect(qwen.prefix_for(:query)).to eq("Instruct: Find the page\nQuery:")
+    end
+
+    it "fills a query's instruction into the template" do
+      expect(qwen.prefix_for(:query, instruction: "Find the policy")).to eq("Instruct: Find the policy\nQuery:")
+    end
+
+    it "gives documents their own prefix whatever the instruction" do
+      expect(qwen.prefix_for(:document, instruction: "Find the policy")).to eq("")
+    end
+  end
+
+  it "refuses a template with nowhere to put the instruction" do
+    expect { described_class.new(name: "x", query_instruction_template: "Instruct: \nQuery:") }
+      .to raise_error(ArgumentError, "query_instruction_template for x has no {instruction}")
+  end
+end
+
 RSpec.describe "NitroIntelligence::Model.kind" do
   it "names each kind of model after its class" do
     expect(NitroIntelligence::ModelFactory::TYPES.values.uniq.to_h { [_1, _1.kind] }).to eq(
