@@ -17,7 +17,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::AudioTranscription
   let(:handler) { described_class.new(base_handler:, observer: fake_observer) }
 
   before do
-    fake_catalog = double("ModelCatalog", default_audio_transcription_model: double(name: "whisper-1"))
+    fake_catalog = double("ModelCatalog", default_audio_transcription_model_name: "whisper-1")
     allow(fake_catalog).to receive(:fetch) { |name, **| double("Model", name:) }
     allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_catalog)
 

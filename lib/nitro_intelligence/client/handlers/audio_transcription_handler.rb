@@ -25,7 +25,7 @@ module NitroIntelligence
         def validate_and_resolve!(parameters)
           default_parameters = {
             metadata: {},
-            model: NitroIntelligence.model_catalog.default_audio_transcription_model&.name,
+            model: NitroIntelligence.model_catalog.default_audio_transcription_model_name,
           }
 
           parameters.replace(default_parameters.merge(parameters))

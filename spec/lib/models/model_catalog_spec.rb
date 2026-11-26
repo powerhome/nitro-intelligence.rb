@@ -208,6 +208,22 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       expect(logger).to have_received(:debug).with(%r{Leaving out gateway model google/gemini-3.8-flash-tts})
     end
 
+    it "leaves out a gateway image model that publishes no aspect ratios or resolutions" do
+      allow(gateway_models).to receive(:fetch).and_return(
+        [{ "name" => "google/gemini-nano-banana-2.1", "type" => "image", "aspect_ratios" => ["1:1"] }]
+      )
+
+      expect(catalog.lookup_by_name("google/gemini-nano-banana-2.1")).to be_nil
+      expect(logger).to have_received(:debug).with(/no aspect_ratios or resolutions/)
+    end
+
+    it "gives a default's configured name even when no model by that name is available" do
+      allow(gateway_models).to receive(:fetch).and_return([])
+
+      expect(catalog.default_text_model).to be_nil
+      expect(catalog.default_text_model_name).to eq("Qwen/Qwen3.6-35B-A3B")
+    end
+
     it "asks again for an unknown name only once the last answer is old enough" do
       catalog.lookup_by_name("new/model")
       catalog.lookup_by_name("new/model")
@@ -221,7 +237,11 @@ RSpec.describe NitroIntelligence::ModelCatalog do
     it "logs a gateway that cannot list its models, and asks again soon after" do
       allow(gateway_models).to receive(:fetch).and_raise(NitroIntelligence::GatewayModels::Error, "503 listing models")
 
-      expect { catalog.fetch("Qwen/Qwen3.6-35B-A3B") }.to raise_error(ArgumentError, "Unsupported model: 'Qwen/Qwen3.6-35B-A3B'")
+      expect { catalog.fetch("Qwen/Qwen3.6-35B-A3B") }.to raise_error(
+        ArgumentError,
+        "Unsupported model: 'Qwen/Qwen3.6-35B-A3B' (could not list the inference gateway's models: " \
+        "NitroIntelligence::GatewayModels::Error: 503 listing models)"
+      )
       expect(logger).to have_received(:warn).with(/503 listing models/)
 
       clock[0] = described_class::RETRY_INTERVAL

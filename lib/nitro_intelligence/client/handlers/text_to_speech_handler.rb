@@ -22,7 +22,7 @@ module NitroIntelligence
         end
 
         def validate_and_resolve!(parameters)
-          model_name = parameters[:model] || NitroIntelligence.model_catalog.default_text_to_speech_model&.name
+          model_name = parameters[:model] || NitroIntelligence.model_catalog.default_text_to_speech_model_name
           model = Client.validate_model(model_name, type: TextToSpeechModel)
 
           default_parameters = {

@@ -25,6 +25,9 @@ module NitroIntelligence
 
     DEFAULTS.each do |default|
       define_method(default) { lookup_by_name(@model_config[default]) }
+      # The name `model_config` gives, whether or not a model by that name is available, so that a
+      # request for the default names it when it is not.
+      define_method(:"#{default}_name") { @model_config[default].presence }
     end
 
     # @param model_config [Hash] as {Configuration#model_config} takes it
@@ -36,6 +39,7 @@ module NitroIntelligence
       @gateway_models = gateway_models
       @discovered_models = []
       @next_discovery_at = nil
+      @discovery_error = nil
       @mutex = Mutex.new
     end
 
@@ -58,7 +62,7 @@ module NitroIntelligence
     # does not say why.
     def fetch(name, type: Model)
       model = lookup_by_name(name)
-      raise ArgumentError, "Unsupported model: '#{name}'" unless model
+      raise ArgumentError, unsupported_message(name) unless model
 
       return model if model.is_a?(type)
 
@@ -74,6 +78,13 @@ module NitroIntelligence
 
   private
 
+    def unsupported_message(name)
+      message = "Unsupported model: '#{name}'"
+      return message unless @discovery_error
+
+      "#{message} (could not list the inference gateway's models: #{@discovery_error})"
+    end
+
     # The gateway's models, asking it for them the first time, and again when `refresh` is set and
     # the last answer is old enough.
     def discovered_models(refresh: false)
@@ -88,17 +99,25 @@ module NitroIntelligence
     def discover
       @discovered_models = @gateway_models.fetch.filter_map { |model_metadata| build_discovered(model_metadata) }
       @next_discovery_at = now + REFRESH_INTERVAL
+      @discovery_error = nil
     rescue => e
       # A gateway that cannot list its models cannot serve them either, so this only decides which
       # error a request sees: "Unsupported model" now, or the gateway's own on the request.
-      NitroIntelligence.logger.warn("Could not list the inference gateway's models: #{e.class}: #{e.message}")
+      @discovery_error = "#{e.class}: #{e.message}"
+      NitroIntelligence.logger.warn("Could not list the inference gateway's models: #{@discovery_error}")
       @next_discovery_at = now + RETRY_INTERVAL
     end
 
-    # A model the gateway does not publish enough about to use, such as a text-to-speech model with
-    # no default voice, is left out, as if the gateway did not serve it.
+    # A model the gateway does not publish enough about to use is left out, as if the gateway did
+    # not serve it: a text-to-speech model with no default voice, which cannot be built, or an image
+    # model with no aspect ratios or resolutions, which would refuse every request.
     def build_discovered(model_metadata)
-      ModelFactory.build(model_metadata)
+      model = ModelFactory.build(model_metadata)
+      if model.is_a?(ImageModel) && (model.aspect_ratios.blank? || model.resolutions.blank?)
+        raise ArgumentError, "no aspect_ratios or resolutions"
+      end
+
+      model
     rescue ArgumentError => e
       NitroIntelligence.logger.debug("Leaving out gateway model #{model_metadata['name']}: #{e.message}")
       nil
