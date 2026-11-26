@@ -11,9 +11,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::RerankHandler do
 
   let(:model_config) do
     {
-      default_rerank_model: "Qwen/Qwen3-Reranker-0.6B",
       models: [
-        { name: "Qwen/Qwen3-Reranker-0.6B", type: "rerank" },
+        { name: "nip/default-rerank", type: "rerank" },
         { name: "other/reranker", type: "rerank" },
         { name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding" },
       ],
@@ -48,7 +47,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::RerankHandler do
     it "posts the model, query and documents to the rerank route" do
       handler.create(query:, documents:)
 
-      expect(rerank_route.with(body: { model: "Qwen/Qwen3-Reranker-0.6B", query:, documents: })).to have_been_requested
+      expect(rerank_route.with(body: { model: "nip/default-rerank", query:, documents: })).to have_been_requested
     end
 
     it "sends top_n, and keeps the gem's own parameters out of the body" do
@@ -57,7 +56,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::RerankHandler do
         parameters: { top_n: 2, instruction: "Find the page", metadata: { a: 1 }, trace_name: "t", trace_documents: false }
       )
 
-      expect(rerank_route.with(body: { model: "Qwen/Qwen3-Reranker-0.6B", query:, documents:, top_n: 2 }))
+      expect(rerank_route.with(body: { model: "nip/default-rerank", query:, documents:, top_n: 2 }))
         .to have_been_requested
     end
 
@@ -114,7 +113,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::RerankHandler do
 
       expect(
         rerank_route.with(headers: {
-                            "nip-requested-model" => "Qwen/Qwen3-Reranker-0.6B",
+                            "nip-requested-model" => "nip/default-rerank",
                             "x-litellm-spend-logs-metadata" => { feature: "page-finder" }.to_json,
                           })
       ).to have_been_requested
@@ -195,11 +194,11 @@ RSpec.describe NitroIntelligence::Client::Handlers::RerankHandler do
       expect(rerank_route).not_to have_been_requested
     end
 
-    it "raises when no model is provided and the catalog has no default" do
+    it "raises, naming the default, when no model is provided and the gateway does not serve the default" do
       allow(NitroIntelligence).to receive(:model_catalog)
-        .and_return(NitroIntelligence::ModelCatalog.new(model_config.except(:default_rerank_model)))
+        .and_return(NitroIntelligence::ModelCatalog.new(model_config.merge(models: model_config[:models].reject { |model| model[:name] == "nip/default-rerank" })))
 
-      expect { handler.create(query:, documents:) }.to raise_error(ArgumentError, /Unsupported model: ''/)
+      expect { handler.create(query:, documents:) }.to raise_error(ArgumentError, %r{Unsupported model: 'nip/default-rerank'})
     end
 
     it "leaves a parameters hash given to the client twice unchanged" do

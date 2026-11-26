@@ -11,9 +11,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
 
   let(:model_config) do
     {
-      default_embedding_model: "Qwen/Qwen3-Embedding-0.6B",
       models: [
-        { name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", query_prefix: "Instruct: Find the page\nQuery:" },
+        { name: "nip/default-embedding", type: "embedding", query_prefix: "Instruct: Find the page\nQuery:" },
         { name: "other/embedder", type: "embedding", query_prefix: "query: ", document_prefix: "passage: " },
         { name: "plain/embedder", type: "embedding" },
         { name: "Qwen/Qwen3.6-35B-A3B", type: "text" },
@@ -39,7 +38,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
         status: 200,
         headers: response_headers,
         body: {
-          object: "list", model: "Qwen/Qwen3-Embedding-0.6B", data: data.reverse,
+          object: "list", model: "nip/default-embedding", data: data.reverse,
           usage: { prompt_tokens: body["input"].size * 3, total_tokens: body["input"].size * 3 }
         }.to_json,
       }
@@ -55,12 +54,12 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
       embeddings = handler.create(input_type: :document, input: "How do I request time off?")
 
       expect(requests).to eq(
-        [{ "input" => ["How do I request time off?"], "model" => "Qwen/Qwen3-Embedding-0.6B", "encoding_format" => "float" }]
+        [{ "input" => ["How do I request time off?"], "model" => "nip/default-embedding", "encoding_format" => "float" }]
       )
       expect(embeddings).to be_a(NitroIntelligence::Embeddings)
       expect(embeddings.vector).to eq([1.0, 0.0])
       expect(embeddings.vectors).to eq([[1.0, 0.0]])
-      expect(embeddings.model).to eq("Qwen/Qwen3-Embedding-0.6B")
+      expect(embeddings.model).to eq("nip/default-embedding")
     end
 
     it "returns the vectors in input order" do
@@ -137,7 +136,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
 
       expect(
         embeddings_route.with(headers: {
-                                "nip-requested-model" => "Qwen/Qwen3-Embedding-0.6B",
+                                "nip-requested-model" => "nip/default-embedding",
                                 "x-litellm-spend-logs-metadata" => { feature: "page-finder" }.to_json,
                               })
       ).to have_been_requested.twice
@@ -187,11 +186,11 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
       expect(embeddings_route).not_to have_been_requested
     end
 
-    it "raises when no model is provided and the catalog has no default" do
+    it "raises, naming the default, when no model is provided and the gateway does not serve the default" do
       allow(NitroIntelligence).to receive(:model_catalog)
-        .and_return(NitroIntelligence::ModelCatalog.new(model_config.except(:default_embedding_model)))
+        .and_return(NitroIntelligence::ModelCatalog.new(model_config.merge(models: model_config[:models].reject { |model| model[:name] == "nip/default-embedding" })))
 
-      expect { handler.create(input_type: :document, input: "a") }.to raise_error(ArgumentError, /Unsupported model: ''/)
+      expect { handler.create(input_type: :document, input: "a") }.to raise_error(ArgumentError, %r{Unsupported model: 'nip/default-embedding'})
     end
 
     it "raises the client's errors for a rejected request" do

@@ -11,9 +11,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
 
   let(:model_config) do
     {
-      default_decision_model: "typesafe/jev-1.14",
       models: [
-        { name: "typesafe/jev-1.14", type: "decision" },
+        { name: "nip/default-decision", type: "decision" },
         { name: "other/decider", type: "decision" },
         { name: "Qwen/Qwen3.6-35B-A3B", type: "text" },
       ],
@@ -39,7 +38,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
 
   let(:response_body) do
     {
-      model: "typesafe/jev-1.14",
+      model: "nip/default-decision",
       answers: {
         billing: { type: "noul", noul: 0.98 },
         team: { type: "choice", choice: "payments", confidence: 0.91, probabilities: { payments: 0.95, other: 0.05 } },
@@ -74,7 +73,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
     it "posts the model, state and questions to System One" do
       handler.create(state:, questions:)
 
-      expect(systemone.with(body: { model: "typesafe/jev-1.14", state:, questions: })).to have_been_requested
+      expect(systemone.with(body: { model: "nip/default-decision", state:, questions: })).to have_been_requested
     end
 
     it "sends the requested model and the caller's metadata as gateway headers" do
@@ -82,7 +81,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
 
       expect(
         systemone.with(headers: {
-                         "nip-requested-model" => "typesafe/jev-1.14",
+                         "nip-requested-model" => "nip/default-decision",
                          "x-litellm-spend-logs-metadata" => { feature: "triage" }.to_json,
                        })
       ).to have_been_requested
@@ -100,7 +99,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
 
       handler.create(state: "photo", questions:, parameters: { assets: })
 
-      expect(systemone.with(body: { model: "typesafe/jev-1.14", state: "photo", questions:, assets: }))
+      expect(systemone.with(body: { model: "nip/default-decision", state: "photo", questions:, assets: }))
         .to have_been_requested
     end
 
@@ -108,7 +107,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
       decision = handler.create(state:, questions:)
 
       expect(decision).to be_a(NitroIntelligence::Decision)
-      expect(decision.model).to eq("typesafe/jev-1.14")
+      expect(decision.model).to eq("nip/default-decision")
       expect(decision.answers[:billing]).to eq(NitroIntelligence::Decision::NoulAnswer.new(noul: 0.98))
       expect(decision.answers["team"]).to eq(
         NitroIntelligence::Decision::ChoiceAnswer.new(
@@ -198,7 +197,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
 
       handler.create(state:, questions:, parameters: { request_options: })
 
-      expect(systemone.with(headers: { "x-custom" => "1", "nip-requested-model" => "typesafe/jev-1.14" }))
+      expect(systemone.with(headers: { "x-custom" => "1", "nip-requested-model" => "nip/default-decision" }))
         .to have_been_requested
     end
 
@@ -309,11 +308,11 @@ RSpec.describe NitroIntelligence::Client::Handlers::DecisionHandler do
       expect(systemone).not_to have_been_requested
     end
 
-    it "raises when no model is provided and the catalog has no default" do
+    it "raises, naming the default, when no model is provided and the gateway does not serve the default" do
       allow(NitroIntelligence).to receive(:model_catalog)
-        .and_return(NitroIntelligence::ModelCatalog.new(model_config.except(:default_decision_model)))
+        .and_return(NitroIntelligence::ModelCatalog.new(model_config.merge(models: model_config[:models].reject { |model| model[:name] == "nip/default-decision" })))
 
-      expect { handler.create(state:, questions:) }.to raise_error(ArgumentError, /Unsupported model: ''/)
+      expect { handler.create(state:, questions:) }.to raise_error(ArgumentError, %r{Unsupported model: 'nip/default-decision'})
     end
   end
 end
