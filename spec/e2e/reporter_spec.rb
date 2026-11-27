@@ -4,9 +4,12 @@ RSpec.describe NitroIntelligence::Reporter, :e2e do
   subject(:reporter) { described_class.new(observability_project_slug: E2eHelpers::OBSERVABILITY_PROJECT_SLUG) }
 
   let(:dataset_name) { "nitro-intelligence.rb e2e" }
-  # One item, rewritten each run, so the dataset does not grow.
-  let(:item_id) { "nitro-intelligence.rb-e2e" }
   let(:run_id) { "#{ENV.fetch('GITHUB_RUN_ID', 'local')}-#{SecureRandom.hex(4)}" }
+  # An item of each run's own, so runs that overlap cannot read back each other's, deleted afterwards
+  # so the dataset does not grow.
+  let(:item_id) { "nitro-intelligence.rb-e2e-#{run_id}" }
+
+  after { cerebro.delete_dataset_item(item_id) }
 
   describe "#create_dataset_item" do
     it "stores the item in the project's dataset" do

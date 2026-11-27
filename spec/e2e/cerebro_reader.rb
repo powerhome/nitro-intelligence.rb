@@ -74,6 +74,13 @@ class CerebroReader
     get("/api/public/dataset-items/#{ERB::Util.url_encode(id)}")
   end
 
+  # Deletes the item, if it exists.
+  def delete_dataset_item(id)
+    perform(Net::HTTP::Delete.new(uri("/api/public/dataset-items/#{ERB::Util.url_encode(id)}")))
+  rescue NotFoundError
+    nil
+  end
+
 private
 
   def poll(description, ready:)
