@@ -49,11 +49,9 @@ module NitroIntelligence
     #   @return [Numeric, nil] the request timeout in seconds. Nil keeps openai-ruby's default of 600.
     config_accessor :inference_timeout, default: nil
     # @!attribute [rw] model_config
-    #   @return [Hash] the default model for each modality (`default_text_model`,
-    #     `default_audio_transcription_model`, `default_image_model`,
-    #     `default_text_to_speech_model`, `default_decision_model`, `default_embedding_model`,
-    #     `default_rerank_model`). The models and their settings come from the gateway. See the
-    #     README's "Models".
+    #   @return [Hash] not needed: the gateway provides the models, their settings and each kind of
+    #     request's default (`nip/default-text` and the like). The `default_*_model` keys it once
+    #     took are no longer read. See the README's "Models".
     config_accessor :model_config, default: {}
     # @!attribute [rw] observability_base_url
     #   @return [String] Cerebro's base URL. Defaults to the shared deployment.

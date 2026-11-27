@@ -84,11 +84,11 @@ RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
       end.to raise_error(ArgumentError, /Unsupported model: 'ghost-tts'/)
     end
 
-    it "raises when no model is provided and the catalog has no default" do
-      allow(fake_catalog).to receive(:default_text_to_speech_model_name).and_return(nil)
+    it "raises, naming the default, when no model is provided and the gateway does not serve the default" do
+      allow(fake_catalog).to receive(:default_text_to_speech_model_name).and_call_original
 
       expect { handler.create(message: "hi") }
-        .to raise_error(ArgumentError, /Unsupported model: ''/)
+        .to raise_error(ArgumentError, %r{Unsupported model: 'nip/default-text-to-speech'})
     end
 
     it "raises when the requested voice is not supported by the model" do

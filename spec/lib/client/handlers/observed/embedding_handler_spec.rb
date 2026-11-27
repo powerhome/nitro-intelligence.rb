@@ -19,8 +19,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
 
   let(:model_config) do
     {
-      default_embedding_model: "Qwen/Qwen3-Embedding-0.6B",
-      models: [{ name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", query_prefix: "Instruct: Find the page\nQuery:" }],
+      models: [{ name: "nip/default-embedding", type: "embedding", query_prefix: "Instruct: Find the page\nQuery:" }],
     }
   end
 
@@ -33,7 +32,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
         status: 200,
         headers: response_headers,
         body: {
-          object: "list", model: "Qwen/Qwen3-Embedding-0.6B",
+          object: "list", model: "nip/default-embedding",
           data: inputs.each_with_index.map { |_, index| { object: "embedding", index:, embedding: [0.25, 0.5, 0.75] } },
           usage: { prompt_tokens: inputs.size * 4, total_tokens: inputs.size * 4 }
         }.to_json,
@@ -83,7 +82,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
 
       expect(embeddings.vectors.size).to eq(3)
       expect(trace_attributes).to match(
-        model: "Qwen/Qwen3-Embedding-0.6B",
+        model: "nip/default-embedding",
         output: { count: 3, dimensions: 3 },
         usage_details: { input: 12, total: 12 },
         cost_details: { total: be_within(1e-12).of(2.0e-07) }
@@ -97,7 +96,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
           status: 200,
           headers: response_headers,
           body: {
-            object: "list", model: "Qwen/Qwen3-Embedding-0.6B",
+            object: "list", model: "nip/default-embedding",
             data: [0, 1].map { |index| { object: "embedding", index:, embedding: [0.25] } },
             usage: { prompt_tokens: 8, total_tokens: 8 }
           }.to_json,

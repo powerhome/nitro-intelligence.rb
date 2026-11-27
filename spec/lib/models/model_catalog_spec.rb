@@ -13,13 +13,6 @@ RSpec.describe NitroIntelligence::ModelCatalog do
         { name: "qwen-embedding", type: "embedding" },
         { name: "qwen-reranker", type: "rerank" },
       ],
-      default_audio_transcription_model: "whisper-1",
-      default_image_model: "dall-e-3",
-      default_text_model: "gpt-4",
-      default_text_to_speech_model: "tts-1",
-      default_decision_model: "jev",
-      default_embedding_model: "qwen-embedding",
-      default_rerank_model: "qwen-reranker",
     }
   end
 
@@ -70,31 +63,47 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       )
     end
 
-    it "sets the default models by performing lookups" do
-      catalog = described_class.new(model_config)
+    it "looks up each kind's default under the gateway's alias for it" do
+      allow(NitroIntelligence::ModelFactory).to receive(:build).and_call_original
+      catalog = described_class.new(
+        models: [
+          { name: "nip/default-text", type: "text" },
+          { name: "nip/default-audio-transcription", type: "audio_transcription" },
+          { name: "nip/default-image", type: "image", aspect_ratios: ["1:1"], resolutions: ["1K"] },
+          { name: "nip/default-text-to-speech", type: "text_to_speech", default_voice: "Kore", default_response_format: "wav" },
+          { name: "nip/default-decision", type: "decision" },
+          { name: "nip/default-embedding", type: "embedding" },
+          { name: "nip/default-rerank", type: "rerank" },
+        ]
+      )
 
-      expect(catalog.default_text_model).to eq(fake_gpt4)
-      expect(catalog.default_image_model).to eq(fake_dalle)
-      expect(catalog.default_audio_transcription_model).to eq(fake_whisper)
-      expect(catalog.default_text_to_speech_model).to eq(fake_tts)
-      expect(catalog.default_decision_model).to eq(fake_jev)
-      expect(catalog.default_embedding_model).to eq(fake_embedding)
-      expect(catalog.default_rerank_model).to eq(fake_reranker)
+      described_class::DEFAULT_MODELS.each do |default, name|
+        expect(catalog.public_send(default).name).to eq(name)
+        expect(catalog.public_send(:"#{default}_name")).to eq(name)
+      end
+    end
+
+    it "warns that defaults in model_config are no longer read, and ignores them" do
+      logger = instance_double(Logger, warn: nil)
+      allow(NitroIntelligence).to receive(:logger).and_return(logger)
+
+      catalog = described_class.new(model_config.merge(default_text_model: "gpt-4", "default_image_model" => "dall-e-3"))
+
+      expect(catalog.default_text_model_name).to eq("nip/default-text")
+      expect(logger).to have_received(:warn).with(
+        "model_config's default_text_model (now nip/default-text), default_image_model (now nip/default-image) " \
+        "are no longer read: a request that names no model uses the gateway's default for its kind"
+      )
     end
 
     it "accepts string-keyed configuration" do
-      string_config = {
-        "models" => [{ name: "gpt-4", type: "text" }],
-        "default_text_model" => "gpt-4",
-      }
-      catalog = described_class.new(string_config)
+      catalog = described_class.new("models" => [{ name: "gpt-4", type: "text" }])
 
-      expect(catalog.default_text_model).to eq(fake_gpt4)
+      expect(catalog.lookup_by_name("gpt-4")).to eq(fake_gpt4)
     end
 
     it "handles missing :models key gracefully by defaulting to an empty array" do
-      empty_config = { default_text_model: "missing-model" }
-      catalog = described_class.new(empty_config)
+      catalog = described_class.new({})
 
       expect(catalog.models).to eq([])
       expect(catalog.default_text_model).to be_nil
@@ -166,9 +175,7 @@ RSpec.describe NitroIntelligence::ModelCatalog do
     let(:catalog) do
       described_class.new(
         {
-          default_text_model: "Qwen/Qwen3.6-35B-A3B",
-          default_image_model: "google/gemini-3.1-flash-image",
-          models: [{ name: "google/gemini-3.1-flash-image", type: "image", aspect_ratios: ["1:1"] }],
+          models: [{ name: "nip/default-image", type: "image", aspect_ratios: ["1:1"] }],
         },
         gateway_models
       )
@@ -181,8 +188,8 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       allow(Process).to receive(:clock_gettime).with(Process::CLOCK_MONOTONIC) { clock.first }
       allow(gateway_models).to receive(:fetch).and_return(
         [
-          { "name" => "Qwen/Qwen3.6-35B-A3B", "type" => "text" },
-          { "name" => "google/gemini-3.1-flash-image", "type" => "image", "aspect_ratios" => %w[1:1 16:9] },
+          { "name" => "nip/default-text", "type" => "text" },
+          { "name" => "nip/default-image", "type" => "image", "aspect_ratios" => %w[1:1 16:9] },
           { "name" => "google/gemini-3.8-flash-tts", "type" => "text_to_speech" },
         ]
       )
@@ -195,12 +202,12 @@ RSpec.describe NitroIntelligence::ModelCatalog do
 
     it "finds a model model_config does not list among the gateway's" do
       expect(catalog.default_text_model).to be_a(NitroIntelligence::TextModel)
-      expect(catalog.fetch("Qwen/Qwen3.6-35B-A3B", type: NitroIntelligence::TextModel).name).to eq("Qwen/Qwen3.6-35B-A3B")
+      expect(catalog.fetch("nip/default-text", type: NitroIntelligence::TextModel).name).to eq("nip/default-text")
       expect(gateway_models).to have_received(:fetch).once
     end
 
     it "lists configured models ahead of the gateway's, once each" do
-      expect(catalog.models.map(&:name)).to eq(["google/gemini-3.1-flash-image", "Qwen/Qwen3.6-35B-A3B"])
+      expect(catalog.models.map(&:name)).to eq(["nip/default-image", "nip/default-text"])
     end
 
     it "leaves out a gateway model it lacks the settings to build" do
@@ -217,11 +224,11 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       expect(logger).to have_received(:debug).with(/no aspect_ratios or resolutions/)
     end
 
-    it "gives a default's configured name even when no model by that name is available" do
+    it "gives the default's alias even when the gateway does not serve it" do
       allow(gateway_models).to receive(:fetch).and_return([])
 
       expect(catalog.default_text_model).to be_nil
-      expect(catalog.default_text_model_name).to eq("Qwen/Qwen3.6-35B-A3B")
+      expect(catalog.default_text_model_name).to eq("nip/default-text")
     end
 
     it "asks again for an unknown name only once the last answer is old enough" do
@@ -238,21 +245,21 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       release = Queue.new
       allow(gateway_models).to receive(:fetch) do
         release.pop
-        [{ "name" => "Qwen/Qwen3.6-35B-A3B", "type" => "text" }]
+        [{ "name" => "nip/default-text", "type" => "text" }]
       end
 
-      first = Thread.new { catalog.lookup_by_name("Qwen/Qwen3.6-35B-A3B") }
+      first = Thread.new { catalog.lookup_by_name("nip/default-text") }
       Thread.pass until first.status == "sleep"
-      second = Thread.new { catalog.lookup_by_name("Qwen/Qwen3.6-35B-A3B") }
+      second = Thread.new { catalog.lookup_by_name("nip/default-text") }
       Thread.pass until second.status == "sleep"
       release << :go
 
-      expect([first.value, second.value].map(&:name)).to all(eq("Qwen/Qwen3.6-35B-A3B"))
+      expect([first.value, second.value].map(&:name)).to all(eq("nip/default-text"))
       expect(gateway_models).to have_received(:fetch).once
     end
 
     it "keeps answering from the list it has while another thread refreshes it" do
-      catalog.lookup_by_name("Qwen/Qwen3.6-35B-A3B")
+      catalog.lookup_by_name("nip/default-text")
       release = Queue.new
       allow(gateway_models).to receive(:fetch) do
         release.pop
@@ -263,7 +270,7 @@ RSpec.describe NitroIntelligence::ModelCatalog do
       refreshing = Thread.new { catalog.lookup_by_name("new/model") }
       Thread.pass until refreshing.status == "sleep"
 
-      expect(catalog.lookup_by_name("Qwen/Qwen3.6-35B-A3B").name).to eq("Qwen/Qwen3.6-35B-A3B")
+      expect(catalog.lookup_by_name("nip/default-text").name).to eq("nip/default-text")
       release << :go
       refreshing.join
     end
@@ -271,15 +278,15 @@ RSpec.describe NitroIntelligence::ModelCatalog do
     it "logs a gateway that cannot list its models, and asks again soon after" do
       allow(gateway_models).to receive(:fetch).and_raise(NitroIntelligence::GatewayModels::Error, "503 listing models")
 
-      expect { catalog.fetch("Qwen/Qwen3.6-35B-A3B") }.to raise_error(
+      expect { catalog.fetch("nip/default-text") }.to raise_error(
         ArgumentError,
-        "Unsupported model: 'Qwen/Qwen3.6-35B-A3B' (the last attempt to list the inference gateway's models failed: " \
+        "Unsupported model: 'nip/default-text' (the last attempt to list the inference gateway's models failed: " \
         "NitroIntelligence::GatewayModels::Error: 503 listing models)"
       )
       expect(logger).to have_received(:warn).with(/503 listing models/)
 
       clock[0] = described_class::RETRY_INTERVAL
-      catalog.lookup_by_name("Qwen/Qwen3.6-35B-A3B")
+      catalog.lookup_by_name("nip/default-text")
       expect(gateway_models).to have_received(:fetch).twice
     end
   end

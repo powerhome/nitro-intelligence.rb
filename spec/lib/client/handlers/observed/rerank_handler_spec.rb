@@ -22,7 +22,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
   let(:handler) { described_class.new(base_handler:, observer: fake_observer) }
 
   let(:model_config) do
-    { default_rerank_model: "Qwen/Qwen3-Reranker-0.6B", models: [{ name: "Qwen/Qwen3-Reranker-0.6B", type: "rerank" }] }
+    { models: [{ name: "nip/default-rerank", type: "rerank" }] }
   end
 
   let(:query) { "How do I request time off?" }
@@ -79,7 +79,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
 
       expect(ranking.results.first.index).to eq(1)
       expect(trace_attributes).to eq(
-        model: "Qwen/Qwen3-Reranker-0.6B",
+        model: "nip/default-rerank",
         output: [{ index: 1, relevance_score: 0.97 }, { index: 0, relevance_score: 0.12 }],
         usage_details: { input: 42, total: 42 },
         cost_details: { total: 4.2e-07 }
@@ -195,8 +195,8 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::RerankHandler do
         handler.create(query:, documents:)
 
         expect(observability_client).to have_received(:observe)
-          .with("rerank", hash_including(as_type: :generation, model: "Qwen/Qwen3-Reranker-0.6B"))
-        expect(recorded).to include([:model=, "Qwen/Qwen3-Reranker-0.6B"])
+          .with("rerank", hash_including(as_type: :generation, model: "nip/default-rerank"))
+        expect(recorded).to include([:model=, "nip/default-rerank"])
         expect(recorded).not_to include([:model=, nil])
       end
     end

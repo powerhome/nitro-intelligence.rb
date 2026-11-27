@@ -10,24 +10,26 @@ module NitroIntelligence
   #
   # @api private
   class ModelCatalog
-    DEFAULTS = %i[
-      default_audio_transcription_model
-      default_decision_model
-      default_embedding_model
-      default_image_model
-      default_rerank_model
-      default_text_model
-      default_text_to_speech_model
-    ].freeze
+    # The gateway's alias for each kind of request's default model, which it points at NIP's current
+    # choice. A request that names no model asks for its kind's alias.
+    DEFAULT_MODELS = {
+      default_audio_transcription_model: "nip/default-audio-transcription",
+      default_decision_model: "nip/default-decision",
+      default_embedding_model: "nip/default-embedding",
+      default_image_model: "nip/default-image",
+      default_rerank_model: "nip/default-rerank",
+      default_text_model: "nip/default-text",
+      default_text_to_speech_model: "nip/default-text-to-speech",
+    }.freeze
     REFRESH_INTERVAL = 300
     # How long to wait before asking again after the gateway failed to list its models.
     RETRY_INTERVAL = 10
 
-    DEFAULTS.each do |default|
-      define_method(default) { lookup_by_name(@model_config[default]) }
-      # The name `model_config` gives, whether or not a model by that name is available, so that a
-      # request for the default names it when it is not.
-      define_method(:"#{default}_name") { @model_config[default].presence }
+    DEFAULT_MODELS.each do |default, name|
+      define_method(default) { lookup_by_name(name) }
+      # The alias's name, whether or not the gateway serves it to this key, so that a request for the
+      # default names it when it does not.
+      define_method(:"#{default}_name") { name }
     end
 
     # @param model_config [Hash] as {Configuration#model_config} takes it
@@ -35,6 +37,7 @@ module NitroIntelligence
     #   nil to use only those it lists
     def initialize(model_config, gateway_models = nil)
       @model_config = model_config.symbolize_keys
+      warn_of_ignored_defaults
       @configured_models = (@model_config[:models] || []).map { |model_metadata| ModelFactory.build(model_metadata) }
       @gateway_models = gateway_models
       @discovered_models = []
@@ -80,6 +83,17 @@ module NitroIntelligence
     end
 
   private
+
+    def warn_of_ignored_defaults
+      ignored = @model_config.keys & DEFAULT_MODELS.keys
+      return if ignored.empty?
+
+      replaced = ignored.map { |key| "#{key} (now #{DEFAULT_MODELS[key]})" }.join(", ")
+      NitroIntelligence.logger.warn(
+        "model_config's #{replaced} #{ignored.one? ? 'is' : 'are'} no longer read: a request that names no " \
+        "model uses the gateway's default for its kind"
+      )
+    end
 
     def unsupported_message(name)
       message = "Unsupported model: '#{name}'"

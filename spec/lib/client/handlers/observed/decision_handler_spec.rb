@@ -19,8 +19,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
 
   let(:model_config) do
     {
-      default_decision_model: "typesafe/jev-1.14",
-      models: [{ name: "typesafe/jev-1.14", type: "decision" }, { name: "other/decider", type: "decision" }],
+      models: [{ name: "nip/default-decision", type: "decision" }, { name: "other/decider", type: "decision" }],
     }
   end
 
@@ -29,7 +28,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
 
   let(:response_body) do
     {
-      model: "typesafe/jev-1.14",
+      model: "nip/default-decision",
       answers: { billing: { type: "noul", noul: 0.98 } },
       usage: { input_tokens: 120, output_tokens: 3 },
     }
@@ -70,7 +69,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::DecisionHandler do
 
       expect(decision.answers[:billing].noul).to eq(0.98)
       expect(trace_attributes).to eq(
-        model: "typesafe/jev-1.14",
+        model: "nip/default-decision",
         output: { billing: { type: "noul", noul: 0.98 } },
         usage_details: { prompt_tokens: 120, completion_tokens: 3, total_tokens: 123 },
         cost_details: { total: 1.764e-05 }
