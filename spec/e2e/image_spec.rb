@@ -16,9 +16,10 @@ RSpec.describe "NitroIntelligence::Client#generate_image", :e2e do
   def expect_image_generation(generation, result)
     expect_request(generation, name: "image-generation")
     expect(generation["id"]).to eq(result.observation_id)
-    expect(generation["model"]).to eq(E2eHelpers::IMAGE_MODEL)
-    expect(generation.dig("usageDetails", "total")).to be_positive
-    # The completion behind the image is not returned to the caller, so the cost is checked for presence.
+    # The gateway serves the image model from Vertex, falling back to Fal, and the generation records
+    # whichever served it. Fal reports no token counts, so usage is not checked; the cost is, for
+    # presence, since the completion behind the image is not returned to the caller.
+    expect(generation["model"]).to eq(E2eHelpers::IMAGE_MODEL).or(start_with("fal_nano_banana/"))
     expect(generation.dig("costDetails", "total")).to be_positive
   end
 
