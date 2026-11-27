@@ -8,6 +8,7 @@
 # upgrade behind the gateway does not fail them while a broken request or response contract does.
 require "active_support/core_ext/object/blank"
 require "securerandom"
+require "tempfile"
 require_relative "cerebro_reader"
 
 module E2eHelpers
@@ -125,7 +126,10 @@ module E2eHelpers
   def e2e_metadata
     { source: "nitro-intelligence.rb e2e", github_run_id: ENV.fetch("GITHUB_RUN_ID", "local") }
   end
+end
 
+# What the specs send and how they judge what comes back.
+module E2eContent
   def cosine_similarity(left, right)
     dot = left.zip(right).sum { |a, b| a * b }
     dot / (Math.sqrt(left.sum { _1**2 }) * Math.sqrt(right.sum { _1**2 }))
@@ -133,6 +137,17 @@ module E2eHelpers
 
   def words(text)
     text.downcase.scan(/[a-z]+/)
+  end
+
+  # A PNG drawn with ImageMagick, as a byte string: a shape of one color on white.
+  def drawn_image(draw, fill:)
+    Tempfile.create(["drawn", ".png"]) do |file|
+      MiniMagick::Tool::Convert.new do |convert|
+        convert.size("256x256").xc("white").fill(fill).draw(draw)
+        convert << file.path
+      end
+      File.binread(file.path)
+    end
   end
 end
 
@@ -157,6 +172,12 @@ module E2eExpectations
     expect(usage.except("total").values.sum).to eq(total)
   end
 
+  # A completion's usage and cost, recorded as the response and the gateway reported them.
+  def expect_accounted(observation, response)
+    expect_usage(observation, total: response.usage.total_tokens)
+    expect_cost(observation, gateway_cost(response))
+  end
+
   # The gateway's charge, recorded exactly. Some models are free, so it may be zero, but it is never
   # missing.
   def expect_cost(observation, cost)
@@ -173,9 +194,65 @@ module E2eExpectations
   end
 end
 
+# A request recorded as a trace of its own, checked end to end: grouped and named as the request asked,
+# and read back once Cerebro has it.
+RSpec.shared_context "with a traced request" do
+  subject(:client) do
+    NitroIntelligence::Client.new(observability_project_slug: E2eHelpers::OBSERVABILITY_PROJECT_SLUG,
+                                  inference_timeout: 120)
+  end
+
+  let(:masked_client) do
+    NitroIntelligence::Client.new(observability_project_slug: E2eHelpers::MASKED_OBSERVABILITY_PROJECT_SLUG,
+                                  inference_timeout: 120)
+  end
+  let(:trace_seed) { new_trace_seed }
+  let(:trace_id) { NitroIntelligence::Trace.create_id(seed: trace_seed) }
+  let(:trace_name) { "nitro-intelligence.rb e2e: #{RSpec.current_example.description}" }
+  let(:user_id) { "nitro-intelligence.rb-e2e" }
+  let(:session_id) { "nitro-intelligence.rb-e2e-#{ENV.fetch('GITHUB_RUN_ID', 'local')}" }
+  let(:tags) { %w[e2e nitro-intelligence.rb] }
+  let(:trace_parameters) { { trace_seed:, trace_name:, user_id:, session_id:, tags:, metadata: e2e_metadata } }
+
+  # Reads back the trace once each named observation has finished and been priced or, for a failed
+  # request, marked as failed.
+  def recorded_trace(*names)
+    flush_observations
+    cerebro.observations(trace_id) do |observations|
+      names.all? do |name|
+        observation = observations.find { _1["name"] == name }
+        observation && observation["endTime"] &&
+          (observation.dig("costDetails", "total") || observation["level"] == "ERROR")
+      end
+    end
+  end
+
+  def recorded_request(name)
+    observation_named(recorded_trace(name), name)
+  end
+
+  def expect_request(observation, name:, type: "GENERATION")
+    expect(observation).to include(
+      "name" => name, "type" => type, "traceId" => trace_id, "parentObservationId" => nil, "level" => "DEFAULT",
+      "environment" => NitroIntelligence.environment, "traceName" => trace_name, "userId" => user_id,
+      "sessionId" => session_id
+    )
+    expect(observation["tags"]).to match_array(tags)
+    expect_metadata(observation, e2e_metadata)
+  end
+
+  # A masked project records the request, its usage and cost, but none of its content.
+  def expect_masked(observation)
+    expect(CerebroReader.parse(observation["input"])).to eq("[masked]") if observation["input"].present?
+    expect(CerebroReader.parse(observation["output"])).to eq("[masked]")
+    expect(observation.to_s).not_to include("@@@langfuseMedia")
+  end
+end
+
 RSpec.configure do |config|
   config.include E2eHelpers, :e2e
   config.include E2eExpectations, :e2e
+  config.include E2eContent, :e2e
   # Each example checks a whole feature, so a failure reports every part that is wrong, not just the first.
   config.define_derived_metadata(:e2e) { |metadata| metadata[:aggregate_failures] = true }
 

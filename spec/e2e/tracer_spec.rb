@@ -22,8 +22,10 @@ RSpec.describe NitroIntelligence::Tracer, :e2e do
     tracer.trace(trace_name, input: { question: }, user_id:, tags: ["e2e"], metadata: e2e_metadata,
                              trace_seed:) do |root|
       found = root.observe("search handbook", as_type: :retriever, input: { question: }) do |step|
+        step.metadata = { index: "handbook" }
         passages.tap { step.output = _1 }
       end
+      root.event("passage chosen", input: { candidates: found.size }, output: { chosen: 0 }, metadata: { reason: "only one" })
       # The request's own trace name and user are the trace's, so these are not recorded.
       response = client.chat(
         message: "Using only this passage, answer in one sentence: #{question}\n\n#{found.join("\n")}",
@@ -44,7 +46,7 @@ RSpec.describe NitroIntelligence::Tracer, :e2e do
     flush_observations
 
     observations = cerebro.observations(trace_id) do |recorded|
-      recorded.size == 3 && recorded.all? { _1["endTime"] } && recorded.any? { _1.dig("costDetails", "total") }
+      recorded.size == 4 && recorded.all? { _1["endTime"] } && recorded.any? { _1.dig("costDetails", "total") }
     end
     expect(observations).to all(include("traceId" => trace_id, "userId" => user_id, "tags" => ["e2e"],
                                         "environment" => NitroIntelligence.environment))
@@ -58,6 +60,13 @@ RSpec.describe NitroIntelligence::Tracer, :e2e do
     retrieval = observation_named(observations, "search handbook")
     expect(retrieval).to include("type" => "RETRIEVER", "parentObservationId" => root.id)
     expect(CerebroReader.parse(retrieval["output"])).to eq(passages)
+    expect_metadata(retrieval, index: "handbook")
+
+    event = observation_named(observations, "passage chosen")
+    expect(event).to include("type" => "EVENT", "parentObservationId" => root.id)
+    expect(CerebroReader.parse(event["input"])).to eq("candidates" => 1)
+    expect(CerebroReader.parse(event["output"])).to eq("chosen" => 0)
+    expect_metadata(event, reason: "only one")
 
     generation = observation_named(observations, "chat-completion")
     expect(generation).to include("type" => "GENERATION", "parentObservationId" => root.id)

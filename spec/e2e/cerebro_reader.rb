@@ -50,17 +50,28 @@ class CerebroReader
     end
   end
 
-  # The prompt at the label, or nil when there is none.
-  def prompt(name, label:)
-    get("/api/public/v2/prompts/#{ERB::Util.url_encode(name)}", label:)
-  rescue NotFoundError
-    nil
+  # The version of the prompt the definition describes, creating one only when no version carrying
+  # its labels matches it, so runs share one version instead of adding one each.
+  def prompt_version(definition)
+    definition = definition.deep_stringify_keys
+    current = prompt(definition.fetch("name"), label: definition.fetch("labels").first)
+    matches = current &&
+              current.slice("type", "prompt", "config") == definition.slice("type", "prompt", "config") &&
+              (definition.fetch("labels") - current.fetch("labels")).empty?
+    return current.fetch("version") if matches
+
+    post("/api/public/v2/prompts", definition).fetch("version")
   end
 
-  def create_prompt(attributes)
-    request = Net::HTTP::Post.new(uri("/api/public/v2/prompts"), "Content-Type" => "application/json")
-    request.body = JSON.generate(attributes)
-    perform(request)
+  # Creates the dataset unless it exists.
+  def ensure_dataset(name)
+    get("/api/public/v2/datasets/#{ERB::Util.url_encode(name)}")
+  rescue NotFoundError
+    post("/api/public/v2/datasets", { name:, description: "Written by the nitro-intelligence.rb end-to-end specs." })
+  end
+
+  def dataset_item(id)
+    get("/api/public/dataset-items/#{ERB::Util.url_encode(id)}")
   end
 
 private
@@ -84,8 +95,21 @@ private
     end
   end
 
+  # The prompt at the label, or nil when there is none.
+  def prompt(name, label:)
+    get("/api/public/v2/prompts/#{ERB::Util.url_encode(name)}", label:)
+  rescue NotFoundError
+    nil
+  end
+
   def get(path, **query)
     perform(Net::HTTP::Get.new(uri(path, query)))
+  end
+
+  def post(path, body)
+    request = Net::HTTP::Post.new(uri(path), "Content-Type" => "application/json")
+    request.body = JSON.generate(body)
+    perform(request)
   end
 
   def uri(path, query = {})
