@@ -101,7 +101,7 @@ GEM
       uri (>= 0.11.1)
     net-protocol (0.4.0)
       timeout
-    openai (1.1.0)
+    openai (1.3.0)
       connection_pool (>= 2.2.3, != 3.0.2, != 3.0.1, != 3.0.0)
       logger
     opentelemetry-api (1.11.1)
