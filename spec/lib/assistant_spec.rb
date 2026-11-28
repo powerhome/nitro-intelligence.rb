@@ -139,6 +139,20 @@ RSpec.describe NitroIntelligence::Assistant do
       assistant.review_tool_calls(thread_id: "t1", tool_calls: [], context: { a: 1 })
     end
 
+    it "forwards a hand-back to its client" do
+      expect(client).to receive(:hand_back_escalation)
+        .with(thread_id: "t1", escalation_id: "esc-1", reviewer_id: "jane", note: "Moved it.")
+
+      assistant.hand_back_escalation(thread_id: "t1", escalation_id: "esc-1", reviewer_id: "jane", note: "Moved it.")
+    end
+
+    it "forwards a close to its client" do
+      expect(client).to receive(:close_escalation)
+        .with(thread_id: "t1", escalation_id: "esc-1", reviewer_id: "jane")
+
+      assistant.close_escalation(thread_id: "t1", escalation_id: "esc-1", reviewer_id: "jane")
+    end
+
     it "passes thread-scoped calls straight through" do
       expect(client).to receive(:thread_state).with(thread_id: "t1")
 

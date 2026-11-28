@@ -885,7 +885,7 @@ On an observed client whose project does not mask content, pass an open `File` a
 
 ## Nitro Intelligence Assistants
 
-`NitroIntelligence::Assistants` is Nitro Intelligence's lightweight SDK for working with hosted agent threads, runs, and human review flows. It is mainly used to initialize conversation threads, trigger agent runs, inspect what a paused run is waiting on (tool calls or a reply held for review), and resume paused threads after human reviews.
+`NitroIntelligence::Assistants` is Nitro Intelligence's lightweight SDK for working with hosted agent threads, runs, and human review flows. It is mainly used to initialize conversation threads, trigger agent runs, inspect what a paused run is waiting on (tool calls or a reply held for review), resume paused threads after human reviews, and hand back or close conversations an assistant escalated to a person.
 
 For the full guide, see [ASSISTANTS.md](https://github.com/powerhome/nitro-intelligence.rb/blob/main/docs/ASSISTANTS.md). For the service this SDK talks to, see the [Nitro Intelligence Assistants documentation](https://portal.powerapp.cloud/docs/default/system/nip-assistants).
 

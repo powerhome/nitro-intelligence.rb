@@ -2,6 +2,7 @@ require "json"
 require "net/http"
 require "uri"
 require "nitro_intelligence/deprecator"
+require "nitro_intelligence/escalation"
 require "nitro_intelligence/pending_review"
 require "nitro_intelligence/run_result"
 
@@ -33,8 +34,9 @@ module NitroIntelligence
     NOT_INTERRUPTED_REFUSAL = "thread is not in interrupted state".freeze
 
     # @api private
-    # Assistants answers with a conflict when `ifExists: "raise"` is sent for a thread that already exists.
-    THREAD_CONFLICT_CODE = 409
+    # What Assistants answers with when `ifExists: "raise"` is sent for a thread that already exists, and
+    # when it refuses a run or an escalation's resolution, its `details.code` saying why.
+    CONFLICT_CODE = 409
 
     # @api private
     # Where a `/runs/wait` response says which run it waited on.
@@ -79,6 +81,7 @@ module NitroIntelligence
     #   before it seed a new thread
     # @param context [Hash] the run's context, such as the variables its prompt needs
     # @return [RunResult]
+    # @raise [ThreadEscalatedError] when the thread is escalated to a person
     # @raise [RunError] when `messages` is empty, Assistants rejects the run, or the run fails
     # @raise [ThreadInitializationError] when a new thread cannot be created or seeded
     def run(thread_id:, assistant_id:, messages:, context: {})
@@ -419,7 +422,7 @@ module NitroIntelligence
     end
 
     def thread_already_exists?(response)
-      response.code.to_i == THREAD_CONFLICT_CODE
+      response.code.to_i == CONFLICT_CODE
     end
 
     def trigger_run(thread_id:, assistant_id:, last_message:, context: {})
@@ -433,6 +436,7 @@ module NitroIntelligence
     # `Content-Location` (`/threads/{thread_id}/runs/{run_id}`); nil without one.
     def wait_for_run(thread_id:, body:, error:)
       response = post(path: "/threads/#{thread_id}/runs/wait", body:)
+      refused!(response, ThreadEscalatedError, THREAD_ESCALATED) if error <= RunError
       run = parse!(response, error)
       raise_run_error!(run, error)
 
@@ -444,6 +448,8 @@ module NitroIntelligence
       return if failure.blank?
 
       detail = failure.is_a?(Hash) ? [failure["error"], failure["message"]].compact.join(": ") : failure.to_s
+      escalated_failure!(failure, detail) if error <= RunError
+
       raise error, detail
     end
 
@@ -563,3 +569,5 @@ module NitroIntelligence
     end
   end
 end
+
+require "nitro_intelligence/assistants/escalations"
