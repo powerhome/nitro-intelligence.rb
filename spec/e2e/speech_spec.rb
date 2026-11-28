@@ -7,23 +7,24 @@ RSpec.describe "NitroIntelligence::Client#text_to_speech and #transcribe_audio",
   # Guides the transcription with the words it should expect.
   let(:hint) { "A pangram about a fox and a dog." }
 
-  # Speaks the sentence, then transcribes what was spoken, both in the one trace.
+  # Speaks the sentence, then transcribes what was spoken, both in the one trace. Returns the audio and
+  # the transcription.
   def round_trip(client, speech_parameters: {}, transcription_parameters: {}, message: hint)
     audio = client.text_to_speech(message: sentence, parameters: { **speech_parameters, **trace_parameters })
 
-    Tempfile.create(["speech", ".wav"], binmode: true) do |file|
+    transcription = Tempfile.create(["speech", ".wav"], binmode: true) do |file|
       file.write(audio.string)
       file.rewind
       client.transcribe_audio(audio_file: file, message:,
                               parameters: { **transcription_parameters, **trace_parameters })
     end
+    [audio, transcription]
   end
 
-  def expect_speech(speech)
+  def expect_speech(speech, audio)
     expect_request(speech, name: "text-to-speech")
     expect(speech["model"]).to eq(E2eHelpers::TEXT_TO_SPEECH_MODEL)
-    # The audio response carries no headers the caller can read, so the cost is checked for presence.
-    expect(speech.dig("costDetails", "total")).to be_positive
+    expect_cost(speech, gateway_cost(audio))
   end
 
   def expect_recognition(recognition, transcription)
@@ -35,14 +36,14 @@ RSpec.describe "NitroIntelligence::Client#text_to_speech and #transcribe_audio",
   end
 
   it "speaks text that transcribes back to the same words, and records both requests in one trace" do
-    transcription = round_trip(client)
+    audio, transcription = round_trip(client)
 
     expect(words(transcription.text)).to include("quick", "brown", "fox", "lazy", "dog")
 
     observations = recorded_trace("text-to-speech", "audio-transcription")
 
     speech = observation_named(observations, "text-to-speech")
-    expect_speech(speech)
+    expect_speech(speech, audio)
     expect(CerebroReader.parse(speech["input"])).to eq(sentence)
     # The audio is uploaded to Cerebro, and the output refers to it.
     expect(CerebroReader.parse(speech["output"]))
@@ -67,7 +68,7 @@ RSpec.describe "NitroIntelligence::Client#text_to_speech and #transcribe_audio",
     end
 
     it "speaks with the speech prompt's instructions, transcribes with the transcription prompt, and links both" do
-      transcription = round_trip(
+      audio, transcription = round_trip(
         client,
         speech_parameters: { prompt_name: speech_prompt, prompt_variables: { manner: "calmly" } },
         transcription_parameters: { prompt_name: transcription_prompt, prompt_variables: { animal: "fox" } },
@@ -79,7 +80,7 @@ RSpec.describe "NitroIntelligence::Client#text_to_speech and #transcribe_audio",
       observations = recorded_trace("text-to-speech", "audio-transcription")
 
       speech = observation_named(observations, "text-to-speech")
-      expect_speech(speech)
+      expect_speech(speech, audio)
       expect(speech).to include("promptName" => speech_prompt, "promptVersion" => speech_version)
 
       recognition = observation_named(observations, "audio-transcription")
@@ -92,14 +93,14 @@ RSpec.describe "NitroIntelligence::Client#text_to_speech and #transcribe_audio",
 
   context "with a project that masks content" do
     it "records both requests' usage and cost but neither's content, and uploads no audio" do
-      transcription = round_trip(masked_client)
+      audio, transcription = round_trip(masked_client)
 
       expect(words(transcription.text)).to include("quick", "brown", "fox", "lazy", "dog")
 
       observations = recorded_trace("text-to-speech", "audio-transcription")
 
       speech = observation_named(observations, "text-to-speech")
-      expect_speech(speech)
+      expect_speech(speech, audio)
       expect_masked(speech)
 
       recognition = observation_named(observations, "audio-transcription")

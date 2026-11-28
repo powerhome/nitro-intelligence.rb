@@ -111,10 +111,15 @@ module E2eHelpers
     )
   end
 
-  # Exports what the client has recorded so far, so Cerebro can ingest it.
+  # Exports the observations the client has recorded so far, so Cerebro can ingest them. Scores are
+  # not covered: they go out on the client's own timer. A failed export fails here rather than as a
+  # read that never finds them.
   def flush_observations
-    NitroIntelligence.project_client_registry.fetch(OBSERVABILITY_PROJECT_SLUG).flush(timeout: 30)
-    NitroIntelligence.project_client_registry.fetch(MASKED_OBSERVABILITY_PROJECT_SLUG).flush(timeout: 30)
+    [OBSERVABILITY_PROJECT_SLUG, MASKED_OBSERVABILITY_PROJECT_SLUG].each do |slug|
+      next if NitroIntelligence.project_client_registry.fetch(slug).flush(timeout: 30)
+
+      raise "Exporting the #{slug} project's observations to Cerebro failed or timed out"
+    end
   end
 
   # A trace of the spec's own, so whatever is read back can only be this run's.
@@ -259,13 +264,22 @@ RSpec.configure do |config|
   # Other specs loaded in the same process load webmock/rspec, which blocks real requests. The e2e
   # groups lift that and put back whatever was in force before, allowances included.
   webmock_states = []
+  # Every setting `WebMock.allow_net_connect!` overwrites.
+  webmock_settings = %i[allow_net_connect allow_localhost allow net_http_connect_on_start]
 
   config.before(:context, :e2e) do
+    # A description, location or ID filter overrides spec_helper's exclusion, so a run that mixes in
+    # other specs could otherwise reach these. They run only when e2e files alone are named, or with
+    # `--tag e2e`.
+    unless E2E_ONLY || RSpec.configuration.inclusion_filter[:e2e]
+      skip "End-to-end specs make billable calls: name only e2e files, or pass --tag e2e"
+    end
+
     E2eHelpers.configure!
     next unless defined?(WebMock)
 
     webmock = WebMock::Config.instance
-    webmock_states.push([webmock.allow_net_connect, webmock.allow_localhost, webmock.allow])
+    webmock_states.push(webmock_settings.map { webmock.public_send(_1) })
     WebMock.allow_net_connect!
   end
 
@@ -273,6 +287,6 @@ RSpec.configure do |config|
     next unless defined?(WebMock) && webmock_states.any?
 
     webmock = WebMock::Config.instance
-    webmock.allow_net_connect, webmock.allow_localhost, webmock.allow = webmock_states.pop
+    webmock_settings.zip(webmock_states.pop).each { |setting, value| webmock.public_send(:"#{setting}=", value) }
   end
 end

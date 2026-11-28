@@ -5,8 +5,10 @@ require "rubocop/rake_task"
 RSpec::Core::RakeTask.new(:spec)
 
 # The client against the real inference gateway, with nothing stubbed. Billable, so not part of the
-# default task; needs NIP_E2E_INFERENCE_API_KEY, and takes NIP_E2E_INFERENCE_BASE_URL to aim at a
-# gateway other than the shared one.
+# default task; needs NIP_E2E_INFERENCE_API_KEY and the Cerebro project's
+# NIP_E2E_OBSERVABILITY_PROJECT_ID, NIP_E2E_OBSERVABILITY_PUBLIC_KEY and
+# NIP_E2E_OBSERVABILITY_SECRET_KEY, and takes NIP_E2E_INFERENCE_BASE_URL to aim at a gateway other
+# than the shared one.
 desc "Run the end-to-end specs against the real inference gateway"
 RSpec::Core::RakeTask.new(:e2e) do |task|
   task.pattern = "spec/e2e/**/*_spec.rb"

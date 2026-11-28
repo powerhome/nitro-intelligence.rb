@@ -3,7 +3,7 @@ require "json"
 require "net/http"
 
 # Reads back what the client recorded in the end-to-end Cerebro project, through Langfuse's public
-# API. Cerebro runs Langfuse v4 with event-only reads, where the trace endpoints are gone: a trace is
+# API. Cerebro runs Langfuse v4 with event-only reads, which serve no trace endpoints: a trace is
 # read as its observations, from Observations API v2, and its scores from Scores API v3.
 class CerebroReader
   # Cerebro ingests exported observations and scores asynchronously, so a flushed one can take a
@@ -11,12 +11,21 @@ class CerebroReader
   TIMEOUT = 300
   POLL_INTERVAL = 3
   # Observations API v2 requires a start-time window. The trace ID already isolates a run's
-  # observations, so the window only has to absorb clock skew between the runner and Cerebro.
-  CLOCK_SKEW_MARGIN = 600
+  # observations, and their start times come from this runner's clock, so the window, fixed when a
+  # read begins, only has to reach back over the requests that came before it.
+  START_TIME_WINDOW = 600
+  # Attempts at a request that reads or deletes, when Cerebro or the network fails it transiently.
+  ATTEMPTS = 3
+  # Failures to reach Cerebro at all, which a retry can get past.
+  NETWORK_ERRORS = [
+    Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNREFUSED, Errno::ECONNRESET, EOFError, SocketError,
+    OpenSSL::SSL::SSLError
+  ].freeze
   OBSERVATION_FIELDS = "core,basic,time,io,metadata,model,usage,prompt,metrics,trace_context".freeze
   SCORE_FIELDS = "core,details,subject".freeze
 
-  # A rate limit or server error, which a poll retries.
+  # A rate limit, a server error, a query Cerebro gave up on, or a network failure, which a poll
+  # retries.
   class TransientError < StandardError; end
   class NotFoundError < StandardError; end
 
@@ -33,12 +42,12 @@ class CerebroReader
 
   # The trace's observations, once the block accepts them.
   def observations(trace_id, &)
+    from = (Time.now - START_TIME_WINDOW).utc.iso8601
+    to = (Time.now + TIMEOUT + START_TIME_WINDOW).utc.iso8601
     poll("observations of trace #{trace_id}", ready: ->(data) { data.any? && yield(data) }) do
       get(
         "/api/public/v2/observations",
-        traceId: trace_id, fields: OBSERVATION_FIELDS, limit: 100,
-        fromStartTime: (Time.now - CLOCK_SKEW_MARGIN).utc.iso8601,
-        toStartTime: (Time.now + CLOCK_SKEW_MARGIN).utc.iso8601
+        traceId: trace_id, fields: OBSERVATION_FIELDS, limit: 100, fromStartTime: from, toStartTime: to
       ).fetch("data")
     end
   end
@@ -120,23 +129,41 @@ private
   end
 
   def uri(path, query = {})
-    URI.join(NitroIntelligence.config.observability_base_url, path).tap do |uri|
+    URI("#{NitroIntelligence.config.observability_base_url.chomp('/')}#{path}").tap do |uri|
       uri.query = URI.encode_www_form(query) if query.any?
     end
   end
 
-  # Any other client error means the request itself is wrong, as a retired endpoint's 404 is, so it
-  # fails at once rather than being mistaken for data not ingested yet.
+  # Retries a read or delete that failed transiently. A create is sent once, since a retry after a
+  # lost response could create it twice.
   def perform(request)
+    attempts = request.is_a?(Net::HTTP::Post) ? 1 : ATTEMPTS
+    attempts.times do |attempt|
+      return send_request(request)
+    rescue TransientError
+      raise if attempt == attempts - 1
+
+      sleep POLL_INTERVAL
+    end
+  end
+
+  # Langfuse answers a query it gave up on under load with 422. Any other client error means the
+  # request itself is wrong, as a retired endpoint's 404 is, so it fails at once rather than being
+  # mistaken for data not ingested yet.
+  def send_request(request)
     request["Authorization"] = "Basic #{@project.auth_token}"
-    response = Net::HTTP.start(request.uri.host, request.uri.port, use_ssl: request.uri.scheme == "https") do |http|
-      http.request(request)
+    begin
+      response = Net::HTTP.start(request.uri.host, request.uri.port, use_ssl: request.uri.scheme == "https") do |http|
+        http.request(request)
+      end
+    rescue *NETWORK_ERRORS => e
+      raise TransientError, "Cerebro could not be reached: #{e.class}: #{e.message}"
     end
 
     case response
     when Net::HTTPSuccess then JSON.parse(response.body)
     when Net::HTTPNotFound then raise NotFoundError, "#{request.path}: #{response.body}"
-    when Net::HTTPTooManyRequests, Net::HTTPServerError
+    when Net::HTTPTooManyRequests, Net::HTTPUnprocessableEntity, Net::HTTPServerError
       raise TransientError, "Cerebro answered #{response.code}: #{response.body}"
     else raise "Cerebro answered #{request.method} #{request.path} with #{response.code}: #{response.body}"
     end

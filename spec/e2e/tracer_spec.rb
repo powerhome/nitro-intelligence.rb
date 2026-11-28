@@ -29,7 +29,7 @@ RSpec.describe NitroIntelligence::Tracer, :e2e do
       # The request's own trace name and user are the trace's, so these are not recorded.
       response = client.chat(
         message: "Using only this passage, answer in one sentence: #{question}\n\n#{found.join("\n")}",
-        parameters: { max_tokens: 4000, trace_name: "ignored", user_id: "ignored" }
+        parameters: { max_tokens: 4000, trace_name: "ignored", user_id: "ignored", metadata: e2e_metadata }
       )
       root.output = { answer: response.choices.first.message.content }
       [root, response]
