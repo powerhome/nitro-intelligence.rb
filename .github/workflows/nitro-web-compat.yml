@@ -1,0 +1,149 @@
+name: Verify nitro-web compatibility
+on:
+  workflow_run:
+    workflows: [Request nitro-web compatibility]
+    types: [completed]
+permissions: {}
+env:
+  CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
+concurrency:
+  group: nitro-web-compat-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  pending:
+    if: >-
+      github.repository == 'powerhome/nitro-intelligence.rb' && github.ref == 'refs/heads/main' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.path == '.github/workflows/nitro-web-request.yml'
+    runs-on: ubuntu-latest
+    environment: nitro-web-compat
+    steps:
+      - id: reporter
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.NITRO_WEB_COMPAT_REPORTER_CLIENT_ID }}
+          private-key: ${{ secrets.NITRO_WEB_COMPAT_REPORTER_PRIVATE_KEY }}
+          permission-statuses: write
+      - name: Set the pending commit status
+        env:
+          GH_TOKEN: ${{ steps.reporter.outputs.token }}
+        run: |
+          [[ $CANDIDATE_SHA =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$CANDIDATE_SHA" --silent -f context='Installs in nitro-web' \
+            -f state=pending -f description='Checking this revision against nitro-web.' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+  candidate:
+    needs: pending
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      metadata: ${{ steps.extract.outputs.metadata }}
+      unsupported: ${{ steps.extract.outputs.unsupported }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: extract
+        env:
+          HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+        run: |
+          set -euo pipefail
+          export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+          repo="$RUNNER_TEMP/candidate"
+          git init --template= -q "$repo"
+          git -C "$repo" fetch -q --no-tags --depth=1 "$GITHUB_SERVER_URL/${HEAD_REPOSITORY:?}.git" "$CANDIDATE_SHA"
+          [[ $(git -C "$repo" rev-parse FETCH_HEAD) == "$CANDIDATE_SHA" ]]
+          git -C "$repo" checkout -q --detach "$CANDIDATE_SHA"
+          if data=$(bash .github/nitro-web-compat/candidate/candidate.sh "$repo"); then
+            echo "metadata=$data" >> "$GITHUB_OUTPUT"
+          elif [[ $? == 2 ]]; then
+            echo 'unsupported=true' >> "$GITHUB_OUTPUT"
+          else
+            exit 1
+          fi
+
+  resolve:
+    needs: candidate
+    if: needs.candidate.outputs.metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    environment: nitro-web-compat
+    outputs:
+      verdict: ${{ steps.resolve.outputs.verdict }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: reader
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.NITRO_WEB_COMPAT_READER_CLIENT_ID }}
+          private-key: ${{ secrets.NITRO_WEB_COMPAT_READER_PRIVATE_KEY }}
+          owner: powerhome
+          repositories: nitro-web
+          permission-contents: read
+      - name: Read the consumer snapshot
+        env:
+          GH_TOKEN: ${{ steps.reader.outputs.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir "$RUNNER_TEMP/snapshot"
+          {
+            revision=$(gh api -H 'Accept: application/vnd.github.sha' repos/powerhome/nitro-web/commits/HEAD)
+            [[ $revision =~ ^[0-9a-f]{40}$ ]]
+            for file in Gemfile.lock .ruby-version; do
+              gh api -H 'Accept: application/vnd.github.raw+json' "repos/powerhome/nitro-web/contents/$file?ref=$revision" \
+                > "$RUNNER_TEMP/snapshot/$file"
+            done
+          } 2>/dev/null
+      - name: Resolve the targeted update
+        id: resolve
+        env:
+          CANDIDATE: ${{ needs.candidate.outputs.metadata }}
+        run: |
+          printf '%s\n' "$CANDIDATE" > "$RUNNER_TEMP/candidate.json"
+          status=0
+          bash .github/nitro-web-compat/resolve/check.sh "$RUNNER_TEMP/snapshot" "$RUNNER_TEMP/candidate.json" >/dev/null 2>&1 || status=$?
+          case "$status" in
+            0) echo 'verdict=compatible' >> "$GITHUB_OUTPUT" ;;
+            6|7) echo 'verdict=conflict' >> "$GITHUB_OUTPUT" ;;
+            *) exit 1 ;;
+          esac
+
+  report:
+    needs: [pending, candidate, resolve]
+    if: always() && needs.pending.result == 'success'
+    runs-on: ubuntu-latest
+    environment: nitro-web-compat
+    steps:
+      - id: reporter
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.NITRO_WEB_COMPAT_REPORTER_CLIENT_ID }}
+          private-key: ${{ secrets.NITRO_WEB_COMPAT_REPORTER_PRIVATE_KEY }}
+          permission-statuses: write
+      - name: Set the PR commit status
+        env:
+          GH_TOKEN: ${{ steps.reporter.outputs.token }}
+          RESOLVED: ${{ needs.resolve.result }}
+          VERDICT: ${{ needs.resolve.outputs.verdict }}
+          UNSUPPORTED: ${{ needs.candidate.outputs.unsupported }}
+        run: |
+          case "$RESOLVED/$VERDICT/$UNSUPPORTED" in
+            success/compatible/) state=success; message='The targeted update resolves for nitro-web.' ;;
+            success/conflict/) state=failure; message='Review the candidate requirements or coordinate a nitro-web dependency update.' ;;
+            */*/true) state=failure; message='The candidate gemspec could not be loaded or its dependency metadata was unsupported.' ;;
+            *) state=error; message='Verification could not finish. Rerun the verifier or contact a maintainer.' ;;
+          esac
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$CANDIDATE_SHA" --silent -f context='Installs in nitro-web' \
+            -f state="$state" -f description="$message" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
