@@ -67,16 +67,29 @@ module NitroIntelligence
       # with vectors from {#embed_documents}.
       #
       # @param query [String, Array<String>] the query, or several, such as an evaluation set
+      # @param instruction [String, nil] one sentence describing what the query's embedding is for,
+      #   for a model trained on task instructions, such as Qwen3-Embedding. It goes into the
+      #   model's `query_instruction_template` before each query; documents take none. Write it for
+      #   your use case, such as "Given a customer question, retrieve the help article that answers
+      #   it". Nil sends each query with the model's plain `query_prefix`, if it has one.
       # @param parameters [Hash] `model`, `dimensions` (a shorter vector, for a model that supports
       #   one), `batch_size` (at most this many texts per request, 128 by default), `user`,
       #   `metadata` and `request_options`, and on an observed client `trace_name`, `trace_seed`,
       #   `user_id`, `session_id` and `tags`. It takes no managed prompt.
       # @return [Embeddings] the query's vector in `vector`, or one per query in `vectors`
       # @raise [ArgumentError] when the model is not one `model_config` lists with the type
-      #   `embedding`, a query is empty or not text, or `batch_size` is not a positive integer
+      #   `embedding`, a query is empty or not text, `batch_size` is not a positive integer, or
+      #   `instruction` is given for a model with no `query_instruction_template` or is not a
+      #   non-empty string
       # @example
       #   client.embed_query(query: "How do I request time off?").vector
-      def embed_query(query:, parameters: {})
+      # @example With an instruction for the task
+      #   client.embed_query(
+      #     query: "How do I request time off?",
+      #     instruction: "Given an employee question, retrieve the HR policy that answers it"
+      #   ).vector
+      def embed_query(query:, instruction: nil, parameters: {})
+        parameters = parameters.merge(instruction:) unless instruction.nil?
         embedding_handler.create(input: query, input_type: :query, parameters: parameters.dup)
       end
 

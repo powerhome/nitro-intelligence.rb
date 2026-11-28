@@ -30,19 +30,36 @@ module NitroIntelligence
 
   # @api private
   class EmbeddingModel < Model
+    INSTRUCTION_PLACEHOLDER = "{instruction}".freeze
+
     # What the model expects before a query's text and before a document's, for a model trained
     # to embed the two differently. Empty for a model that embeds both the same way.
     attr_reader :query_prefix, :document_prefix
+    # The model's form for a query that carries an instruction describing the task, with
+    # `{instruction}` where the instruction goes, such as Qwen3-Embedding's
+    # `"Instruct: {instruction}\nQuery:"`. Empty for a model that takes no instruction.
+    attr_reader :query_instruction_template
 
-    def initialize(name:, omit_output_fields: [], query_prefix: "", document_prefix: "", **)
+    def initialize(
+      name:, omit_output_fields: [], query_prefix: "", document_prefix: "", query_instruction_template: "", **
+    )
       super
       @query_prefix = query_prefix.to_s
       @document_prefix = document_prefix.to_s
+      @query_instruction_template = query_instruction_template.to_s
+      return if @query_instruction_template.empty? || @query_instruction_template.include?(INSTRUCTION_PLACEHOLDER)
+
+      raise ArgumentError, "query_instruction_template for #{name} has no #{INSTRUCTION_PLACEHOLDER}"
     end
 
     # @param input_type [Symbol] `:query` or `:document`
-    def prefix_for(input_type)
-      input_type == :query ? query_prefix : document_prefix
+    # @param instruction [String, nil] the task a query's embedding is for, in the model's own
+    #   instruction form; nil for the model's plain query prefix
+    def prefix_for(input_type, instruction: nil)
+      return document_prefix unless input_type == :query
+      return query_prefix if instruction.nil?
+
+      query_instruction_template.sub(INSTRUCTION_PLACEHOLDER) { instruction }
     end
   end
 

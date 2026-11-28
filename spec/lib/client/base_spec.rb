@@ -56,6 +56,15 @@ RSpec.describe NitroIntelligence::Client::Base do
       base_client.embed_documents(documents: %w[a b], parameters: { dimensions: 256 })
     end
 
+    it "passes #embed_query's instruction to the EmbeddingHandler with the other parameters" do
+      mock_handler = instance_double(NitroIntelligence::Client::Handlers::EmbeddingHandler)
+      allow(NitroIntelligence::Client::Handlers::EmbeddingHandler).to receive(:new).with(client: fake_openai_client).and_return(mock_handler)
+
+      expect(mock_handler).to receive(:create)
+        .with(input: "q", input_type: :query, parameters: { dimensions: 256, instruction: "Find the policy" })
+      base_client.embed_query(query: "q", instruction: "Find the policy", parameters: { dimensions: 256 })
+    end
+
     it "delegates #rerank to the RerankHandler" do
       mock_handler = instance_double(NitroIntelligence::Client::Handlers::RerankHandler)
       allow(NitroIntelligence::Client::Handlers::RerankHandler).to receive(:new).with(client: fake_openai_client).and_return(mock_handler)

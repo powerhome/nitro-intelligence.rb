@@ -20,7 +20,12 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
   let(:model_config) do
     {
       default_embedding_model: "Qwen/Qwen3-Embedding-0.6B",
-      models: [{ name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", query_prefix: "Instruct: Find the page\nQuery:" }],
+      models: [
+        {
+          name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", query_prefix: "Instruct: Find the page\nQuery:",
+          query_instruction_template: "Instruct: {instruction}\nQuery:"
+        },
+      ],
     }
   end
 
@@ -60,6 +65,14 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::EmbeddingHandler d
       ).and_yield(fake_embedding)
 
       handler.create(input_type: :query, input: "How do I request time off?")
+    end
+
+    it "records a query with its instruction in front, as the model received it" do
+      expect(fake_observer).to receive(:observe).with(
+        "embed-query", hash_including(input: "Instruct: Find the policy\nQuery:How do I request time off?")
+      ).and_yield(fake_embedding)
+
+      handler.create(input_type: :query, input: "How do I request time off?", parameters: { instruction: "Find the policy" })
     end
 
     it "sends the observation's trace ID with every batch" do

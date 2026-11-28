@@ -13,7 +13,10 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
     {
       default_embedding_model: "Qwen/Qwen3-Embedding-0.6B",
       models: [
-        { name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", query_prefix: "Instruct: Find the page\nQuery:" },
+        {
+          name: "Qwen/Qwen3-Embedding-0.6B", type: "embedding", query_prefix: "Instruct: Find the page\nQuery:",
+          query_instruction_template: "Instruct: {instruction}\nQuery:"
+        },
         { name: "other/embedder", type: "embedding", query_prefix: "query: ", document_prefix: "passage: " },
         { name: "plain/embedder", type: "embedding" },
         { name: "Qwen/Qwen3.6-35B-A3B", type: "text" },
@@ -89,6 +92,35 @@ RSpec.describe NitroIntelligence::Client::Handlers::EmbeddingHandler do
       handler.create(input_type: :query, input: ["How do I request time off?"])
 
       expect(requests.first["input"]).to eq(["Instruct: Find the page\nQuery:How do I request time off?"])
+    end
+
+    it "puts a query's instruction in the model's form before each query, instead of its plain prefix" do
+      handler.create(
+        input_type: :query, input: %w[a b], parameters: { instruction: "Given a question, retrieve the policy" }
+      )
+
+      expect(requests.first["input"]).to eq(
+        ["Instruct: Given a question, retrieve the policy\nQuery:a", "Instruct: Given a question, retrieve the policy\nQuery:b"]
+      )
+      expect(requests.first).not_to have_key("instruction")
+    end
+
+    it "keeps an instruction's own backslashes and braces as written" do
+      handler.create(input_type: :query, input: "a", parameters: { instruction: "Match \\1 or {x}" })
+
+      expect(requests.first["input"]).to eq(["Instruct: Match \\1 or {x}\nQuery:a"])
+    end
+
+    it "raises, before sending anything, for an instruction on a model that takes none" do
+      expect { handler.create(input_type: :query, input: "a", parameters: { model: "other/embedder", instruction: "x" }) }
+        .to raise_error(ArgumentError, "Model 'other/embedder' takes no query instruction")
+      expect(embeddings_route).not_to have_been_requested
+    end
+
+    it "raises, before sending anything, for a blank instruction" do
+      expect { handler.create(input_type: :query, input: "a", parameters: { instruction: " " }) }
+        .to raise_error(ArgumentError, 'instruction must be a non-empty string, not " "')
+      expect(embeddings_route).not_to have_been_requested
     end
 
     it "sends documents unchanged on a model with no document prefix" do
