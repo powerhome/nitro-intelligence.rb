@@ -6,14 +6,21 @@ RSpec.describe "NitroIntelligence::Client#generate_image", :e2e do
   let(:media_reference) { %r{@@@langfuseMedia:type=image/[^|]+\|id=[^|]+\|source=bytes@@@} }
   let(:image_parameters) { { aspect_ratio: "1:1", resolution: "512", **trace_parameters } }
 
-  def expect_image(result)
-    expect(result.generated_image.mime_type).to start_with("image/")
-    expect(result.generated_image.width).to be_positive
-    expect(result.generated_image.height).to be_positive
+  # The model can answer in text alone, so a missing image is reported with what it said instead,
+  # as the generation recorded it.
+  def expect_image(result, generation)
+    image = result.generated_image
+    expect(image).not_to be_nil, "The model returned no image. The generation recorded: #{generation['output']}"
+    return unless image
+
+    expect(image.mime_type).to start_with("image/")
+    expect(image.width).to be_positive
+    expect(image.height).to be_positive
     expect(result.trace_id).to eq(trace_id)
   end
 
   def expect_image_generation(generation, result)
+    expect_image(result, generation)
     expect_request(generation, name: "image-generation")
     expect(generation["id"]).to eq(result.observation_id)
     # The gateway serves the image model from Vertex, falling back to Fal, and the generation records
@@ -25,8 +32,6 @@ RSpec.describe "NitroIntelligence::Client#generate_image", :e2e do
 
   it "returns a generated image, and records it with the image uploaded to Cerebro" do
     result = client.generate_image(message: "A plain red square on a white background.", parameters: image_parameters)
-
-    expect_image(result)
 
     generation = recorded_request("image-generation")
     expect_image_generation(generation, result)
@@ -46,8 +51,6 @@ RSpec.describe "NitroIntelligence::Client#generate_image", :e2e do
       message: "Repaint the square in the first image the color of the circle in the second.",
       target_image: target, reference_images: [reference], parameters: { resolution: "512", **trace_parameters }
     )
-
-    expect_image(result)
 
     generation = recorded_request("image-generation")
     expect_image_generation(generation, result)
@@ -70,8 +73,6 @@ RSpec.describe "NitroIntelligence::Client#generate_image", :e2e do
         parameters: { prompt_name:, prompt_variables: { background: "white" }, **image_parameters }
       )
 
-      expect_image(result)
-
       generation = recorded_request("image-generation")
       expect_image_generation(generation, result)
       expect(generation).to include("promptName" => prompt_name, "promptVersion" => version)
@@ -85,8 +86,6 @@ RSpec.describe "NitroIntelligence::Client#generate_image", :e2e do
     it "records the generation's usage and cost but none of its content, and uploads no image" do
       result = masked_client.generate_image(message: "A plain red square on a white background.",
                                             parameters: image_parameters)
-
-      expect_image(result)
 
       generation = recorded_request("image-generation")
       expect_image_generation(generation, result)
