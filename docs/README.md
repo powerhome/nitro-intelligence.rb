@@ -52,48 +52,10 @@ NitroIntelligence.configure do |config|
     "default_audio_transcription_model" => "Qwen/Qwen3-ASR-1.7B",
     "default_text_model" => "Qwen/Qwen3.6-35B-A3B",
     "default_image_model" => "google/gemini-3.1-flash-image",
-    "default_text_to_speech_model" => "openai/gpt-4o-mini-tts",
+    "default_text_to_speech_model" => "google/gemini-3.8-flash-tts",
     "default_decision_model" => "typesafe/jev-1.14",
     "default_embedding_model" => "Qwen/Qwen3-Embedding-0.6B",
     "default_rerank_model" => "Qwen/Qwen3-Reranker-0.6B",
-    "models" => [
-      {
-        "name" => "Qwen/Qwen3.6-35B-A3B",
-        "type" => "text"
-      },
-      {
-        "name" => "Qwen/Qwen3-ASR-1.7B",
-        "type" => "audio_transcription"
-      },
-      {
-        "name" => "google/gemini-3.1-flash-image",
-        "type" => "image",
-        "aspect_ratios" => ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9"],
-        "resolutions" => ["512", "1K", "2K"],
-        "omit_output_fields" => ["provider_specific_fields.thought_signatures"]
-      },
-      {
-        "name" => "openai/gpt-4o-mini-tts",
-        "type" => "text_to_speech",
-        "default_voice" => "marin",
-        "default_response_format" => "mp3",
-        "voices" => ["echo", "nova", "marin", "cedar"],
-        "response_formats" => ["mp3", "wav"]
-      },
-      {
-        "name" => "typesafe/jev-1.14",
-        "type" => "decision"
-      },
-      {
-        "name" => "Qwen/Qwen3-Embedding-0.6B",
-        "type" => "embedding",
-        "query_prefix" => "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:"
-      },
-      {
-        "name" => "Qwen/Qwen3-Reranker-0.6B",
-        "type" => "rerank"
-      }
-    ]
   }
 end
 ```
@@ -114,7 +76,13 @@ end
 | `observability_projects` | `Array<Hash>` | `[]`                  | Langfuse project credentials (slug, id, public_key, secret_key). Add `"mask_content" => true` to keep a project's prompts and responses out of Cerebro and the gateway logs, see [Masking Content](#masking-content)                                                                                                                                            |
 | `observability_user_id`  | `String`      | `""`                  | User ID recorded on observed traces when a request passes no `user_id` parameter — see [Users](#users) |
 | `assistants_config`      | `Hash`        | `{}`                  | Assistants to make addressable by key. `base_url` (String, default: `"https://assistants.powerhome.ai"`) and `user_id` (String, default: `"default-user"`) are shared by every entry; `definitions` (Hash) holds one entry per assistant, keyed by what it is looked up with, each able to override a shared value. Without `definitions` the hash is read as credentials for a single `Assistants.new`, which takes the same two defaults — see [Assistants](#assistants) |
-| `model_config`           | `Hash`        | `{}`                  | Model defaults and per-model settings. Top-level keys: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, `default_decision_model`, `default_embedding_model`, `default_rerank_model`, and `models` (array of per-model hashes keyed by `name` and `type`, with type-specific options like `aspect_ratios`/`resolutions` for images or `voices`/`response_formats` for TTS, and for embeddings the optional, model-specific `query_prefix` and `document_prefix`: Qwen3-Embedding takes only `query_prefix`, E5 both, OpenAI's models neither, as [Embeddings](#embeddings) describes) |
+| `model_config`           | `Hash`        | `{}`                  | The model each kind of request uses when it names none: `default_text_model`, `default_audio_transcription_model`, `default_image_model`, `default_text_to_speech_model`, `default_decision_model`, `default_embedding_model` and `default_rerank_model`. The models themselves, and their settings, come from the gateway — see [Models](#models) |
+
+### Models
+
+The gateway decides which models a request may name and how the client uses them. The first time a request names a model, the client fetches the gateway's model list (`GET /model/info`) for `inference_api_key`, which holds every model the key can reach. It takes each model's type from its `mode` (chat, image generation, audio transcription, speech, embedding, rerank or decision) and its settings from `model_info.nitro_intelligence`: an image model's aspect ratios and resolutions, a text-to-speech model's voices and formats and their defaults, an embedding model's query and document prefixes, and the output fields left out of traces. Configure nothing about a model beyond choosing the defaults in `model_config`.
+
+The client keeps the list and fetches it again, at most every five minutes, when a request names a model that is not in it, so a model added to the gateway becomes usable without a restart. If the gateway cannot list its models, the client logs a warning and raises `ArgumentError` naming the model and the listing error, then asks again ten seconds later. A model whose settings the gateway does not publish, such as an image model with no aspect ratios or a text-to-speech model with no default voice, is unsupported until it does. Without an `inference_api_key` no model is available.
 
 ## Basic Usage
 
@@ -208,7 +176,7 @@ client = NitroIntelligence::Client.new
 tts = client.text_to_speech(message: 'Hello, this is Power Home Remodeling Group.')
 
 # tts is a StringIO object, we can write the file to disk
-File.binwrite('tts.mp3', tts.string)
+File.binwrite('tts.wav', tts.string)
 ```
 
 Supplying custom parameters:
@@ -218,18 +186,18 @@ client = NitroIntelligence::Client.new
 tts = client.text_to_speech(
   message: 'Hello, this is Power Home Remodeling Group.',
   parameters: {
-    voice: 'marin',
-    response_format: 'mp3',
+    voice: 'Kore',
+    response_format: 'wav',
     instructions: 'Translate the English into Spanish before speaking.',
     speed: 1.25
   }
 )
 
 # tts is a StringIO object, we can write the file to disk
-File.binwrite('tts.mp3', tts.string)
+File.binwrite('tts.wav', tts.string)
 ```
 
-For a full list of supported parameters, see the [API reference here](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create ). Note that `voice` and `response_format` are further constrained to the `voices` and `response_formats` listed for the chosen model in `config.model_config`.
+For a full list of supported parameters, see the [API reference here](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create ). Note that `voice` and `response_format` are further constrained to the voices and formats the gateway publishes for the chosen model, and default to the ones it marks as defaults.
 
 ### Decisions
 
@@ -269,7 +237,7 @@ decision.answers[:urgency].probabilities # => {0 => 0.1, 1 => 0.1, 2 => 0.8}
 
 `answers` is keyed by question name and accepts strings or symbols. Each answer is a `NitroIntelligence::Decision::NoulAnswer`, `ChoiceAnswer` or `ScoreAnswer`; an answer of any other type is returned as the gateway sent it. `decision.usage` holds the token counts, also by string or symbol, and `decision.last_response` the HTTP response, including the gateway's headers.
 
-The model defaults to `default_decision_model` and must be listed in `config.model_config` with the type `decision`. `parameters` takes `model`, `assets` (images that `state` and the questions refer to, see the [System One docs](https://docs.typesafe.ai/api/system-one.md); the gateway refuses assets for a model it reaches through OpenRouter, which includes `typesafe/jev-1.14`), `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`, described under [Observability](#observability). Decisions take no managed prompt: `prompt_name` and `prompt_variables` are ignored, so put the instructions in `questions`. With observability enabled, each call is recorded in Cerebro as a generation with the state and questions as input, the answers as output, and the gateway's cost.
+The model defaults to `default_decision_model` and must be a decision model, one the gateway serves with mode `evaluation`. `parameters` takes `model`, `assets` (images that `state` and the questions refer to, see the [System One docs](https://docs.typesafe.ai/api/system-one.md); the gateway refuses assets for a model it reaches through OpenRouter, which includes `typesafe/jev-1.14`), `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`, described under [Observability](#observability). Decisions take no managed prompt: `prompt_name` and `prompt_variables` are ignored, so put the instructions in `questions`. With observability enabled, each call is recorded in Cerebro as a generation with the state and questions as input, the answers as output, and the gateway's cost.
 
 The client does not limit the request. To keep a feature portable to models NIP hosts itself, stay within the gateway's [portable subset](https://github.com/powerhome/nitro-intelligence/blob/main/docs/inference-gateway.md#stay-within-what-every-backend-supports): up to 64 questions, 26 options per `choice` question and 10 levels per `score` question, with text `state`.
 
@@ -290,12 +258,12 @@ client.embed_query(query: "How do I request time off?", parameters: { dimensions
 
 `embed_query` also takes a list of queries, such as an evaluation set, and returns a vector for each in `vectors`. `embed_documents` also takes a single document.
 
-`parameters` takes `model`, `dimensions`, `batch_size`, `user`, `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. The model defaults to `default_embedding_model` and must be listed in `config.model_config` with the type `embedding`.
+`parameters` takes `model`, `dimensions`, `batch_size`, `user`, `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id` and `tags`. The model defaults to `default_embedding_model` and must be an embedding model, as [Models](#models) describes.
 
 * **`dimensions`** shortens the vectors, for a model that supports it, as Qwen3-Embedding does. Embed queries and documents with the same model and the same `dimensions`, or the vectors cannot be compared.
 * **`batch_size`** caps how many inputs go in one request, 128 by default. A longer list is sent in several requests and returned as one result, recorded as one observation, so an index rebuild of a few thousand entries is one call.
 
-A model's `query_prefix` and `document_prefix` in `config.model_config` are what it expects before a query's text and before a document's, in the form it was trained on. Qwen3-Embedding takes an instruction before each query and nothing before a document, as in the configuration above; E5 takes `"query: "` and `"passage: "`. Leave both out for a model that embeds queries and documents the same way, such as OpenAI's. Switching to another embeddings model only means changing its `model_config` entry, but vectors from different models cannot be compared, so it also means embedding your stored documents again.
+The client puts the query and document prefixes the gateway publishes for a model before each query's text and each document's, in the form the model was trained on. Qwen3-Embedding takes an instruction before each query and nothing before a document; E5 takes `"query: "` and `"passage: "`; OpenAI's models take neither. Switching to another embeddings model only means changing `default_embedding_model`, but vectors from different models cannot be compared, so it also means embedding your stored documents again.
 
 `embeddings.usage` holds `prompt_tokens` and `total_tokens` summed over every request, and `embeddings.responses` the gateway's responses, one per batch, each with its `last_response`. With observability enabled, each call is recorded in Cerebro as an embedding observation named `embed-query` or `embed-documents`, with the input as the model received it, prefix included, the input tokens as usage, the gateway's cost added up over every batch, and the number and size of the vectors as output. The vectors themselves are never recorded. If the gateway did not price every batch, the cost is left unset rather than undercounted. If a batch fails after others succeeded, the failed call still records what those cost before the error is raised.
 
@@ -318,7 +286,7 @@ ranking.results.first.relevance_score # => 0.97, from 0 to 1
 candidates.values_at(*ranking.results.map(&:index))
 ```
 
-`parameters` takes `model`, `top_n` (return only the most relevant this many, a positive integer, applied after sorting even when the provider ignores it), `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id`, `tags` and `trace_documents`. The model defaults to `default_rerank_model` and must be listed in `config.model_config` with the type `rerank`. `ranking.meta` holds what the provider billed, and `ranking.last_response` the HTTP response, including the gateway's headers.
+`parameters` takes `model`, `top_n` (return only the most relevant this many, a positive integer, applied after sorting even when the provider ignores it), `metadata`, `request_options` and, with observability, `trace_name`, `trace_seed`, `user_id`, `session_id`, `tags` and `trace_documents`. The model defaults to `default_rerank_model` and must be a rerank model, as [Models](#models) describes. `ranking.meta` holds what the provider billed, and `ranking.last_response` the HTTP response, including the gateway's headers.
 
 With observability enabled, each call is recorded in Cerebro as a generation, since Langfuse has no reranker type, with the query and documents as input, each document's index and score as output, the input tokens as usage, any search units the provider billed in the metadata, and the gateway's cost. Pass `trace_documents: false` when your own trace already records the candidates, such as an embedding call or a search step in the same trace, and only their number is recorded. Reranking takes no managed prompt: `prompt_name` and `prompt_variables` are ignored.
 
@@ -881,7 +849,7 @@ A request naming a prompt raises when it cannot use one:
 | `NitroIntelligence::Client::Handlers::Observed::AudioTranscriptionHandler::ObservedAudioTranscriptionPromptError` | `#transcribe_audio` names a prompt that is not a text prompt |
 | `NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandler::ObservedTextToSpeechPromptError` | `#text_to_speech` names a prompt that is not a text prompt |
 
-On an observed client whose project does not mask content, pass an open `File` as `audio_file` to `#transcribe_audio`. If `audio_file` has no path, as with a `StringIO`, the upload to Cerebro raises `NitroIntelligence::Audio::AudioFileFormatError`. By then, the gateway has already transcribed the audio and billed the request, but your app never receives the transcript. A masked project skips the upload, so the same input works there. Every method raises `ArgumentError` for a model, or a model setting such as a voice or aspect ratio, that `model_config` does not list.
+On an observed client whose project does not mask content, pass an open `File` as `audio_file` to `#transcribe_audio`. If `audio_file` has no path, as with a `StringIO`, the upload to Cerebro raises `NitroIntelligence::Audio::AudioFileFormatError`. By then, the gateway has already transcribed the audio and billed the request, but your app never receives the transcript. A masked project skips the upload, so the same input works there. Every method raises `ArgumentError` for a model the gateway does not provide, or a model setting such as a voice or aspect ratio that the gateway does not list for the model.
 
 ## Nitro Intelligence Assistants
 

@@ -22,7 +22,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
 
   let(:fake_catalog) do
     NitroIntelligence::ModelCatalog.new({}).tap do |catalog|
-      allow(catalog).to receive(:default_text_to_speech_model).and_return(tts_model)
+      allow(catalog).to receive(:default_text_to_speech_model_name).and_return(tts_model.name)
     end
   end
 
@@ -85,7 +85,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::TextToSpeechHandler do
     end
 
     it "raises when no model is provided and the catalog has no default" do
-      allow(fake_catalog).to receive(:default_text_to_speech_model).and_return(nil)
+      allow(fake_catalog).to receive(:default_text_to_speech_model_name).and_return(nil)
 
       expect { handler.create(message: "hi") }
         .to raise_error(ArgumentError, /Unsupported model: ''/)

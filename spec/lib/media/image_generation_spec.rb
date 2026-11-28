@@ -33,7 +33,7 @@ RSpec.describe NitroIntelligence::ImageGeneration do
 
   let(:mock_catalog) do
     NitroIntelligence::ModelCatalog.new({}).tap do |catalog|
-      allow(catalog).to receive(:default_image_model).and_return(mock_model)
+      allow(catalog).to receive(:default_image_model_name).and_return(mock_model.name)
     end
   end
 

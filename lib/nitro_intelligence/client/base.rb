@@ -31,7 +31,7 @@ module NitroIntelligence
       # @param message [String] the user's message, used when `parameters` carries no `messages`
       # @param parameters [Hash] openai-ruby's chat completion parameters, and this gem's own
       # @return [OpenAI::Models::Chat::ChatCompletion]
-      # @raise [ArgumentError] when the model is not one `model_config` lists
+      # @raise [ArgumentError] when the model is not one the gateway serves
       # @raise [Handlers::Observed::ChatHandler::ObservedChatPromptError] on an observed client, when
       #   the request carries no user message for the model to answer
       # @example
@@ -52,7 +52,7 @@ module NitroIntelligence
       #   `user_id`, `session_id` and `tags`. It takes no managed prompt: `prompt_name` and
       #   `prompt_variables` are ignored, so the instructions belong in `questions`.
       # @return [Decision]
-      # @raise [ArgumentError] when the model is not one `model_config` lists with the type
+      # @raise [ArgumentError] when the model is not one the gateway serves with the type
       #   `decision`
       # @example
       #   client.decide(
@@ -72,7 +72,7 @@ module NitroIntelligence
       #   `metadata` and `request_options`, and on an observed client `trace_name`, `trace_seed`,
       #   `user_id`, `session_id` and `tags`. It takes no managed prompt.
       # @return [Embeddings] the query's vector in `vector`, or one per query in `vectors`
-      # @raise [ArgumentError] when the model is not one `model_config` lists with the type
+      # @raise [ArgumentError] when the model is not one the gateway serves with the type
       #   `embedding`, a query is empty or not text, or `batch_size` is not a positive integer
       # @example
       #   client.embed_query(query: "How do I request time off?").vector
@@ -104,7 +104,7 @@ module NitroIntelligence
       #   documents there were, for a caller whose own trace already records them). It takes no
       #   managed prompt.
       # @return [Ranking]
-      # @raise [ArgumentError] when the model is not one `model_config` lists with the type
+      # @raise [ArgumentError] when the model is not one the gateway serves with the type
       #   `rerank`, the query is empty, the documents are empty or not text, or `top_n` is not a
       #   positive integer
       # @example
@@ -143,10 +143,10 @@ module NitroIntelligence
       # @param message [String] what to generate, or how to edit the target
       # @param target_image [String, nil] the image to edit, as a byte string
       # @param reference_images [Array<String>] further images to draw on, as byte strings
-      # @param parameters [Hash] `model`, `aspect_ratio` and `resolution`, among those `model_config`
+      # @param parameters [Hash] `model`, `aspect_ratio` and `resolution`, among those the gateway
       #   lists for the model, and this gem's own
       # @return [ImageGeneration]
-      # @raise [ArgumentError] when the model, aspect ratio or resolution is not one `model_config`
+      # @raise [ArgumentError] when the model, aspect ratio or resolution is not one the gateway
       #   lists
       # @example
       #   result = client.generate_image(message: "A bear installing a window")
@@ -166,7 +166,7 @@ module NitroIntelligence
       #   the `response_format`: a `Transcription` for `json`, the default, and the response body as a
       #   StringIO for `text`, `srt` and `vtt`. An observed client records the transcription's `text`,
       #   so it supports only the formats that return an object.
-      # @raise [ArgumentError] when the model is not one `model_config` lists
+      # @raise [ArgumentError] when the model is not one the gateway serves
       # @example
       #   client.transcribe_audio(audio_file: File.open("sample.m4a", "rb")).text
       def transcribe_audio(message: +"", audio_file: nil, parameters: {})
@@ -177,9 +177,9 @@ module NitroIntelligence
       #
       # @param message [String] the text to speak
       # @param parameters [Hash] openai-ruby's speech parameters, with `voice` and `response_format`
-      #   among those `model_config` lists for the model, and this gem's own
+      #   among those the gateway lists for the model, and this gem's own
       # @return [StringIO] the audio
-      # @raise [ArgumentError] when the model, voice or format is not one `model_config` lists
+      # @raise [ArgumentError] when the model, voice or format is not one the gateway lists
       # @example
       #   File.binwrite("hello.mp3", client.text_to_speech(message: "Hello").string)
       def text_to_speech(message: "", parameters: {})

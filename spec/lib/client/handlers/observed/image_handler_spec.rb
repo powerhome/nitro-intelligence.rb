@@ -129,7 +129,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ImageHandler do
 
     it "returns the trace and observation IDs on the image generation result" do
       model = NitroIntelligence::ImageModel.new(name: "dall-e-3", aspect_ratios: ["1:1"], resolutions: ["1K"])
-      allow(NitroIntelligence.model_catalog).to receive_messages(default_image_model: model, lookup_by_name: model, fetch: model)
+      allow(NitroIntelligence.model_catalog).to receive_messages(default_image_model_name: model.name, lookup_by_name: model, fetch: model)
       allow(NitroIntelligence::ImageGeneration).to receive(:new).and_call_original
       allow(fake_observer).to receive(:observe).and_yield(fake_generation)
       allow(fake_completions).to receive(:create).and_return(fake_completion_response)

@@ -27,7 +27,7 @@ module NitroIntelligence
           default_parameters = {
             metadata: {},
             messages: [],
-            model: NitroIntelligence.model_catalog.default_text_model&.name,
+            model: NitroIntelligence.model_catalog.default_text_model_name,
           }
 
           parameters.replace(default_parameters.merge(parameters))

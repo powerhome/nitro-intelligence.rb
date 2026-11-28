@@ -18,7 +18,7 @@ module NitroIntelligence
 
       def initialize
         @aspect_ratio = DEFAULT_ASPECT_RATIO
-        @model = NitroIntelligence.model_catalog.default_image_model&.name
+        @model = NitroIntelligence.model_catalog.default_image_model_name
         @resolution = DEFAULT_RESOLUTION
       end
     end

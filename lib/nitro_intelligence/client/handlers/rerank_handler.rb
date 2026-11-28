@@ -45,7 +45,7 @@ module NitroIntelligence
         def validate_and_resolve!(query, documents, parameters)
           default_parameters = {
             metadata: {},
-            model: NitroIntelligence.model_catalog.default_rerank_model&.name,
+            model: NitroIntelligence.model_catalog.default_rerank_model_name,
           }
 
           parameters.replace(default_parameters.merge(parameters))

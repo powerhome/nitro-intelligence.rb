@@ -17,7 +17,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::ChatHandler do
   let(:handler) { described_class.new(base_handler:, observer: fake_observer) }
 
   before do
-    fake_catalog = double("ModelCatalog", default_text_model: double(name: "default-text-model"))
+    fake_catalog = double("ModelCatalog", default_text_model_name: "default-text-model")
     allow(fake_catalog).to receive(:fetch) { |name, **| double("Model", name:) }
     allow(NitroIntelligence).to receive(:model_catalog).and_return(fake_catalog)
   end

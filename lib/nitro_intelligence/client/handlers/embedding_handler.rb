@@ -41,7 +41,7 @@ module NitroIntelligence
         def validate_and_resolve!(input, input_type, parameters)
           default_parameters = {
             metadata: {},
-            model: NitroIntelligence.model_catalog.default_embedding_model&.name,
+            model: NitroIntelligence.model_catalog.default_embedding_model_name,
             batch_size: DEFAULT_BATCH_SIZE,
           }
 

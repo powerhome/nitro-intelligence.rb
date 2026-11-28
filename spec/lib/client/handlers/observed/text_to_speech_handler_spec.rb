@@ -29,7 +29,7 @@ RSpec.describe NitroIntelligence::Client::Handlers::Observed::TextToSpeechHandle
 
   let(:fake_catalog) do
     NitroIntelligence::ModelCatalog.new({}).tap do |catalog|
-      allow(catalog).to receive(:default_text_to_speech_model).and_return(tts_model)
+      allow(catalog).to receive(:default_text_to_speech_model_name).and_return(tts_model.name)
     end
   end
 
