@@ -18,7 +18,7 @@ Gem::Specification.new do |s|
   s.required_ruby_version = ">= 3.3"
 
   s.add_dependency "activesupport", "~> 7.1"
-  s.add_dependency "langfuse-rb", "0.7.0"
+  s.add_dependency "langfuse-rb", "0.12.4"
   s.add_dependency "mini_magick", "~> 4.10"
   s.add_dependency "openai", "~> 1.0"
   # BatchSpanProcessor overrides private SDK internals verified on 1.10.0-1.13.1.
